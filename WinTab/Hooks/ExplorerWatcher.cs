@@ -383,9 +383,19 @@ public class ExplorerWatcher : IHook
         {
             var shouldOpenAsWindow = Helper.IsCtrlShiftDown();
 
-            WindowInfo windowInfo = null!;
-            var window = await Helper.DoUntilNotDefaultAsync(() => GetRecentlyCreatedWindow(out windowInfo!), 2_500, 70);
-            if (window == null) return;
+            // Perform the check on a background STA thread to avoid blocking the UI thread
+            // if the COM object (Explorer) is busy/hung.
+            var result = await Helper.DoUntilNotDefaultAsync(async () => 
+                await RunInStaThread(() =>
+                {
+                    var w = GetRecentlyCreatedWindow(out var info);
+                    return (Window: w, Info: info);
+                }), 2_500, 70);
+
+            var window = result.Window;
+            var windowInfo = result.Info;
+
+            if (window == null || windowInfo == null) return;
 
             _ = GetTabHandle(window);
 
