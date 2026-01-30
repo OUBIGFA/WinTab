@@ -1,0 +1,98 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:system="clr-namespace:System;assembly=mscorlib">
+
+    <!-- Window Titles -->
+    <system:String x:Key="WindowTitle_Settings">WinTab 设置</system:String>
+    <system:String x:Key="WindowTitle_Host">WinTab 主机</system:String>
+    
+    <!-- Main Header -->
+    <system:String x:Key="MainHeader_Title">WinTab</system:String>
+    <system:String x:Key="MainHeader_Subtitle">全新 WinTab 体验的早期预览设置。</system:String>
+    
+    <!-- Group Headers -->
+    <system:String x:Key="GroupHeader_Startup">启动</system:String>
+    <system:String x:Key="GroupHeader_TrayIcon">系统托盘图标</system:String>
+    <system:String x:Key="GroupHeader_AutoGrouping">自动分组</system:String>
+    <system:String x:Key="GroupHeader_Groups">分组</system:String>
+    <system:String x:Key="GroupHeader_WindowInspector">窗口检查器</system:String>
+    <system:String x:Key="GroupHeader_Diagnostics">诊断</system:String>
+    
+    <!-- Startup Options -->
+    <system:String x:Key="Option_RunAtStartup">Windows 启动时运行</system:String>
+    <system:String x:Key="Option_StartMinimized">启动时最小化到托盘</system:String>
+    
+    <!-- Tray Icon Options -->
+    <system:String x:Key="Option_ShowTrayIcon">显示托盘图标</system:String>
+    
+    <!-- Auto Grouping Options -->
+    <system:String x:Key="Button_AddRule">添加规则</system:String>
+    <system:String x:Key="Button_RemoveRule">移除规则</system:String>
+    <system:String x:Key="Button_ApplyRules">应用规则</system:String>
+    <system:String x:Key="Label_RulesCount">规则: {0}</system:String>
+    <system:String x:Key="Option_AutoApplyRules">每 5 秒自动应用规则</system:String>
+    <system:String x:Key="DataGridHeader_Enabled">启用</system:String>
+    <system:String x:Key="DataGridHeader_MatchType">匹配类型</system:String>
+    <system:String x:Key="DataGridHeader_GroupName">组名称</system:String>
+    <system:String x:Key="DataGridHeader_Priority">优先级</system:String>
+    <system:String x:Key="DataGridHeader_MatchValue">匹配值</system:String>
+    <system:String x:Key="HelpText_MatchTypes">按进程名称、窗口标题包含或类名进行匹配。</system:String>
+    
+    <!-- Groups Options -->
+    <system:String x:Key="Button_RefreshList">刷新列表</system:String>
+    <system:String x:Key="Button_OpenAll">全部打开</system:String>
+    <system:String x:Key="Button_CloseAll">全部关闭</system:String>
+    <system:String x:Key="Button_OpenGroup">打开分组</system:String>
+    <system:String x:Key="Button_CloseGroup">关闭分组</system:String>
+    <system:String x:Key="Label_GroupsCount">分组: {0}</system:String>
+    <system:String x:Key="Option_AutoOpenGroups">启动时自动打开已保存的分组</system:String>
+    <system:String x:Key="Option_AutoCloseEmptyGroups">自动关闭空分组</system:String>
+    <system:String x:Key="Label_RenameTo">重命名为:</system:String>
+    <system:String x:Key="Button_RenameGroup">重命名分组</system:String>
+    <system:String x:Key="DataGridHeader_GroupName_Column">组名称</system:String>
+    <system:String x:Key="DataGridHeader_Open">已打开</system:String>
+    <system:String x:Key="DataGridHeader_Windows">窗口</system:String>
+    
+    <!-- Window Inspector Options -->
+    <system:String x:Key="Button_Refresh">刷新</system:String>
+    <system:String x:Key="Option_IncludeInvisible">包含不可见窗口</system:String>
+    <system:String x:Key="Label_FoundWindows">找到: {0}</system:String>
+    <system:String x:Key="Button_BringToFront">置顶</system:String>
+    <system:String x:Key="Button_Minimize">最小化</system:String>
+    <system:String x:Key="Button_Restore">恢复</system:String>
+    <system:String x:Key="Button_Close">关闭</system:String>
+    <system:String x:Key="Button_SetTarget">设为目标</system:String>
+    <system:String x:Key="Button_ClearTarget">清除目标</system:String>
+    <system:String x:Key="Label_TargetWindow">目标窗口:</system:String>
+    <system:String x:Key="Label_TargetWindow_None">无</system:String>
+    <system:String x:Key="Button_AttachToHost">附加到主机</system:String>
+    <system:String x:Key="Button_DetachFromHost">从主机分离</system:String>
+    <system:String x:Key="DataGridHeader_Title">标题</system:String>
+    <system:String x:Key="DataGridHeader_Process">进程</system:String>
+    <system:String x:Key="DataGridHeader_PID">PID</system:String>
+    <system:String x:Key="DataGridHeader_Class">类名</system:String>
+    <system:String x:Key="DataGridHeader_Handle">句柄</system:String>
+    <system:String x:Key="DataGridHeader_Visible">可见</system:String>
+    
+    <!-- Diagnostics -->
+    <system:String x:Key="Label_LogFileLocation">日志文件位置:</system:String>
+    
+    <!-- Bottom Buttons -->
+    <system:String x:Key="Button_Save">保存</system:String>
+    <system:String x:Key="Button_Close">关闭</system:String>
+    
+    <!-- Session Recovery -->
+    <system:String x:Key="SessionRecovery_Title">会话恢复</system:String>
+    <system:String x:Key="SessionRecovery_Message">WinTab 检测到上一个会话可能已崩溃。您是否要恢复您的窗口分组？</system:String>
+    
+    <!-- Tray Icon -->
+    <system:String x:Key="TrayIcon_OpenWinTab">打开 WinTab</system:String>
+    <system:String x:Key="TrayIcon_Exit">退出</system:String>
+    
+    <!-- Language -->
+    <system:String x:Key="Language_English">English</system:String>
+    <system:String x:Key="Language_Chinese">简体中文</system:String>
+    <system:String x:Key="Button_SwitchLanguage">切换语言 / Switch Language</system:String>
+    <system:String x:Key="GroupAlreadyOpenMessage">分组 "{0}" 已经打开。请先关闭后再重命名。</system:String>
+
+</ResourceDictionary>

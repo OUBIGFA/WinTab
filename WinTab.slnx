@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WinTab.App/WinTab.App.csproj" />
+    <Project Path="src/WinTab.Core/WinTab.Core.csproj" />
+    <Project Path="src/WinTab.Diagnostics/WinTab.Diagnostics.csproj" />
+    <Project Path="src/WinTab.Persistence/WinTab.Persistence.csproj" />
+    <Project Path="src/WinTab.Platform.Win32/WinTab.Platform.Win32.csproj" />
+  </Folder>
+</Solution>
