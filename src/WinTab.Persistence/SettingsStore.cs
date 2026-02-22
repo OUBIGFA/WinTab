@@ -1,133 +1,264 @@
-﻿using System.Text.Json;
-using WinTab.Core;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using WinTab.Core.Models;
+using WinTab.Diagnostics;
 
 namespace WinTab.Persistence;
 
-public sealed class SettingsStore
+/// <summary>
+/// Handles loading, saving, and migrating <see cref="AppSettings"/> as JSON on disk.
+/// All public members are thread-safe.
+/// </summary>
+public sealed class SettingsStore : IDisposable
 {
-    private readonly string _settingsPath;
-    private readonly string _attachmentsPath;
-    private readonly JsonSerializerOptions _options = new() { WriteIndented = true };
+    private const int CurrentSchemaVersion = 1;
+    private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(500);
 
-    public SettingsStore(string settingsPath)
+    private static readonly JsonSerializerOptions SerializerOptions = new()
     {
+        WriteIndented = true,
+        PropertyNamingPolicy = null, // PascalCase
+        Converters = { new JsonStringEnumConverter() },
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
+    private readonly string _settingsPath;
+    private readonly Logger? _logger;
+    private readonly object _lock = new();
+    private Timer? _debounceTimer;
+    private AppSettings? _pendingSave;
+    private bool _disposed;
+
+    /// <summary>
+    /// Creates a new <see cref="SettingsStore"/>.
+    /// </summary>
+    /// <param name="settingsPath">Absolute path to the settings JSON file.</param>
+    /// <param name="logger">Optional logger for diagnostics.</param>
+    public SettingsStore(string settingsPath, Logger? logger = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(settingsPath);
         _settingsPath = settingsPath;
-        var directory = Path.GetDirectoryName(settingsPath);
-        _attachmentsPath = Path.Combine(directory ?? string.Empty, "window_attachments.json");
+        _logger = logger;
     }
 
+    /// <summary>
+    /// Loads settings from disk. Returns default settings when the file is
+    /// missing or contains invalid JSON.
+    /// </summary>
     public AppSettings Load()
     {
-        if (!File.Exists(_settingsPath))
+        lock (_lock)
         {
-            return new AppSettings();
-        }
-
-        try
-        {
-            var json = File.ReadAllText(_settingsPath);
-            var settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
-            settings.AutoGroupRules ??= new List<AutoGroupRule>();
-            settings.GroupWindowStates ??= new List<GroupWindowState>();
-            settings.WindowAttachments ??= new List<WindowAttachment>();
-
-            foreach (var rule in settings.AutoGroupRules)
+            try
             {
-                if (string.IsNullOrWhiteSpace(rule.GroupName))
+                if (!File.Exists(_settingsPath))
                 {
-                    rule.GroupName = "Default";
+                    _logger?.Info("Settings file not found; returning defaults.");
+                    return new AppSettings();
                 }
 
-                if (string.IsNullOrWhiteSpace(rule.MatchValue) && !string.IsNullOrWhiteSpace(rule.ProcessName))
+                string json = File.ReadAllText(_settingsPath);
+                AppSettings? settings = JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions);
+
+                if (settings is null)
                 {
-                    rule.MatchType = AutoGroupMatchType.ProcessName;
-                    rule.MatchValue = rule.ProcessName;
+                    _logger?.Warn("Settings file deserialized to null; returning defaults.");
+                    return new AppSettings();
                 }
 
-                if (rule.MatchType == AutoGroupMatchType.ProcessName &&
-                    string.IsNullOrWhiteSpace(rule.ProcessName) &&
-                    !string.IsNullOrWhiteSpace(rule.MatchValue))
+                if (settings.SchemaVersion > CurrentSchemaVersion)
                 {
-                    rule.ProcessName = rule.MatchValue;
+                    _logger?.Warn(
+                        $"Settings schema version {settings.SchemaVersion} is newer than " +
+                        $"supported version {CurrentSchemaVersion}; returning defaults.");
+                    return new AppSettings();
                 }
+
+                bool migrated = MigrateIfNeeded(settings);
+                if (migrated)
+                    Save(settings);
+
+                _logger?.Info($"Settings loaded successfully (schema v{settings.SchemaVersion}).");
+                return settings;
             }
-
-            return settings;
-        }
-        catch
-        {
-            return new AppSettings();
+            catch (JsonException ex)
+            {
+                _logger?.Error($"Corrupt settings file: {ex.Message}");
+                return new AppSettings();
+            }
+            catch (IOException ex)
+            {
+                _logger?.Error($"Failed to read settings file: {ex.Message}");
+                return new AppSettings();
+            }
         }
     }
 
+    /// <summary>
+    /// Persists settings to disk immediately, creating the parent directory if needed.
+    /// </summary>
     public void Save(AppSettings settings)
     {
-        var directory = Path.GetDirectoryName(_settingsPath);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        ArgumentNullException.ThrowIfNull(settings);
 
-        var json = JsonSerializer.Serialize(settings, _options);
-        File.WriteAllText(_settingsPath, json);
-    }
-
-    public void SaveGroupWindowStates(List<GroupWindowState> states)
-    {
-        var settings = Load();
-        settings.GroupWindowStates = states ?? new List<GroupWindowState>();
-        Save(settings);
-    }
-
-    public void SaveWindowAttachments(List<WindowAttachment> attachments)
-    {
-        var json = JsonSerializer.Serialize(attachments, _options);
-        File.WriteAllText(_attachmentsPath, json);
-    }
-
-    public List<WindowAttachment> LoadWindowAttachments()
-    {
-        if (!File.Exists(_attachmentsPath))
+        lock (_lock)
         {
-            return new List<WindowAttachment>();
-        }
-
-        try
-        {
-            var json = File.ReadAllText(_attachmentsPath);
-            return JsonSerializer.Deserialize<List<WindowAttachment>>(json, _options)
-                   ?? new List<WindowAttachment>();
-        }
-        catch
-        {
-            return new List<WindowAttachment>();
-        }
-    }
-
-    public void BackupSession()
-    {
-        try
-        {
-            var settings = Load();
-            var attachments = settings.WindowAttachments ?? new List<WindowAttachment>();
-            SaveWindowAttachments(attachments);
-        }
-        catch
-        {
-        }
-    }
-
-    public void ClearBackup()
-    {
-        try
-        {
-            if (File.Exists(_attachmentsPath))
+            try
             {
-                File.Delete(_attachmentsPath);
+                string? directory = Path.GetDirectoryName(_settingsPath);
+                if (directory is not null && !Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                    _logger?.Info($"Created settings directory: {directory}");
+                }
+
+                settings.SchemaVersion = CurrentSchemaVersion;
+                string json = JsonSerializer.Serialize(settings, SerializerOptions);
+                File.WriteAllText(_settingsPath, json);
+
+                _logger?.Info("Settings saved successfully.");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger?.Error($"Failed to save settings: {ex.Message}");
+                throw;
             }
         }
-        catch
+    }
+
+    /// <summary>
+    /// Queues a save that executes after <see cref="DebounceInterval"/> of inactivity.
+    /// Repeated calls within the window reset the timer so only the last
+    /// <paramref name="settings"/> snapshot is written.
+    /// </summary>
+    public void SaveDebounced(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        lock (_lock)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            _pendingSave = settings;
+
+            if (_debounceTimer is null)
+            {
+                _debounceTimer = new Timer(OnDebounceElapsed, null, DebounceInterval, Timeout.InfiniteTimeSpan);
+            }
+            else
+            {
+                _debounceTimer.Change(DebounceInterval, Timeout.InfiniteTimeSpan);
+            }
         }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            // Flush any pending debounced save before disposing.
+            if (_pendingSave is not null)
+            {
+                try
+                {
+                    Save(_pendingSave);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Error($"Failed to flush pending save during dispose: {ex.Message}");
+                }
+                finally
+                {
+                    _pendingSave = null;
+                }
+            }
+
+            _debounceTimer?.Dispose();
+            _debounceTimer = null;
+        }
+    }
+
+    // ──────────────────────────────────────────────
+    //  Private helpers
+    // ──────────────────────────────────────────────
+
+    private void OnDebounceElapsed(object? state)
+    {
+        AppSettings? snapshot;
+
+        lock (_lock)
+        {
+            snapshot = _pendingSave;
+            _pendingSave = null;
+        }
+
+        if (snapshot is not null)
+        {
+            try
+            {
+                Save(snapshot);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error($"Debounced save failed: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies any required migrations to bring <paramref name="settings"/>
+    /// up to <see cref="CurrentSchemaVersion"/>.
+    /// </summary>
+    private bool MigrateIfNeeded(AppSettings settings)
+    {
+        bool changed = false;
+        bool disabledLegacyOverlayMode = false;
+
+        if (settings.EnableDragToGroup)
+        {
+            settings.EnableDragToGroup = false;
+            disabledLegacyOverlayMode = true;
+            changed = true;
+        }
+
+        if (settings.AutoApplyRules)
+        {
+            settings.AutoApplyRules = false;
+            disabledLegacyOverlayMode = true;
+            changed = true;
+        }
+
+        if (disabledLegacyOverlayMode)
+            _logger?.Info("Disabled legacy overlay grouping features in favor of native Explorer tabs.");
+
+        // Currently at schema version 1 -- no migrations required.
+        // Future migrations should be applied incrementally:
+        //
+        // if (settings.SchemaVersion < 2)
+        // {
+        //     // Apply v1 → v2 migration
+        //     settings.SchemaVersion = 2;
+        //     _logger?.Info("Migrated settings from v1 to v2.");
+        // }
+        //
+        // if (settings.SchemaVersion < 3)
+        // {
+        //     // Apply v2 → v3 migration
+        //     settings.SchemaVersion = 3;
+        //     _logger?.Info("Migrated settings from v2 to v3.");
+        // }
+
+        if (settings.SchemaVersion < CurrentSchemaVersion)
+        {
+            settings.SchemaVersion = CurrentSchemaVersion;
+            _logger?.Info($"Settings migrated to schema v{CurrentSchemaVersion}.");
+            changed = true;
+        }
+
+        return changed;
     }
 }

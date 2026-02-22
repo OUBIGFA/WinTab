@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -7,13 +7,29 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>WinTab.App</RootNamespace>
+    <AssemblyName>WinTab</AssemblyName>
+    <Version>3.0.0</Version>
+    <Product>WinTab</Product>
+    <Description>Open-source window tab manager for Windows</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WPF-UI" Version="4.*" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.*" />
+  </ItemGroup>
+
+  <!-- NOTE: dotnet/msbuild-core does not support ResolveComReference.
+       Use dynamic COM (Shell.Application) instead of <COMReference>. -->
 
   <ItemGroup>
     <ProjectReference Include="..\WinTab.Core\WinTab.Core.csproj" />
     <ProjectReference Include="..\WinTab.Diagnostics\WinTab.Diagnostics.csproj" />
     <ProjectReference Include="..\WinTab.Persistence\WinTab.Persistence.csproj" />
     <ProjectReference Include="..\WinTab.Platform.Win32\WinTab.Platform.Win32.csproj" />
+    <ProjectReference Include="..\WinTab.UI\WinTab.UI.csproj" />
+    <ProjectReference Include="..\WinTab.TabHost\WinTab.TabHost.csproj" />
   </ItemGroup>
 
 </Project>

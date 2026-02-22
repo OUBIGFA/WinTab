@@ -1,0 +1,112 @@
+<Page x:Class="WinTab.App.Views.Pages.AutoGroupingPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:vm="clr-namespace:WinTab.App.ViewModels"
+      xmlns:enums="clr-namespace:WinTab.Core.Enums;assembly=WinTab.Core"
+      d:DataContext="{d:DesignInstance vm:AutoGroupingViewModel}"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      mc:Ignorable="d"
+      Title="AutoGroupingPage">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
+        <StackPanel Margin="0,0,24,24" MaxWidth="900">
+
+            <!-- Auto Grouping Rules Section -->
+            <TextBlock Text="{DynamicResource AutoGroup_Title}"
+                       FontSize="20" FontWeight="SemiBold"
+                       Margin="0,0,0,4" />
+            <TextBlock Text="{DynamicResource AutoGroup_Description}"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,12" />
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource AutoGroup_AutoApply}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding AutoApply, Mode=TwoWay}" />
+            </ui:CardControl>
+
+            <!-- Rules DataGrid -->
+            <DataGrid ItemsSource="{Binding Rules}"
+                      SelectedItem="{Binding SelectedRule, Mode=TwoWay}"
+                      AutoGenerateColumns="False"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      HeadersVisibility="Column"
+                      Margin="0,12,0,8"
+                      MinHeight="150">
+                <DataGrid.Columns>
+                    <DataGridCheckBoxColumn Header="{DynamicResource AutoGroup_Enabled}"
+                                            Binding="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                            Width="60" />
+                    <DataGridComboBoxColumn Header="{DynamicResource AutoGroup_MatchType}"
+                                           SelectedItemBinding="{Binding MatchType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                           Width="130">
+                        <DataGridComboBoxColumn.ElementStyle>
+                            <Style TargetType="ComboBox">
+                                <Setter Property="ItemsSource" Value="{Binding Source={x:Static vm:AutoGroupingViewModel.MatchTypes}}" />
+                            </Style>
+                        </DataGridComboBoxColumn.ElementStyle>
+                        <DataGridComboBoxColumn.EditingElementStyle>
+                            <Style TargetType="ComboBox">
+                                <Setter Property="ItemsSource" Value="{Binding Source={x:Static vm:AutoGroupingViewModel.MatchTypes}}" />
+                            </Style>
+                        </DataGridComboBoxColumn.EditingElementStyle>
+                    </DataGridComboBoxColumn>
+                    <DataGridTextColumn Header="{DynamicResource AutoGroup_MatchValue}"
+                                        Binding="{Binding MatchValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="*" />
+                    <DataGridTextColumn Header="{DynamicResource AutoGroup_GroupName}"
+                                        Binding="{Binding GroupName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="120" />
+                    <DataGridTextColumn Header="{DynamicResource AutoGroup_Priority}"
+                                        Binding="{Binding Priority, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                        Width="70" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <ui:Button Content="{DynamicResource AutoGroup_AddRule}"
+                           Icon="{ui:SymbolIcon Add24}"
+                           Command="{Binding AddRuleCommand}" />
+                <ui:Button Content="{DynamicResource AutoGroup_RemoveRule}"
+                           Icon="{ui:SymbolIcon Delete24}"
+                           Command="{Binding RemoveRuleCommand}"
+                           Appearance="Danger" />
+            </StackPanel>
+
+            <!-- Exclusions Section -->
+            <TextBlock Text="{DynamicResource AutoGroup_Exclusions}"
+                       FontSize="20" FontWeight="SemiBold"
+                       Margin="0,24,0,4" />
+            <TextBlock Text="{DynamicResource AutoGroup_ExclusionsDesc}"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,12" />
+
+            <ListBox ItemsSource="{Binding Exclusions}"
+                     SelectedItem="{Binding SelectedExclusion, Mode=TwoWay}"
+                     MinHeight="100"
+                     MaxHeight="200"
+                     Margin="0,0,0,8" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <ui:TextBox x:Name="ExclusionTextBox"
+                            PlaceholderText="explorer.exe"
+                            Text="{Binding NewExclusionText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            MinWidth="200" />
+                <ui:Button Content="{DynamicResource AutoGroup_AddExclusion}"
+                           Icon="{ui:SymbolIcon Add24}"
+                           Command="{Binding AddExclusionCommand}" />
+                <ui:Button Content="{DynamicResource AutoGroup_RemoveExclusion}"
+                           Icon="{ui:SymbolIcon Delete24}"
+                           Command="{Binding RemoveExclusionCommand}"
+                           Appearance="Danger" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

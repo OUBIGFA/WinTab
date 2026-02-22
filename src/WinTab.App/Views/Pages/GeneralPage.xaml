@@ -1,0 +1,125 @@
+<Page x:Class="WinTab.App.Views.Pages.GeneralPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:vm="clr-namespace:WinTab.App.ViewModels"
+      d:DataContext="{d:DesignInstance vm:GeneralViewModel}"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      mc:Ignorable="d"
+      Title="GeneralPage">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
+        <StackPanel Margin="0,0,24,24" MaxWidth="800">
+
+            <!-- Startup Section -->
+            <TextBlock Text="{DynamicResource General_Startup}"
+                       FontSize="20" FontWeight="SemiBold"
+                       Margin="0,0,0,12" />
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_RunAtStartup}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding RunAtStartup, Mode=TwoWay}" />
+            </ui:CardControl>
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_StartMinimized}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding StartMinimized, Mode=TwoWay}" />
+            </ui:CardControl>
+
+            <!-- System Tray Section -->
+            <TextBlock Text="{DynamicResource General_TrayIcon}"
+                       FontSize="20" FontWeight="SemiBold"
+                       Margin="0,24,0,12" />
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_ShowTrayIcon}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding ShowTrayIcon, Mode=TwoWay}" />
+            </ui:CardControl>
+
+            <!-- Language Section -->
+            <TextBlock Text="{DynamicResource General_Language}"
+                       FontSize="20" FontWeight="SemiBold"
+                       Margin="0,24,0,12" />
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_LanguageLabel}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ComboBox SelectedIndex="{Binding SelectedLanguageIndex, Mode=TwoWay}"
+                          MinWidth="160">
+                    <ComboBoxItem Content="{DynamicResource General_Chinese}" />
+                    <ComboBoxItem Content="{DynamicResource General_English}" />
+                </ComboBox>
+            </ui:CardControl>
+
+            <!-- Behavior Section -->
+            <TextBlock Text="{DynamicResource General_Behavior}"
+                       FontSize="20" FontWeight="SemiBold"
+                       Margin="0,24,0,12" />
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_RestoreSession}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding RestoreSession, Mode=TwoWay}" />
+            </ui:CardControl>
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_AutoCloseEmpty}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding AutoCloseEmpty, Mode=TwoWay}" />
+            </ui:CardControl>
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_GroupSameProcess}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding GroupSameProcess, Mode=TwoWay}" />
+            </ui:CardControl>
+
+            <!-- Explorer Repair Section -->
+            <TextBlock Text="{DynamicResource General_ExplorerRepair}"
+                       FontSize="20" FontWeight="SemiBold"
+                       Margin="0,24,0,12" />
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_RestoreExplorerDefaults}"
+                                   FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource General_RestoreExplorerDefaultsDesc}"
+                                   Opacity="0.7"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+
+                <Button Content="{DynamicResource General_RestoreExplorerDefaults}"
+                        MinWidth="120"
+                        Command="{Binding RestoreExplorerDefaultsCommand}" />
+            </ui:CardControl>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

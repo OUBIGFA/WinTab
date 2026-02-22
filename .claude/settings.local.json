@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Bash(powershell:*)",
+      "Bash(del:*)",
+      "Read(E:\\_BIGFA Free\\_My data\\obsidian\\BIGFA\\FreeBlog\\writing\\年轻人，不要碰大A.md)",
+      "Bash(cd:*)",
+      "WebFetch",
+      "Bash(find:*)"
+    ]
+  }
+}

@@ -1,0 +1,78 @@
+<Page x:Class="WinTab.App.Views.Pages.GroupsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:vm="clr-namespace:WinTab.App.ViewModels"
+      d:DataContext="{d:DesignInstance vm:GroupsViewModel}"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      mc:Ignorable="d"
+      Title="GroupsPage">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,4">
+            <TextBlock Text="{DynamicResource Groups_Title}"
+                       FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="{DynamicResource Groups_Description}"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,4,0,12" />
+        </StackPanel>
+
+        <!-- Toolbar -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+            <ui:Button Content="{DynamicResource Groups_Refresh}"
+                       Icon="{ui:SymbolIcon ArrowSync24}"
+                       Command="{Binding RefreshCommand}" />
+            <ui:Button Content="{DynamicResource Groups_Disband}"
+                       Icon="{ui:SymbolIcon Dismiss24}"
+                       Command="{Binding DisbandCommand}"
+                       Appearance="Caution" />
+            <ui:Button Content="{DynamicResource Groups_DisbandAll}"
+                       Icon="{ui:SymbolIcon DismissCircle24}"
+                       Command="{Binding DisbandAllCommand}"
+                       Appearance="Danger" />
+        </StackPanel>
+
+        <!-- Groups List -->
+        <ListView Grid.Row="2"
+                  ItemsSource="{Binding Groups}"
+                  SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
+                  Visibility="{Binding HasGroups, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="{DynamicResource Groups_Name}"
+                                    DisplayMemberBinding="{Binding Name}"
+                                    Width="200" />
+                    <GridViewColumn Header="{DynamicResource Groups_TabCount}"
+                                    DisplayMemberBinding="{Binding TabCount}"
+                                    Width="100" />
+                    <GridViewColumn Header="{DynamicResource Groups_ActiveTab}"
+                                    DisplayMemberBinding="{Binding ActiveTabTitle}"
+                                    Width="300" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+        <!-- Empty state -->
+        <StackPanel Grid.Row="2"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Visibility="{Binding HasNoGroups, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ui:SymbolIcon Symbol="TabDesktopMultiple24"
+                           FontSize="48"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+            <TextBlock Text="{DynamicResource Groups_NoGroups}"
+                       FontSize="16"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       HorizontalAlignment="Center"
+                       Margin="0,12,0,0" />
+        </StackPanel>
+    </Grid>
+</Page>

@@ -1,9 +1,14 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/WinTab.App/WinTab.App.csproj" />
     <Project Path="src/WinTab.Core/WinTab.Core.csproj" />
     <Project Path="src/WinTab.Diagnostics/WinTab.Diagnostics.csproj" />
-    <Project Path="src/WinTab.Persistence/WinTab.Persistence.csproj" />
     <Project Path="src/WinTab.Platform.Win32/WinTab.Platform.Win32.csproj" />
+    <Project Path="src/WinTab.Persistence/WinTab.Persistence.csproj" />
+    <Project Path="src/WinTab.UI/WinTab.UI.csproj" />
+    <Project Path="src/WinTab.TabHost/WinTab.TabHost.csproj" />
+    <Project Path="src/WinTab.App/WinTab.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="src/WinTab.Tests/WinTab.Tests.csproj" />
   </Folder>
 </Solution>

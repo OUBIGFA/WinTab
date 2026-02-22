@@ -1,130 +1,144 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
-using WinTab.Core;
+using WinTab.Core.Models;
 
 namespace WinTab.Platform.Win32;
 
+/// <summary>
+/// Enumerates top-level windows and gathers <see cref="WindowInfo"/> records.
+/// </summary>
 public static class WindowEnumerator
 {
+    /// <summary>
+    /// Enumerates all top-level windows that qualify as "application windows".
+    /// </summary>
+    /// <param name="includeInvisible">If true, invisible windows are also returned.</param>
+    /// <returns>A read-only list of <see cref="WindowInfo"/> for each qualifying window.</returns>
     public static IReadOnlyList<WindowInfo> EnumerateTopLevelWindows(bool includeInvisible = false)
     {
-        var results = new List<WindowInfo>();
-        EnumWindows((hWnd, _) =>
+        var windows = new List<WindowInfo>();
+
+        NativeMethods.EnumWindows((hWnd, _) =>
         {
-            var isVisible = IsWindowVisible(hWnd);
-            if (!includeInvisible && !isVisible)
-            {
+            if (!includeInvisible && !NativeMethods.IsWindowVisible(hWnd))
                 return true;
-            }
 
-            var title = GetWindowTitle(hWnd);
-            var className = GetWindowClassName(hWnd);
+            // Skip windows with no title.
+            int titleLength = NativeMethods.GetWindowTextLength(hWnd);
+            if (titleLength == 0)
+                return true;
 
-            GetWindowThreadProcessId(hWnd, out var processId);
-            var processName = string.Empty;
-            if (processId != 0)
-            {
-                try
-                {
-                    processName = Process.GetProcessById((int)processId).ProcessName;
-                }
-                catch
-                {
-                    processName = string.Empty;
-                }
-            }
+            // Read styles — filter out child windows and tool windows.
+            long style = NativeMethods.GetWindowLongPtr(hWnd, NativeConstants.GWL_STYLE).ToInt64();
+            long exStyle = NativeMethods.GetWindowLongPtr(hWnd, NativeConstants.GWL_EXSTYLE).ToInt64();
 
-            results.Add(new WindowInfo(
-                hWnd,
-                title,
-                processName,
-                (int)processId,
-                className,
-                isVisible));
+            if ((style & NativeConstants.WS_CHILD) != 0)
+                return true;
+
+            if ((exStyle & NativeConstants.WS_EX_TOOLWINDOW) != 0)
+                return true;
+
+            var info = BuildWindowInfo(hWnd);
+            if (info is not null)
+                windows.Add(info);
 
             return true;
         }, IntPtr.Zero);
 
-        return results;
+        return windows;
     }
 
-    public static WindowInfo? TryGetWindowInfo(IntPtr hWnd, bool requireVisible = true)
+    /// <summary>
+    /// Retrieves <see cref="WindowInfo"/> for a specific window handle.
+    /// </summary>
+    /// <param name="hWnd">The window handle.</param>
+    /// <returns>A <see cref="WindowInfo"/> record, or null if the handle is invalid.</returns>
+    public static WindowInfo? GetWindowInfo(IntPtr hWnd)
     {
-        if (hWnd == IntPtr.Zero)
-        {
+        if (hWnd == IntPtr.Zero || !NativeMethods.IsWindow(hWnd))
             return null;
-        }
 
-        var isVisible = IsWindowVisible(hWnd);
-        if (requireVisible && !isVisible)
-        {
-            return null;
-        }
+        return BuildWindowInfo(hWnd);
+    }
 
-        var title = GetWindowTitle(hWnd);
-        var className = GetWindowClassName(hWnd);
+    // ─── Private Helpers ────────────────────────────────────────────────────
 
-        GetWindowThreadProcessId(hWnd, out var processId);
-        var processName = string.Empty;
-        if (processId != 0)
+    private static WindowInfo? BuildWindowInfo(IntPtr hWnd)
+    {
+        // Title
+        int titleLen = NativeMethods.GetWindowTextLength(hWnd);
+        var titleBuilder = new StringBuilder(titleLen + 1);
+        NativeMethods.GetWindowText(hWnd, titleBuilder, titleBuilder.Capacity);
+        string title = titleBuilder.ToString();
+
+        // Class name
+        var classBuilder = new StringBuilder(256);
+        NativeMethods.GetClassName(hWnd, classBuilder, classBuilder.Capacity);
+        string className = classBuilder.ToString();
+
+        // Process info
+        NativeMethods.GetWindowThreadProcessId(hWnd, out uint pid);
+        string processName = string.Empty;
+        string? processPath = null;
+        int processId = (int)pid;
+
+        if (pid != 0)
         {
             try
             {
-                processName = Process.GetProcessById((int)processId).ProcessName;
+                using var process = Process.GetProcessById(processId);
+                processName = process.ProcessName;
             }
-            catch
+            catch (ArgumentException)
             {
-                processName = string.Empty;
+                // Process has already exited.
             }
+            catch (InvalidOperationException)
+            {
+                // Process has already exited.
+            }
+
+            // Attempt to get process path via QueryFullProcessImageName for elevated processes.
+            processPath = GetProcessPath(pid);
         }
+
+        bool isVisible = NativeMethods.IsWindowVisible(hWnd);
 
         return new WindowInfo(
-            hWnd,
-            title,
-            processName,
-            (int)processId,
-            className,
-            isVisible);
+            Handle: hWnd,
+            Title: title,
+            ProcessName: processName,
+            ProcessId: processId,
+            ClassName: className,
+            IsVisible: isVisible,
+            ProcessPath: processPath);
     }
 
-    private static string GetWindowTitle(IntPtr hWnd)
+    /// <summary>
+    /// Retrieves the full executable path for a process using QueryFullProcessImageName.
+    /// Falls back gracefully when access is denied.
+    /// </summary>
+    private static string? GetProcessPath(uint pid)
     {
-        var length = GetWindowTextLength(hWnd);
-        if (length <= 0)
+        IntPtr hProcess = NativeMethods.OpenProcess(
+            NativeConstants.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+
+        if (hProcess == IntPtr.Zero)
+            return null;
+
+        try
         {
-            return string.Empty;
+            var buffer = new StringBuilder(1024);
+            uint size = (uint)buffer.Capacity;
+
+            if (NativeMethods.QueryFullProcessImageName(hProcess, 0, buffer, ref size))
+                return buffer.ToString();
+
+            return null;
         }
-
-        var builder = new StringBuilder(length + 1);
-        _ = GetWindowText(hWnd, builder, builder.Capacity);
-        return builder.ToString();
+        finally
+        {
+            NativeMethods.CloseHandle(hProcess);
+        }
     }
-
-    private static string GetWindowClassName(IntPtr hWnd)
-    {
-        var builder = new StringBuilder(256);
-        _ = GetClassName(hWnd, builder, builder.Capacity);
-        return builder.ToString();
-    }
-
-    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern int GetWindowTextLength(IntPtr hWnd);
-
-    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 }

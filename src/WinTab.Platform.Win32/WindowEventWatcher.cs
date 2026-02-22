@@ -1,139 +1,159 @@
-using System.Runtime.InteropServices;
+using WinTab.Core.Interfaces;
 
 namespace WinTab.Platform.Win32;
 
-public sealed class WindowEventWatcher : IDisposable
+/// <summary>
+/// Win32 implementation of <see cref="IWindowEventSource"/>.
+/// Uses SetWinEventHook to receive system-wide window events and translates
+/// them into strongly-typed .NET events.
+/// </summary>
+public sealed class WindowEventWatcher : IWindowEventSource
 {
+    private readonly List<IntPtr> _hookHandles = [];
+    private bool _disposed;
+
+    // The delegates MUST be stored as fields to prevent garbage collection
+    // while the native hooks are active.
+    private readonly NativeMethods.WinEventDelegate _showCallback;
+    private readonly NativeMethods.WinEventDelegate _destroyCallback;
+    private readonly NativeMethods.WinEventDelegate _locationChangeCallback;
+    private readonly NativeMethods.WinEventDelegate _minimizeStartCallback;
+    private readonly NativeMethods.WinEventDelegate _minimizeEndCallback;
+    private readonly NativeMethods.WinEventDelegate _foregroundCallback;
+    private readonly NativeMethods.WinEventDelegate _moveSizeStartCallback;
+    private readonly NativeMethods.WinEventDelegate _moveSizeEndCallback;
+
+    // ─── Events ─────────────────────────────────────────────────────────────
+
     public event EventHandler<IntPtr>? WindowShown;
     public event EventHandler<IntPtr>? WindowDestroyed;
+    public event EventHandler<IntPtr>? WindowLocationChanged;
+    public event EventHandler<IntPtr>? WindowMinimized;
+    public event EventHandler<IntPtr>? WindowRestored;
+    public event EventHandler<IntPtr>? WindowForegroundChanged;
+    public event EventHandler<IntPtr>? WindowMoveSizeStarted;
+    public event EventHandler<IntPtr>? WindowMoveSizeEnded;
 
-    private readonly WinEventDelegate _callback;
-    private IntPtr _showHook;
-    private IntPtr _destroyHook;
-    private bool _disposed;
+    // ─── Constructor ────────────────────────────────────────────────────────
 
     public WindowEventWatcher()
     {
-        _callback = HandleWinEvent;
+        const uint flags = NativeConstants.WINEVENT_OUTOFCONTEXT |
+                           NativeConstants.WINEVENT_SKIPOWNPROCESS;
 
-        _showHook = SetWinEventHook(
-            EventObjectShow,
-            EventObjectShow,
-            IntPtr.Zero,
-            _callback,
-            0,
-            0,
-            WineventOutOfContext | WineventSkipOwnProcess);
+        // Initialise and store all delegates to prevent GC.
+        _showCallback           = OnWindowShow;
+        _destroyCallback        = OnWindowDestroy;
+        _locationChangeCallback = OnWindowLocationChange;
+        _minimizeStartCallback  = OnMinimizeStart;
+        _minimizeEndCallback    = OnMinimizeEnd;
+        _foregroundCallback     = OnForeground;
+        _moveSizeStartCallback  = OnMoveSizeStart;
+        _moveSizeEndCallback    = OnMoveSizeEnd;
 
-        _destroyHook = SetWinEventHook(
-            EventObjectDestroy,
-            EventObjectDestroy,
-            IntPtr.Zero,
-            _callback,
-            0,
-            0,
-            WineventOutOfContext | WineventSkipOwnProcess);
+        InstallHook(NativeConstants.EVENT_OBJECT_SHOW,            _showCallback, flags);
+        InstallHook(NativeConstants.EVENT_OBJECT_DESTROY,         _destroyCallback, flags);
+        InstallHook(NativeConstants.EVENT_OBJECT_LOCATIONCHANGE,  _locationChangeCallback, flags);
+        InstallHook(NativeConstants.EVENT_SYSTEM_MINIMIZESTART,   _minimizeStartCallback, flags);
+        InstallHook(NativeConstants.EVENT_SYSTEM_MINIMIZEEND,     _minimizeEndCallback, flags);
+        InstallHook(NativeConstants.EVENT_SYSTEM_FOREGROUND,      _foregroundCallback, flags);
+        InstallHook(NativeConstants.EVENT_SYSTEM_MOVESIZESTART,   _moveSizeStartCallback, flags);
+        InstallHook(NativeConstants.EVENT_SYSTEM_MOVESIZEEND,     _moveSizeEndCallback, flags);
     }
+
+    // ─── Private Helpers ────────────────────────────────────────────────────
+
+    private void InstallHook(uint eventId, NativeMethods.WinEventDelegate callback, uint flags)
+    {
+        IntPtr hook = NativeMethods.SetWinEventHook(
+            eventId, eventId,
+            IntPtr.Zero, callback,
+            0, 0, flags);
+
+        if (hook != IntPtr.Zero)
+            _hookHandles.Add(hook);
+    }
+
+    /// <summary>
+    /// Returns true when the event should be processed (OBJID_WINDOW and idChild == 0).
+    /// Filters out non-window object events.
+    /// </summary>
+    private static bool ShouldProcess(IntPtr hwnd, int idObject, int idChild)
+    {
+        return hwnd != IntPtr.Zero &&
+               idObject == NativeConstants.OBJID_WINDOW &&
+               idChild == 0;
+    }
+
+    // ─── Hook Callbacks ─────────────────────────────────────────────────────
+
+    private void OnWindowShow(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (ShouldProcess(hwnd, idObject, idChild))
+            WindowShown?.Invoke(this, hwnd);
+    }
+
+    private void OnWindowDestroy(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (ShouldProcess(hwnd, idObject, idChild))
+            WindowDestroyed?.Invoke(this, hwnd);
+    }
+
+    private void OnWindowLocationChange(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (ShouldProcess(hwnd, idObject, idChild))
+            WindowLocationChanged?.Invoke(this, hwnd);
+    }
+
+    private void OnMinimizeStart(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (ShouldProcess(hwnd, idObject, idChild))
+            WindowMinimized?.Invoke(this, hwnd);
+    }
+
+    private void OnMinimizeEnd(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (ShouldProcess(hwnd, idObject, idChild))
+            WindowRestored?.Invoke(this, hwnd);
+    }
+
+    private void OnForeground(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (ShouldProcess(hwnd, idObject, idChild))
+            WindowForegroundChanged?.Invoke(this, hwnd);
+    }
+
+    private void OnMoveSizeStart(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (ShouldProcess(hwnd, idObject, idChild))
+            WindowMoveSizeStarted?.Invoke(this, hwnd);
+    }
+
+    private void OnMoveSizeEnd(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
+        int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    {
+        if (ShouldProcess(hwnd, idObject, idChild))
+            WindowMoveSizeEnded?.Invoke(this, hwnd);
+    }
+
+    // ─── IDisposable ────────────────────────────────────────────────────────
 
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
-        if (_showHook != IntPtr.Zero)
-        {
-            _ = UnhookWinEvent(_showHook);
-            _showHook = IntPtr.Zero;
-        }
-
-        if (_destroyHook != IntPtr.Zero)
-        {
-            _ = UnhookWinEvent(_destroyHook);
-            _destroyHook = IntPtr.Zero;
-        }
-
+        if (_disposed) return;
         _disposed = true;
-        GC.SuppressFinalize(this);
-    }
 
-    private void HandleWinEvent(
-        IntPtr hWinEventHook,
-        uint eventType,
-        IntPtr hwnd,
-        int idObject,
-        int idChild,
-        uint eventThread,
-        uint eventTime)
-    {
-        if (hwnd == IntPtr.Zero || idObject != ObjidWindow || idChild != 0)
+        foreach (IntPtr hook in _hookHandles)
         {
-            return;
+            NativeMethods.UnhookWinEvent(hook);
         }
-
-        if (eventType == EventObjectShow)
-        {
-            if (!IsTopLevelWindow(hwnd) || !IsWindowVisible(hwnd))
-            {
-                return;
-            }
-
-            WindowShown?.Invoke(this, hwnd);
-            return;
-        }
-
-        if (eventType == EventObjectDestroy)
-        {
-            if (!IsTopLevelWindow(hwnd))
-            {
-                return;
-            }
-
-            WindowDestroyed?.Invoke(this, hwnd);
-        }
+        _hookHandles.Clear();
     }
-
-    private static bool IsTopLevelWindow(IntPtr hwnd)
-    {
-        var root = GetAncestor(hwnd, GaRoot);
-        return root != IntPtr.Zero && root == hwnd;
-    }
-
-    private const uint EventObjectDestroy = 0x8001;
-    private const uint EventObjectShow = 0x8002;
-    private const int ObjidWindow = 0;
-
-    private const uint WineventOutOfContext = 0x0000;
-    private const uint WineventSkipOwnProcess = 0x0002;
-
-    private const uint GaRoot = 2;
-
-    private delegate void WinEventDelegate(
-        IntPtr hWinEventHook,
-        uint eventType,
-        IntPtr hwnd,
-        int idObject,
-        int idChild,
-        uint eventThread,
-        uint eventTime);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr SetWinEventHook(
-        uint eventMin,
-        uint eventMax,
-        IntPtr hmodWinEventProc,
-        WinEventDelegate lpfnWinEventProc,
-        uint idProcess,
-        uint idThread,
-        uint dwFlags);
-
-    [DllImport("user32.dll")]
-    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
-
-    [DllImport("user32.dll")]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
 }

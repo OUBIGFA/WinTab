@@ -1,0 +1,146 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:system="clr-namespace:System;assembly=System.Runtime">
+
+    <!-- Application -->
+    <system:String x:Key="App_Name">WinTab</system:String>
+    <system:String x:Key="App_Description">开源窗口标签管理器</system:String>
+
+    <!-- Navigation -->
+    <system:String x:Key="Nav_General">常规</system:String>
+    <system:String x:Key="Nav_Appearance">外观</system:String>
+    <system:String x:Key="Nav_AutoGrouping">自动分组</system:String>
+    <system:String x:Key="Nav_Shortcuts">快捷键</system:String>
+    <system:String x:Key="Nav_Groups">分组管理</system:String>
+    <system:String x:Key="Nav_About">关于</system:String>
+
+    <!-- General Page -->
+    <system:String x:Key="General_Startup">启动</system:String>
+    <system:String x:Key="General_RunAtStartup">开机自启动</system:String>
+    <system:String x:Key="General_StartMinimized">启动时最小化到系统托盘</system:String>
+    <system:String x:Key="General_TrayIcon">系统托盘</system:String>
+    <system:String x:Key="General_ShowTrayIcon">显示系统托盘图标</system:String>
+    <system:String x:Key="General_Language">语言</system:String>
+    <system:String x:Key="General_LanguageLabel">界面语言</system:String>
+    <system:String x:Key="General_Chinese">简体中文</system:String>
+    <system:String x:Key="General_English">English</system:String>
+    <system:String x:Key="General_Behavior">行为</system:String>
+    <system:String x:Key="General_RestoreSession">启动时恢复上次会话</system:String>
+    <system:String x:Key="General_AutoCloseEmpty">自动关闭空分组</system:String>
+    <system:String x:Key="General_GroupSameProcess">自动合并同进程窗口</system:String>
+
+    <system:String x:Key="General_ExplorerRepair">资源管理器修复</system:String>
+    <system:String x:Key="General_RestoreExplorerDefaults">一键还原资源管理器打开行为</system:String>
+    <system:String x:Key="General_RestoreExplorerDefaultsDesc">当桌面/第三方双击文件夹打开异常时使用（将重启 Explorer）。</system:String>
+
+    <!-- Appearance Page -->
+    <system:String x:Key="Appearance_Theme">主题</system:String>
+    <system:String x:Key="Appearance_ThemeSystem">跟随系统</system:String>
+    <system:String x:Key="Appearance_ThemeLight">浅色</system:String>
+    <system:String x:Key="Appearance_ThemeDark">深色</system:String>
+    <system:String x:Key="Appearance_TabStyle">标签样式</system:String>
+    <system:String x:Key="Appearance_TabStyleModern">现代</system:String>
+    <system:String x:Key="Appearance_TabStyleTraditional">经典</system:String>
+    <system:String x:Key="Appearance_TabStyleCompact">紧凑</system:String>
+    <system:String x:Key="Appearance_RoundedCorners">使用圆角</system:String>
+    <system:String x:Key="Appearance_MicaEffect">启用 Mica 效果</system:String>
+    <system:String x:Key="Appearance_TabBarHeight">标签栏高度</system:String>
+    <system:String x:Key="Appearance_TabBarOpacity">标签栏不透明度</system:String>
+
+    <!-- Auto Grouping Page -->
+    <system:String x:Key="AutoGroup_Title">自动分组规则</system:String>
+    <system:String x:Key="AutoGroup_Description">当新窗口出现时，自动根据规则将其添加到对应的分组。</system:String>
+    <system:String x:Key="AutoGroup_AddRule">添加规则</system:String>
+    <system:String x:Key="AutoGroup_RemoveRule">移除规则</system:String>
+    <system:String x:Key="AutoGroup_Enabled">启用</system:String>
+    <system:String x:Key="AutoGroup_MatchType">匹配类型</system:String>
+    <system:String x:Key="AutoGroup_MatchValue">匹配值</system:String>
+    <system:String x:Key="AutoGroup_GroupName">组名称</system:String>
+    <system:String x:Key="AutoGroup_Priority">优先级</system:String>
+    <system:String x:Key="AutoGroup_MatchType_ProcessName">进程名称</system:String>
+    <system:String x:Key="AutoGroup_MatchType_TitleContains">标题包含</system:String>
+    <system:String x:Key="AutoGroup_MatchType_TitleRegex">标题正则</system:String>
+    <system:String x:Key="AutoGroup_MatchType_ClassName">窗口类名</system:String>
+    <system:String x:Key="AutoGroup_MatchType_ProcessPath">进程路径</system:String>
+    <system:String x:Key="AutoGroup_AutoApply">自动应用规则</system:String>
+    <system:String x:Key="AutoGroup_Exclusions">排除列表</system:String>
+    <system:String x:Key="AutoGroup_ExclusionsDesc">以下进程的窗口将不会被自动分组。</system:String>
+    <system:String x:Key="AutoGroup_AddExclusion">添加排除</system:String>
+    <system:String x:Key="AutoGroup_RemoveExclusion">移除排除</system:String>
+
+    <!-- Shortcuts Page -->
+    <system:String x:Key="Shortcuts_Title">键盘快捷键</system:String>
+    <system:String x:Key="Shortcuts_Description">自定义全局快捷键来控制标签切换和管理。</system:String>
+    <system:String x:Key="Shortcuts_Action">动作</system:String>
+    <system:String x:Key="Shortcuts_Binding">快捷键</system:String>
+    <system:String x:Key="Shortcuts_Enabled">启用</system:String>
+    <system:String x:Key="Shortcuts_NextTab">下一个标签</system:String>
+    <system:String x:Key="Shortcuts_PrevTab">上一个标签</system:String>
+    <system:String x:Key="Shortcuts_CloseTab">关闭标签</system:String>
+    <system:String x:Key="Shortcuts_NewInstance">新建实例</system:String>
+    <system:String x:Key="Shortcuts_DetachTab">分离标签</system:String>
+    <system:String x:Key="Shortcuts_MoveLeft">向左移动标签</system:String>
+    <system:String x:Key="Shortcuts_MoveRight">向右移动标签</system:String>
+    <system:String x:Key="Shortcuts_ToggleGrouping">开关分组</system:String>
+    <system:String x:Key="Shortcuts_ClickToRecord">点击此处录制快捷键...</system:String>
+
+    <!-- Groups Page -->
+    <system:String x:Key="Groups_Title">分组管理</system:String>
+    <system:String x:Key="Groups_Description">查看和管理当前活动的窗口分组。</system:String>
+    <system:String x:Key="Groups_Name">组名称</system:String>
+    <system:String x:Key="Groups_TabCount">标签数</system:String>
+    <system:String x:Key="Groups_ActiveTab">活动标签</system:String>
+    <system:String x:Key="Groups_Disband">解散分组</system:String>
+    <system:String x:Key="Groups_DisbandAll">解散全部</system:String>
+    <system:String x:Key="Groups_Refresh">刷新</system:String>
+    <system:String x:Key="Groups_NoGroups">当前没有活动的分组。</system:String>
+
+    <!-- About Page -->
+    <system:String x:Key="About_Title">关于 WinTab</system:String>
+    <system:String x:Key="About_Version">版本</system:String>
+    <system:String x:Key="About_Description">WinTab 是一款开源的 Windows 窗口标签管理工具，让您可以将多个应用程序窗口合并为标签式界面。</system:String>
+    <system:String x:Key="About_License">开源协议: MIT</system:String>
+    <system:String x:Key="About_GitHub">GitHub</system:String>
+    <system:String x:Key="About_LogLocation">日志文件位置</system:String>
+    <system:String x:Key="About_OpenLog">打开日志</system:String>
+    <system:String x:Key="About_OpenLogFolder">打开日志文件夹</system:String>
+
+    <!-- Tab Bar (overlay) -->
+    <system:String x:Key="TabBar_NewTab">新建标签</system:String>
+    <system:String x:Key="TabBar_CloseTab">关闭标签</system:String>
+    <system:String x:Key="TabBar_DetachTab">分离标签</system:String>
+    <system:String x:Key="TabBar_CloseOtherTabs">关闭其他标签</system:String>
+    <system:String x:Key="TabBar_RenameTab">重命名标签</system:String>
+    <system:String x:Key="TabBar_SetAccentColor">设置强调色</system:String>
+
+    <!-- Tray Icon -->
+    <system:String x:Key="Tray_Open">打开 WinTab</system:String>
+    <system:String x:Key="Tray_Settings">设置</system:String>
+    <system:String x:Key="Tray_EnableGrouping">启用分组</system:String>
+    <system:String x:Key="Tray_DisableGrouping">禁用分组</system:String>
+    <system:String x:Key="Tray_Exit">退出</system:String>
+    <system:String x:Key="Tray_Tooltip">WinTab - 窗口标签管理器</system:String>
+    <system:String x:Key="Tray_GroupCount">活动分组: {0}</system:String>
+
+    <!-- Common -->
+    <system:String x:Key="Common_Save">保存</system:String>
+    <system:String x:Key="Common_Cancel">取消</system:String>
+    <system:String x:Key="Common_Close">关闭</system:String>
+    <system:String x:Key="Common_Apply">应用</system:String>
+    <system:String x:Key="Common_OK">确定</system:String>
+    <system:String x:Key="Common_Yes">是</system:String>
+    <system:String x:Key="Common_No">否</system:String>
+    <system:String x:Key="Common_Enabled">已启用</system:String>
+    <system:String x:Key="Common_Disabled">已禁用</system:String>
+
+    <!-- Session Recovery -->
+    <system:String x:Key="Session_RecoveryTitle">会话恢复</system:String>
+    <system:String x:Key="Session_RecoveryMessage">WinTab 检测到上次会话未正常关闭。是否恢复之前的窗口分组？</system:String>
+
+    <!-- Drag to Group -->
+    <system:String x:Key="Drag_EnableDragToGroup">启用拖拽分组</system:String>
+    <system:String x:Key="Drag_DragDelay">拖拽延迟</system:String>
+    <system:String x:Key="Drag_EnableMiddleClick">中键点击关闭标签</system:String>
+    <system:String x:Key="Drag_EnableScrollWheel">滚轮切换标签</system:String>
+
+</ResourceDictionary>
