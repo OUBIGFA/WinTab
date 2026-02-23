@@ -18,6 +18,9 @@ public partial class BehaviorViewModel : ObservableObject
     [ObservableProperty]
     private bool _groupSameProcess;
 
+    [ObservableProperty]
+    private bool _openChildFolderInNewTabFromActiveTab;
+
     public BehaviorViewModel(AppSettings settings, SettingsStore settingsStore)
     {
         _settings = settings;
@@ -26,6 +29,7 @@ public partial class BehaviorViewModel : ObservableObject
         _restoreSession = settings.RestoreSessionOnStartup;
         _autoCloseEmpty = settings.AutoCloseEmptyGroups;
         _groupSameProcess = settings.GroupSameProcessWindows;
+        _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
     }
 
     partial void OnRestoreSessionChanged(bool value)
@@ -43,6 +47,12 @@ public partial class BehaviorViewModel : ObservableObject
     partial void OnGroupSameProcessChanged(bool value)
     {
         _settings.GroupSameProcessWindows = value;
+        SaveSettings();
+    }
+
+    partial void OnOpenChildFolderInNewTabFromActiveTabChanged(bool value)
+    {
+        _settings.OpenChildFolderInNewTabFromActiveTab = value;
         SaveSettings();
     }
 

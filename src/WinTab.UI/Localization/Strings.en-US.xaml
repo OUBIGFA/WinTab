@@ -23,6 +23,7 @@
     <system:String x:Key="General_RestoreSession">Restore previous session on startup</system:String>
     <system:String x:Key="General_AutoCloseEmpty">Auto-close empty groups</system:String>
     <system:String x:Key="General_GroupSameProcess">Auto-group windows from same process</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab">Open child folders from the current tab in a new tab</system:String>
 
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">Theme</system:String>

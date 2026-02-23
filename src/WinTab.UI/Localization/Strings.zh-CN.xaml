@@ -23,6 +23,7 @@
     <system:String x:Key="General_RestoreSession">启动时恢复上次会话</system:String>
     <system:String x:Key="General_AutoCloseEmpty">自动关闭空分组</system:String>
     <system:String x:Key="General_GroupSameProcess">自动合并同进程窗口</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab">在当前活动标签页目录内打开文件夹时新建标签页</system:String>
 
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">主题</system:String>

@@ -43,6 +43,15 @@
                 <ui:ToggleSwitch IsChecked="{Binding GroupSameProcess, Mode=TwoWay}" />
             </ui:CardControl>
 
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding OpenChildFolderInNewTabFromActiveTab, Mode=TwoWay}" />
+            </ui:CardControl>
+
         </StackPanel>
     </ScrollViewer>
 </Page>

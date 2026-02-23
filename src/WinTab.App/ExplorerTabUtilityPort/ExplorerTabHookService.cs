@@ -9,6 +9,7 @@ using System.Text;
 using System.Windows.Threading;
 using WinTab.App.ExplorerTabUtilityPort.Interop;
 using WinTab.Core.Interfaces;
+using WinTab.Core.Models;
 using WinTab.Diagnostics;
 using WinTab.Platform.Win32;
 using SendKeys = System.Windows.Forms.SendKeys;
@@ -28,6 +29,9 @@ public sealed class ExplorerTabHookService : IDisposable
             return false;
 
         location = location.Trim();
+
+        if (await TryNavigateCurrentActiveTabLikeExplorer(location))
+            return true;
 
         if (await TryActivateExistingTabByLocation(location))
             return true;
@@ -69,6 +73,42 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
+    private async Task<bool> TryNavigateCurrentActiveTabLikeExplorer(string location)
+    {
+        if (_settings.OpenChildFolderInNewTabFromActiveTab)
+            return false;
+
+        if (!IsRealFileSystemLocation(location))
+            return false;
+
+        IntPtr foreground = NativeMethods.GetForegroundWindow();
+        if (foreground == IntPtr.Zero || !IsExplorerTopLevelWindow(foreground))
+            return false;
+
+        IntPtr activeTab = GetActiveTabHandle(foreground);
+        if (activeTab == IntPtr.Zero || !NativeMethods.IsWindow(activeTab))
+            return false;
+
+        string? currentLocation = await UiAsync(() => TryGetLocationByTabHandleUi(activeTab));
+        if (!IsRealFileSystemLocation(currentLocation))
+            return false;
+
+        if (!IsChildPathOf(currentLocation!, location))
+            return false;
+
+        bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: 420);
+        if (!navigated)
+            return false;
+
+        bool confirmed = await WaitUntilTabLocationMatches(activeTab, location, timeoutMs: 420, pollMs: 40);
+        if (!confirmed)
+            return false;
+
+        TryBringToForeground(foreground);
+        _logger.Info($"Navigated active Explorer tab directly: {location}");
+        return true;
+    }
+
     private static readonly Guid ShellBrowserGuid = typeof(IShellBrowser).GUID;
     private static readonly Guid ShellWindowsClsid = new("9BA05972-F6A8-11CF-A442-00A0C90A8F39");
     private static readonly Guid ShellWindowsEventsGuid = new("FE4106E0-399A-11D0-A48C-00A0C90A8F39");
@@ -82,6 +122,7 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private readonly IWindowEventSource _windowEvents;
     private readonly IWindowManager _windowManager;
+    private readonly AppSettings _settings;
     private readonly Logger _logger;
 
     private readonly Action<int> _windowRegisteredHandler;
@@ -102,10 +143,11 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private bool _disposed;
 
-    public ExplorerTabHookService(IWindowEventSource windowEvents, IWindowManager windowManager, Logger logger)
+    public ExplorerTabHookService(IWindowEventSource windowEvents, IWindowManager windowManager, AppSettings settings, Logger logger)
     {
         _windowEvents = windowEvents;
         _windowManager = windowManager;
+        _settings = settings;
         _logger = logger;
         _windowRegisteredHandler = OnShellWindowRegistered;
         _createEventCallback = OnExplorerObjectCreate;
@@ -1644,6 +1686,27 @@ public sealed class ExplorerTabHookService : IDisposable
                 NormalizePathForCompare(a),
                 NormalizePathForCompare(b),
                 StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private static bool IsChildPathOf(string parentPath, string childPath)
+    {
+        try
+        {
+            string parent = NormalizePathForCompare(Path.GetFullPath(parentPath));
+            string child = NormalizePathForCompare(Path.GetFullPath(childPath));
+
+            if (child.Length <= parent.Length)
+                return false;
+
+            if (!child.StartsWith(parent, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return child[parent.Length] == '\\';
+        }
+        catch
+        {
+            return false;
         }
     }
 

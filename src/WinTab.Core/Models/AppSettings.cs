@@ -23,6 +23,7 @@ public sealed class AppSettings
 
     // Behavior
     public bool EnableExplorerOpenVerbInterception { get; set; } = true;
+    public bool OpenChildFolderInNewTabFromActiveTab { get; set; } = false;
     public bool AutoApplyRules { get; set; } = false;
     public bool AutoCloseEmptyGroups { get; set; } = true;
     public bool EnableDragToGroup { get; set; } = false;
