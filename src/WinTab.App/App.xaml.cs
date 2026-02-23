@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.IO;
 using System.Threading;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,20 +23,46 @@ namespace WinTab.App;
 public partial class App : Application
 {
     private static Mutex? _singleInstanceMutex;
+    private static bool _ownsSingleInstanceMutex;
+    private static bool _explicitShutdownRequested;
     private IServiceProvider? _serviceProvider;
     private TrayIconController? _trayIconController;
     private Logger? _logger;
     private AppLifecycleService? _lifecycleService;
     private ExplorerTabHookService? _explorerTabHook;
+    private ExplorerOpenRequestServer? _openRequestServer;
 
     public static IServiceProvider Services { get; private set; } = null!;
+    internal static bool IsExplicitShutdownRequested => _explicitShutdownRequested;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        // -- 1. Single instance check -------------------------------------
+        // -- 1. Install crash reporter ------------------------------------
+        CrashReporter.Install(AppPaths.CrashLogPath);
+
+        // -- 2. Command-line utility modes --------------------------------
+        // Handle command modes before single-instance gate and before main logger lock.
+        if (e.Args.Length >= 1 && string.Equals(e.Args[0], "--wintab-companion", StringComparison.OrdinalIgnoreCase))
+        {
+            using Logger? companionLogger = TryCreateCompanionLogger();
+            int code = ExplorerOpenVerbCompanion.Run(e.Args, companionLogger);
+            Shutdown(code);
+            return;
+        }
+
+        // When invoked via Explorer open-verb, forward the request to an existing instance.
+        // If forwarding is unavailable, fallback to native Explorer open.
+        if (TryHandleOpenFolderInvocation(e.Args, logger: null))
+        {
+            Shutdown();
+            return;
+        }
+
+        // -- 3. Single instance check -------------------------------------
         _singleInstanceMutex = new Mutex(true, "WinTab_SingleInstance", out bool isNewInstance);
+        _ownsSingleInstanceMutex = isNewInstance;
         if (!isNewInstance)
         {
             ActivateExistingInstance();
@@ -43,30 +70,30 @@ public partial class App : Application
             return;
         }
 
-        // -- 2. Install crash reporter ------------------------------------
-        CrashReporter.Install(AppPaths.CrashLogPath);
-
-        // -- 3. Create logger ---------------------------------------------
+        // -- 4. Create logger ---------------------------------------------
         _logger = new Logger(AppPaths.LogPath);
         _logger.Info("WinTab starting up...");
 
-        // -- 4. Load settings ---------------------------------------------
+        // -- 5. Load settings ---------------------------------------------
         var settingsStore = new SettingsStore(AppPaths.SettingsPath, _logger);
         AppSettings settings = settingsStore.Load();
 
-        // -- 5. Apply language --------------------------------------------
+        // -- 5.1 Pre-flight ------------------------------------------------
+        // No-op placeholder: keep settings load spot for future migrations.
+
+        // -- 6. Apply language --------------------------------------------
         LocalizationManager.ApplyLanguage(settings.Language);
 
-        // -- 6. Apply theme -----------------------------------------------
+        // -- 7. Apply theme -----------------------------------------------
         ThemeManager.ApplyTheme(settings.Theme);
 
-        // -- 7. Configure DI ----------------------------------------------
+        // -- 8. Configure DI ----------------------------------------------
         var services = new ServiceCollection();
-        ConfigureServices(services, settings, settingsStore, _logger);
+        ConfigureServices(services, settings, settingsStore, _logger!);
         _serviceProvider = services.BuildServiceProvider();
         Services = _serviceProvider;
 
-        // -- 8. Create and show MainWindow --------------------------------
+        // -- 9. Create and show MainWindow --------------------------------
         var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
 
         if (settings.StartMinimized)
@@ -82,21 +109,59 @@ public partial class App : Application
 
         MainWindow = mainWindow;
 
-        // -- 9. Start lifecycle services ----------------------------------
+        // -- 10. Start lifecycle services ---------------------------------
         _lifecycleService = _serviceProvider.GetRequiredService<AppLifecycleService>();
         _lifecycleService.Start(settings);
 
         // Explorer integration (native Explorer tab conversion path).
         _explorerTabHook = _serviceProvider.GetRequiredService<ExplorerTabHookService>();
 
-        // -- 10. Initialize tray icon -------------------------------------
-        if (settings.EnableTrayIcon)
+        // IPC handler: allow handler invocations to forward open-folder requests.
+        _openRequestServer = _serviceProvider.GetRequiredService<ExplorerOpenRequestServer>();
+        _openRequestServer.Start(async path =>
         {
-            _trayIconController = _serviceProvider.GetRequiredService<TrayIconController>();
-            _trayIconController.SetVisible(true);
+            try
+            {
+                var hook = _serviceProvider.GetRequiredService<ExplorerTabHookService>();
+                await hook.OpenLocationAsTabAsync(path);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error("Failed to handle open-folder request.", ex);
+            }
+        });
+
+        // Registry interception + companion (Win11 only).
+        try
+        {
+            var interceptor = _serviceProvider.GetRequiredService<RegistryOpenVerbInterceptor>();
+
+            bool isWin11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
+            bool enabledBySetting = settings.EnableExplorerOpenVerbInterception;
+
+            // Always self-check first (repairs old crash residue).
+            interceptor.StartupSelfCheck(settingEnabled: enabledBySetting && isWin11);
+
+            if (isWin11 && enabledBySetting)
+            {
+                interceptor.EnableOrRepair();
+                StartCompanionWatcher();
+            }
+            else
+            {
+                // Ensure we do not leave overrides enabled on unsupported OS.
+                interceptor.DisableAndRestore();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("Failed to configure Explorer open-verb interception.", ex);
         }
 
-        _logger.Info("WinTab started successfully.");
+        // -- 11. Initialize tray icon -------------------------------------
+        SetTrayIconVisibilityCore(settings.EnableTrayIcon);
+
+        _logger?.Info("WinTab started successfully.");
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -107,6 +172,18 @@ public partial class App : Application
         {
             _lifecycleService?.Stop();
             _trayIconController?.Dispose();
+            _openRequestServer?.Dispose();
+
+            try
+            {
+                // Best-effort restore on clean exit.
+                var interceptor = _serviceProvider?.GetService<RegistryOpenVerbInterceptor>();
+                interceptor?.DisableAndRestore();
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error("Failed to restore Explorer open-verb interception on exit.", ex);
+            }
 
             if (_serviceProvider is IDisposable disposableProvider)
                 disposableProvider.Dispose();
@@ -120,7 +197,13 @@ public partial class App : Application
         }
         finally
         {
-            _singleInstanceMutex?.ReleaseMutex();
+            // Release only if we successfully acquired initial ownership.
+            if (_ownsSingleInstanceMutex)
+            {
+                try { _singleInstanceMutex?.ReleaseMutex(); }
+                catch { /* ignore */ }
+            }
+
             _singleInstanceMutex?.Dispose();
         }
 
@@ -140,7 +223,7 @@ public partial class App : Application
         var sessionStore = new SessionStore(AppPaths.SessionBackupPath, logger);
         services.AddSingleton(sessionStore);
 
-        string exePath = Environment.ProcessPath ?? Assembly.GetExecutingAssembly().Location;
+        string exePath = ResolveLaunchExecutablePath();
         var startupRegistrar = new StartupRegistrar("WinTab", exePath);
         services.AddSingleton(startupRegistrar);
 
@@ -156,6 +239,13 @@ public partial class App : Application
                 sp.GetRequiredService<AppSettings>().TabBarHeight));
 
         services.AddSingleton<AppLifecycleService>();
+
+        services.AddSingleton(sp =>
+            new RegistryOpenVerbInterceptor(
+                exePath,
+                sp.GetRequiredService<Logger>()));
+
+        services.AddSingleton<ExplorerOpenRequestServer>();
 
         // Back to native Explorer-tab pipeline (not overlay hijack).
         services.AddSingleton<ExplorerTabHookService>();
@@ -175,7 +265,7 @@ public partial class App : Application
                         window.Activate();
                     }
                 },
-                exitApp: () => Current.Shutdown()));
+                exitApp: RequestExplicitShutdown));
 
         services.AddTransient<MainViewModel>();
         services.AddTransient<GeneralViewModel>();
@@ -216,5 +306,154 @@ public partial class App : Application
         {
             // Best effort only.
         }
+    }
+
+    private static bool TryHandleOpenFolderInvocation(string[] args, Logger? logger)
+    {
+        // Registry handler: "WinTab.exe --wintab-open-folder \"%1\""
+        if (args.Length < 2)
+            return false;
+
+        if (!string.Equals(args[0], RegistryOpenVerbInterceptor.HandlerArgument, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(args[0], "--open-folder", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        string path = args[1].Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(path))
+            return true;
+
+        try
+        {
+            // The handler process is launched by a user-initiated shell action,
+            // so grant foreground rights to improve focus handoff to the existing instance.
+            NativeMethods.AllowSetForegroundWindow(NativeConstants.ASFW_ANY);
+        }
+        catch
+        {
+            // best effort
+        }
+
+        bool sent = ExplorerOpenRequestClient.TrySendOpenFolder(path);
+        if (sent)
+        {
+            logger?.Info($"Forwarded open-folder request to existing instance: {path}");
+            return true;
+        }
+
+        logger?.Warn($"No existing instance pipe; falling back to Explorer open: {path}");
+        TryOpenFolderFallback(path, logger);
+
+        return true;
+    }
+
+    private static void TryOpenFolderFallback(string path, Logger? logger)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{path}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            logger?.Error($"Failed to fallback open-folder launch for path: {path}", ex);
+        }
+    }
+
+    private static Logger? TryCreateCompanionLogger()
+    {
+        try
+        {
+            return new Logger(System.IO.Path.Combine(AppPaths.LogsDirectory, "wintab-companion.log"));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    internal static void RequestExplicitShutdown()
+    {
+        if (_explicitShutdownRequested)
+            return;
+
+        _explicitShutdownRequested = true;
+        Current.Shutdown();
+    }
+
+    internal static void SetTrayIconVisibility(bool visible)
+    {
+        if (Current is App app)
+            app.SetTrayIconVisibilityCore(visible);
+    }
+
+    private void SetTrayIconVisibilityCore(bool visible)
+    {
+        if (_serviceProvider is null)
+            return;
+
+        try
+        {
+            if (_trayIconController is null && !visible)
+                return;
+
+            _trayIconController ??= _serviceProvider.GetRequiredService<TrayIconController>();
+            _trayIconController.SetVisible(visible);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("Failed to update tray icon visibility.", ex);
+        }
+    }
+
+    private void StartCompanionWatcher()
+    {
+        try
+        {
+            int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+            string exePath = ResolveLaunchExecutablePath();
+
+            // Companion is the same exe in a special mode.
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exePath,
+                Arguments = $"--wintab-companion {pid}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("Failed to start companion watcher.", ex);
+        }
+    }
+
+    private static string ResolveLaunchExecutablePath()
+    {
+        string? processPath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(processPath) && !IsDotNetHost(processPath))
+            return processPath;
+
+        string assemblyPath = Assembly.GetExecutingAssembly().Location;
+        if (!string.IsNullOrWhiteSpace(assemblyPath))
+        {
+            string appHostPath = Path.ChangeExtension(assemblyPath, ".exe");
+            if (File.Exists(appHostPath))
+                return appHostPath;
+        }
+
+        return processPath ?? assemblyPath;
+    }
+
+    private static bool IsDotNetHost(string path)
+    {
+        string fileName = Path.GetFileName(path);
+        return string.Equals(fileName, "dotnet", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(fileName, "dotnet.exe", StringComparison.OrdinalIgnoreCase);
     }
 }

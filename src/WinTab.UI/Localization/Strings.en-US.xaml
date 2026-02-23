@@ -20,6 +20,9 @@
     <system:String x:Key="General_StartMinimized">Start minimized to system tray</system:String>
     <system:String x:Key="General_TrayIcon">System Tray</system:String>
     <system:String x:Key="General_ShowTrayIcon">Show tray icon</system:String>
+    <system:String x:Key="General_CloseButtonBehavior">Close button behavior</system:String>
+    <system:String x:Key="General_CloseButtonBehaviorDesc">When enabled, clicking the top-right close button minimizes WinTab to tray. When disabled, clicking close fully exits WinTab.</system:String>
+    <system:String x:Key="General_CloseButtonMinimizeToTray">Minimize to tray on close</system:String>
     <system:String x:Key="General_Language">Language</system:String>
     <system:String x:Key="General_LanguageLabel">Interface language</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
@@ -29,9 +32,11 @@
     <system:String x:Key="General_AutoCloseEmpty">Auto-close empty groups</system:String>
     <system:String x:Key="General_GroupSameProcess">Auto-group windows from same process</system:String>
 
-    <system:String x:Key="General_ExplorerRepair">Explorer Repair</system:String>
-    <system:String x:Key="General_RestoreExplorerDefaults">Restore Explorer folder open behavior</system:String>
-    <system:String x:Key="General_RestoreExplorerDefaultsDesc">Use this if opening folders from Desktop/third-party apps behaves unexpectedly (Explorer will restart).</system:String>
+    <system:String x:Key="General_ExplorerRepair">Explorer</system:String>
+    <system:String x:Key="General_InterceptExplorerFolderOpen">Open folders as tabs</system:String>
+    <system:String x:Key="General_InterceptExplorerFolderOpenDesc">When enabled, opening folders from Desktop/Start menu/other apps will reuse an existing File Explorer window as a new tab (temporary per-user override; auto-restores on exit).</system:String>
+    <system:String x:Key="General_RestoreExplorerDefaults">Restore default folder open behavior</system:String>
+    <system:String x:Key="General_RestoreExplorerDefaultsDesc">Use this if opening folders behaves unexpectedly (Explorer may need to restart).</system:String>
 
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">Theme</system:String>
@@ -114,11 +119,11 @@
     <system:String x:Key="TabBar_SetAccentColor">Set Accent Color</system:String>
 
     <!-- Tray Icon -->
-    <system:String x:Key="Tray_Open">Open WinTab</system:String>
+    <system:String x:Key="Tray_Open">Show Main Window</system:String>
     <system:String x:Key="Tray_Settings">Settings</system:String>
     <system:String x:Key="Tray_EnableGrouping">Enable Grouping</system:String>
     <system:String x:Key="Tray_DisableGrouping">Disable Grouping</system:String>
-    <system:String x:Key="Tray_Exit">Exit</system:String>
+    <system:String x:Key="Tray_Exit">Exit App</system:String>
     <system:String x:Key="Tray_Tooltip">WinTab - Window Tab Manager</system:String>
     <system:String x:Key="Tray_GroupCount">Active groups: {0}</system:String>
 

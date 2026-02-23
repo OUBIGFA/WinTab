@@ -79,6 +79,22 @@ public partial class MainWindow : System.Windows.Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        if (App.IsExplicitShutdownRequested)
+        {
+            base.OnClosing(e);
+            return;
+        }
+
+        bool minimizeToTray = _settings.MinimizeToTrayOnClose && _settings.EnableTrayIcon;
+        if (minimizeToTray)
+        {
+            e.Cancel = true;
+            Hide();
+            ShowInTaskbar = false;
+            return;
+        }
+
+        App.RequestExplicitShutdown();
         base.OnClosing(e);
     }
 

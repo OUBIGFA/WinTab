@@ -8,6 +8,7 @@ public sealed class AppSettings
     public bool StartMinimized { get; set; } = false;
     public bool RunAtStartup { get; set; }
     public bool EnableTrayIcon { get; set; } = true;
+    public bool MinimizeToTrayOnClose { get; set; } = true;
 
     // Language
     public Language Language { get; set; } = Language.Chinese;
@@ -21,6 +22,7 @@ public sealed class AppSettings
     public double TabBarOpacity { get; set; } = 0.95;
 
     // Behavior
+    public bool EnableExplorerOpenVerbInterception { get; set; } = false;
     public bool AutoApplyRules { get; set; } = false;
     public bool AutoCloseEmptyGroups { get; set; } = true;
     public bool EnableDragToGroup { get; set; } = false;

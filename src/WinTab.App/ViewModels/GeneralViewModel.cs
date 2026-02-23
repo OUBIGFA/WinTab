@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WinTab.Core.Enums;
@@ -9,7 +7,7 @@ using WinTab.Diagnostics;
 using WinTab.Persistence;
 using WinTab.Platform.Win32;
 using WinTab.UI.Localization;
-using Microsoft.Win32;
+using WinTab.App.Services;
 
 namespace WinTab.App.ViewModels;
 
@@ -19,6 +17,7 @@ public partial class GeneralViewModel : ObservableObject
     private readonly SettingsStore _settingsStore;
     private readonly StartupRegistrar _startupRegistrar;
     private readonly Logger _logger;
+    private readonly RegistryOpenVerbInterceptor _openVerbInterceptor;
 
     [ObservableProperty]
     private bool _runAtStartup;
@@ -28,6 +27,9 @@ public partial class GeneralViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _showTrayIcon;
+
+    [ObservableProperty]
+    private bool _minimizeToTrayOnClose;
 
     [ObservableProperty]
     private int _selectedLanguageIndex;
@@ -41,25 +43,32 @@ public partial class GeneralViewModel : ObservableObject
     [ObservableProperty]
     private bool _groupSameProcess;
 
+    [ObservableProperty]
+    private bool _interceptExplorerFolderOpen;
+
     public GeneralViewModel(
         AppSettings settings,
         SettingsStore settingsStore,
         StartupRegistrar startupRegistrar,
-        Logger logger)
+        Logger logger,
+        RegistryOpenVerbInterceptor openVerbInterceptor)
     {
         _settings = settings;
         _settingsStore = settingsStore;
         _startupRegistrar = startupRegistrar;
         _logger = logger;
+        _openVerbInterceptor = openVerbInterceptor;
 
         // Load current values from settings
         _runAtStartup = startupRegistrar.IsEnabled();
         _startMinimized = settings.StartMinimized;
         _showTrayIcon = settings.EnableTrayIcon;
+        _minimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         _selectedLanguageIndex = settings.Language == Language.Chinese ? 0 : 1;
         _restoreSession = settings.RestoreSessionOnStartup;
         _autoCloseEmpty = settings.AutoCloseEmptyGroups;
         _groupSameProcess = settings.GroupSameProcessWindows;
+        _interceptExplorerFolderOpen = settings.EnableExplorerOpenVerbInterception;
     }
 
     partial void OnRunAtStartupChanged(bool value)
@@ -79,6 +88,26 @@ public partial class GeneralViewModel : ObservableObject
     partial void OnShowTrayIconChanged(bool value)
     {
         _settings.EnableTrayIcon = value;
+        App.SetTrayIconVisibility(value);
+
+        if (!value && MinimizeToTrayOnClose)
+        {
+            MinimizeToTrayOnClose = false;
+            return;
+        }
+
+        if (value && !MinimizeToTrayOnClose)
+        {
+            MinimizeToTrayOnClose = true;
+            return;
+        }
+
+        SaveSettings();
+    }
+
+    partial void OnMinimizeToTrayOnCloseChanged(bool value)
+    {
+        _settings.MinimizeToTrayOnClose = value;
         SaveSettings();
     }
 
@@ -109,6 +138,12 @@ public partial class GeneralViewModel : ObservableObject
         SaveSettings();
     }
 
+    partial void OnInterceptExplorerFolderOpenChanged(bool value)
+    {
+        _settings.EnableExplorerOpenVerbInterception = value;
+        SaveSettings();
+    }
+
     private void SaveSettings()
     {
         _settingsStore.SaveDebounced(_settings);
@@ -119,70 +154,11 @@ public partial class GeneralViewModel : ObservableObject
     {
         try
         {
-            string baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "WinTab");
-            string backupDir = Path.Combine(baseDir, "reg-backups");
-            Directory.CreateDirectory(backupDir);
+            _openVerbInterceptor.DisableAndRestore();
+            _settings.EnableExplorerOpenVerbInterception = false;
+            SaveSettings();
 
-            string ts = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string backupPath = Path.Combine(backupDir, $"HKCU_Software_Classes_Folder_shell_BEFORE_RESTORE_{ts}.reg");
-
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "reg.exe",
-                    Arguments = $"export \"HKCU\\Software\\Classes\\Folder\\shell\" \"{backupPath}\" /y",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                })?.WaitForExit(2000);
-            }
-            catch
-            {
-                // ignore backup failures
-            }
-
-            using (RegistryKey? folderShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Folder\shell", writable: true))
-            {
-                // Force default verb back to Explorer's open action.
-                folderShell?.SetValue(string.Empty, "open", RegistryValueKind.String);
-            }
-
-            // Remove per-user overrides that can hijack folder opening.
-            using (RegistryKey? root = Registry.CurrentUser.OpenSubKey(@"Software\Classes", writable: true))
-            {
-                root?.DeleteSubKeyTree(@"Folder\shell\open\command", throwOnMissingSubKey: false);
-                root?.DeleteSubKeyTree(@"Folder\shell\opennewtab\command", throwOnMissingSubKey: false);
-                root?.DeleteSubKeyTree(@"Directory\shell\none", throwOnMissingSubKey: false);
-                root?.DeleteSubKeyTree(@"Directory\shell\open", throwOnMissingSubKey: false);
-                root?.DeleteSubKeyTree(@"Drive\shell\none", throwOnMissingSubKey: false);
-                root?.DeleteSubKeyTree(@"Drive\shell\open", throwOnMissingSubKey: false);
-            }
-
-            // Restart Explorer so Shell picks up changes immediately.
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "taskkill.exe",
-                    Arguments = "/f /im explorer.exe",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                })?.WaitForExit(4000);
-
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "explorer.exe",
-                    UseShellExecute = true
-                });
-            }
-            catch
-            {
-                // ignore
-            }
-
-            _logger.Info("Explorer folder open behavior restored to default 'open' verb.");
+            _logger.Info("Explorer folder open behavior restored to system defaults.");
         }
         catch (Exception ex)
         {

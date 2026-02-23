@@ -215,6 +215,10 @@ public static class NativeConstants
 
     public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
+    // ─── Foreground Activation ───────────────────────────────────────────────
+
+    public const uint ASFW_ANY = 0xFFFFFFFF;
+
     // ─── SHGetFileInfo Flags ────────────────────────────────────────────────
 
     public const uint SHGFI_ICON      = 0x000000100;

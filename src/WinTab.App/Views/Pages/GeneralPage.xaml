@@ -49,6 +49,20 @@
                 <ui:ToggleSwitch IsChecked="{Binding ShowTrayIcon, Mode=TwoWay}" />
             </ui:CardControl>
 
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_CloseButtonBehavior}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource General_CloseButtonBehaviorDesc}"
+                                   Opacity="0.7"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding MinimizeToTrayOnClose, Mode=TwoWay}"
+                                 IsEnabled="{Binding ShowTrayIcon}"
+                                 Content="{DynamicResource General_CloseButtonMinimizeToTray}" />
+            </ui:CardControl>
+
             <!-- Language Section -->
             <TextBlock Text="{DynamicResource General_Language}"
                        FontSize="20" FontWeight="SemiBold"
@@ -99,10 +113,22 @@
                 <ui:ToggleSwitch IsChecked="{Binding GroupSameProcess, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <!-- Explorer Repair Section -->
+            <!-- Explorer Section -->
             <TextBlock Text="{DynamicResource General_ExplorerRepair}"
                        FontSize="20" FontWeight="SemiBold"
                        Margin="0,24,0,12" />
+
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_InterceptExplorerFolderOpen}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource General_InterceptExplorerFolderOpenDesc}"
+                                   Opacity="0.7"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding InterceptExplorerFolderOpen, Mode=TwoWay}" />
+            </ui:CardControl>
 
             <ui:CardControl Margin="0,0,0,4">
                 <ui:CardControl.Header>

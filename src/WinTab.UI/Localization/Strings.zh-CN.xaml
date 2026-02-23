@@ -20,6 +20,9 @@
     <system:String x:Key="General_StartMinimized">启动时最小化到系统托盘</system:String>
     <system:String x:Key="General_TrayIcon">系统托盘</system:String>
     <system:String x:Key="General_ShowTrayIcon">显示系统托盘图标</system:String>
+    <system:String x:Key="General_CloseButtonBehavior">关闭按钮行为</system:String>
+    <system:String x:Key="General_CloseButtonBehaviorDesc">开启时，点击右上角关闭按钮会最小化到托盘；关闭时，点击关闭按钮会彻底退出 WinTab。</system:String>
+    <system:String x:Key="General_CloseButtonMinimizeToTray">关闭按钮最小化到托盘</system:String>
     <system:String x:Key="General_Language">语言</system:String>
     <system:String x:Key="General_LanguageLabel">界面语言</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
@@ -29,9 +32,11 @@
     <system:String x:Key="General_AutoCloseEmpty">自动关闭空分组</system:String>
     <system:String x:Key="General_GroupSameProcess">自动合并同进程窗口</system:String>
 
-    <system:String x:Key="General_ExplorerRepair">资源管理器修复</system:String>
-    <system:String x:Key="General_RestoreExplorerDefaults">一键还原资源管理器打开行为</system:String>
-    <system:String x:Key="General_RestoreExplorerDefaultsDesc">当桌面/第三方双击文件夹打开异常时使用（将重启 Explorer）。</system:String>
+    <system:String x:Key="General_ExplorerRepair">资源管理器</system:String>
+    <system:String x:Key="General_InterceptExplorerFolderOpen">将文件夹作为标签页打开</system:String>
+    <system:String x:Key="General_InterceptExplorerFolderOpenDesc">启用后，从桌面/开始菜单/第三方应用打开文件夹会复用已有资源管理器窗口并在新标签页打开（仅当前用户的临时覆盖；退出自动还原）。</system:String>
+    <system:String x:Key="General_RestoreExplorerDefaults">还原默认打开行为</system:String>
+    <system:String x:Key="General_RestoreExplorerDefaultsDesc">当打开文件夹行为异常时使用（可能需要重启 Explorer）。</system:String>
 
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">主题</system:String>
@@ -114,11 +119,11 @@
     <system:String x:Key="TabBar_SetAccentColor">设置强调色</system:String>
 
     <!-- Tray Icon -->
-    <system:String x:Key="Tray_Open">打开 WinTab</system:String>
+    <system:String x:Key="Tray_Open">显示主界面</system:String>
     <system:String x:Key="Tray_Settings">设置</system:String>
     <system:String x:Key="Tray_EnableGrouping">启用分组</system:String>
     <system:String x:Key="Tray_DisableGrouping">禁用分组</system:String>
-    <system:String x:Key="Tray_Exit">退出</system:String>
+    <system:String x:Key="Tray_Exit">退出软件</system:String>
     <system:String x:Key="Tray_Tooltip">WinTab - 窗口标签管理器</system:String>
     <system:String x:Key="Tray_GroupCount">活动分组: {0}</system:String>
 

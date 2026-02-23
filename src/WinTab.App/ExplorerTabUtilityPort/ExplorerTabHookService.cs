@@ -22,6 +22,47 @@ namespace WinTab.App.ExplorerTabUtilityPort;
 /// </summary>
 public sealed class ExplorerTabHookService : IDisposable
 {
+    public async Task OpenLocationAsTabAsync(string location)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+            return;
+
+        // If no Explorer window is available, fall back to normal explorer.exe open.
+        IntPtr targetTopLevel = PickTargetExplorerWindow(exclude: IntPtr.Zero);
+        if (targetTopLevel == IntPtr.Zero)
+        {
+            LaunchExplorerWindow(location);
+            return;
+        }
+
+        bool opened = await OpenLocationInNewTab(targetTopLevel, location);
+        if (!opened)
+        {
+            _logger.Warn($"OpenLocationAsTabAsync: tab-open failed, fallback to normal explorer open for '{location}'.");
+            LaunchExplorerWindow(location);
+            return;
+        }
+
+        TryBringToForeground(targetTopLevel);
+    }
+
+    private static void LaunchExplorerWindow(string location)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{location}\"",
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
     private static readonly Guid ShellBrowserGuid = typeof(IShellBrowser).GUID;
     private static readonly Guid ShellWindowsClsid = new("9BA05972-F6A8-11CF-A442-00A0C90A8F39");
     private static readonly Guid ShellWindowsEventsGuid = new("FE4106E0-399A-11D0-A48C-00A0C90A8F39");
@@ -62,6 +103,18 @@ public sealed class ExplorerTabHookService : IDisposable
         _windowRegisteredHandler = OnShellWindowRegistered;
         _createEventCallback = OnExplorerObjectCreate;
 
+        bool enableAutoConvert = string.Equals(
+            Environment.GetEnvironmentVariable("WINTAB_AUTO_CONVERT_EXPLORER"),
+            "1",
+            StringComparison.Ordinal);
+
+        if (!enableAutoConvert)
+        {
+            _createEventHook = IntPtr.Zero;
+            _logger.Info("ExplorerTabHookService started in on-demand mode (auto-convert disabled).");
+            return;
+        }
+
         _windowEvents.WindowShown += OnWindowShown;
         _windowEvents.WindowForegroundChanged += OnWindowForegroundChanged;
         _windowEvents.WindowDestroyed += OnWindowDestroyed;
@@ -79,25 +132,25 @@ public sealed class ExplorerTabHookService : IDisposable
         if (_shellWindowRegisteredHooked)
         {
             _logger.Info("ExplorerTabHookService: ShellWindows.WindowRegistered hooked.");
-
-            const uint flags = NativeConstants.WINEVENT_OUTOFCONTEXT | NativeConstants.WINEVENT_SKIPOWNPROCESS;
-            _createEventHook = NativeMethods.SetWinEventHook(
-                NativeConstants.EVENT_OBJECT_CREATE,
-                NativeConstants.EVENT_OBJECT_CREATE,
-                IntPtr.Zero,
-                _createEventCallback,
-                0,
-                0,
-                flags);
-
-            if (_createEventHook == IntPtr.Zero)
-                _logger.Warn("ExplorerTabHookService: EVENT_OBJECT_CREATE hook unavailable (flash may occur).");
         }
         else
         {
             _logger.Warn("ExplorerTabHookService: ShellWindows.WindowRegistered hook unavailable, using WindowShown fallback.");
-            _createEventHook = IntPtr.Zero;
         }
+
+        // Always install EVENT_OBJECT_CREATE to reduce flash when possible.
+        const uint flags = NativeConstants.WINEVENT_OUTOFCONTEXT | NativeConstants.WINEVENT_SKIPOWNPROCESS;
+        _createEventHook = NativeMethods.SetWinEventHook(
+            NativeConstants.EVENT_OBJECT_CREATE,
+            NativeConstants.EVENT_OBJECT_CREATE,
+            IntPtr.Zero,
+            _createEventCallback,
+            0,
+            0,
+            flags);
+
+        if (_createEventHook == IntPtr.Zero)
+            _logger.Warn("ExplorerTabHookService: EVENT_OBJECT_CREATE hook unavailable (flash may occur).");
 
         _logger.Info("ExplorerTabHookService started (ETU-style, no COMReference).");
     }
@@ -197,10 +250,10 @@ public sealed class ExplorerTabHookService : IDisposable
         uint dwEventThread,
         uint dwmsEventTime)
     {
-        if (_disposed || !_shellWindowRegisteredHooked || hwnd == IntPtr.Zero)
+        if (_disposed || hwnd == IntPtr.Zero)
             return;
 
-        if (idChild != 0)
+        if (idObject != NativeConstants.OBJID_WINDOW || idChild != 0)
             return;
 
         if (_pending.ContainsKey(hwnd) || _knownExplorerTopLevels.ContainsKey(hwnd))
@@ -212,6 +265,7 @@ public sealed class ExplorerTabHookService : IDisposable
             return;
 
         // Hide first (fast) to reduce flash; we'll validate later.
+        // Only do this when the top-level window class matches.
         if (_windowManager.Hide(hwnd))
             _earlyHiddenExplorer.TryAdd(hwnd, 0);
     }
@@ -361,9 +415,7 @@ public sealed class ExplorerTabHookService : IDisposable
         if (_disposed || hwnd == IntPtr.Zero)
             return;
 
-        if (_shellWindowRegisteredHooked)
-            return;
-
+        // Even when WindowRegistered is hooked, SHOW can still arrive earlier or be used for re-hide.
         TryQueueShownCandidate(hwnd);
     }
 
@@ -487,8 +539,7 @@ public sealed class ExplorerTabHookService : IDisposable
                 return;
             }
 
-            bool reusedActiveTab = !IsCtrlDown() && await TryReuseActiveTabForFolderBrowse(targetTopLevel, location);
-            bool success = reusedActiveTab || await OpenLocationInNewTab(targetTopLevel, location);
+            bool success = await OpenLocationInNewTab(targetTopLevel, location);
             if (!success)
             {
                 _logger.Info($"Convert failed: open location as tab failed for {location}");
@@ -504,10 +555,7 @@ public sealed class ExplorerTabHookService : IDisposable
 
             converted = true;
 
-            if (reusedActiveTab)
-                _logger.Info($"Converted Explorer window by reusing active tab: {location} ({sw.ElapsedMilliseconds} ms)");
-            else
-                _logger.Info($"Converted Explorer window to tab: {location} ({sw.ElapsedMilliseconds} ms)");
+            _logger.Info($"Converted Explorer window to tab: {location} ({sw.ElapsedMilliseconds} ms)");
         }
         finally
         {
@@ -530,83 +578,23 @@ public sealed class ExplorerTabHookService : IDisposable
         return [];
     }
 
-    private async Task<bool> TryReuseActiveTabForFolderBrowse(IntPtr targetTopLevel, string sourceLocation)
-    {
-        IntPtr targetActiveTab = GetActiveTabHandle(targetTopLevel);
-        if (targetActiveTab == IntPtr.Zero)
-            return false;
-
-        string? targetLocation = await UiAsync(() => TryGetLocationByTabHandleUi(targetActiveTab));
-        if (!IsRealFileSystemLocation(targetLocation))
-            return false;
-
-        if (!ShouldReuseActiveTabNavigation(targetLocation!, sourceLocation))
-            return false;
-
-        bool navigated = await NavigateTabByHandleWithRetry(targetActiveTab, sourceLocation, timeoutMs: 700);
-        if (!navigated)
-            return false;
-
-        return await WaitUntilTabLocationMatches(targetActiveTab, sourceLocation, timeoutMs: 450, pollMs: 60);
-    }
-
-    private static bool IsCtrlDown()
-    {
-        return (NativeMethods.GetAsyncKeyState(0x11) & 0x8000) != 0;
-    }
-
-    private static bool ShouldReuseActiveTabNavigation(string targetLocation, string sourceLocation)
-    {
-        if (PathsEquivalent(targetLocation, sourceLocation))
-            return true;
-
-        return IsChildPathOf(sourceLocation, targetLocation);
-    }
-
-    private static bool IsChildPathOf(string childPath, string parentPath)
-    {
-        try
-        {
-            string child = Path.GetFullPath(childPath).TrimEnd('\\', '/');
-            string parent = Path.GetFullPath(parentPath).TrimEnd('\\', '/');
-
-            if (child.Length <= parent.Length)
-                return false;
-
-            string prefix = parent + Path.DirectorySeparatorChar;
-            return child.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private IntPtr PickTargetExplorerWindow(IntPtr exclude)
     {
-        // Prefer the last active Explorer window to preserve user's context.
-        IntPtr lastForeground = _lastExplorerForeground;
-        if (lastForeground != IntPtr.Zero && lastForeground != exclude && IsExplorerTopLevelWindow(lastForeground))
-            return lastForeground;
-
-        // Prefer current foreground Explorer window if it isn't the new one.
+        // Prefer current foreground Explorer window if it isn't the excluded one.
         IntPtr foreground = NativeMethods.GetForegroundWindow();
-        if (foreground != IntPtr.Zero && foreground != exclude && IsExplorerTopLevelWindow(foreground))
+        if (foreground != IntPtr.Zero && foreground != exclude && IsUsableTargetExplorerWindow(foreground))
             return foreground;
 
-        // Otherwise pick the Explorer window with most tabs.
-        // Note: don't rely on generic top-level enumeration here; Explorer windows
-        // can have empty titles on Win11, and some enumerators filter those out.
-        var candidates = EnumerateExplorerTopLevelWindows(includeInvisible: false)
-            .Where(h => h != exclude)
-            .ToList();
+        // Otherwise prefer the last active Explorer window to preserve user's context.
+        IntPtr lastForeground = _lastExplorerForeground;
+        if (lastForeground != IntPtr.Zero && lastForeground != exclude && IsUsableTargetExplorerWindow(lastForeground))
+            return lastForeground;
 
-        if (candidates.Count == 0)
-        {
-            candidates = EnumerateExplorerTopLevelWindows(includeInvisible: true)
-                .Where(h => h != exclude)
-                .ToList();
-        }
+        // Otherwise pick a visible, non-minimized Explorer window with most tabs.
+        // Do not fall back to hidden windows, which makes conversion look like a no-op.
+        var candidates = EnumerateExplorerTopLevelWindows(includeInvisible: false)
+            .Where(h => h != exclude && IsUsableTargetExplorerWindow(h))
+            .ToList();
 
         if (candidates.Count == 0)
             return IntPtr.Zero;
@@ -614,6 +602,28 @@ public sealed class ExplorerTabHookService : IDisposable
         return candidates
             .OrderByDescending(CountTabs)
             .FirstOrDefault();
+    }
+
+    private bool IsUsableTargetExplorerWindow(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+            return false;
+
+        if (!NativeMethods.IsWindowVisible(hwnd))
+            return false;
+
+        var placement = new NativeStructs.WINDOWPLACEMENT
+        {
+            length = (uint)Marshal.SizeOf<NativeStructs.WINDOWPLACEMENT>()
+        };
+
+        if (NativeMethods.GetWindowPlacement(hwnd, ref placement) &&
+            placement.showCmd == (uint)NativeConstants.SW_SHOWMINIMIZED)
+        {
+            return false;
+        }
+
+        return IsExplorerTopLevelWindow(hwnd);
     }
 
     private IEnumerable<IntPtr> EnumerateExplorerTopLevelWindows(bool includeInvisible)
@@ -670,6 +680,7 @@ public sealed class ExplorerTabHookService : IDisposable
         {
             // Ensure target is foreground for the WM_COMMAND to land correctly.
             NativeMethods.ShowWindow(targetTopLevel, NativeConstants.SW_RESTORE);
+            NativeMethods.BringWindowToTop(targetTopLevel);
             NativeMethods.SetForegroundWindow(targetTopLevel);
         }
 
@@ -708,7 +719,55 @@ public sealed class ExplorerTabHookService : IDisposable
             }
         }
 
+        TryBringToForeground(targetTopLevel);
         return true;
+    }
+
+    private static void TryBringToForeground(IntPtr topLevel)
+    {
+        if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel))
+            return;
+
+        NativeMethods.ShowWindow(topLevel, NativeConstants.SW_RESTORE);
+        NativeMethods.BringWindowToTop(topLevel);
+
+        if (NativeMethods.SetForegroundWindow(topLevel))
+            return;
+
+        IntPtr foreground = NativeMethods.GetForegroundWindow();
+        if (foreground == IntPtr.Zero)
+            return;
+
+        uint foregroundThread = NativeMethods.GetWindowThreadProcessId(foreground, out _);
+        uint targetThread = NativeMethods.GetWindowThreadProcessId(topLevel, out _);
+        uint currentThread = NativeMethods.GetCurrentThreadId();
+
+        bool currentAttached = false;
+        bool targetAttached = false;
+
+        try
+        {
+            if (foregroundThread != 0 && foregroundThread != currentThread)
+            {
+                currentAttached = NativeMethods.AttachThreadInput(currentThread, foregroundThread, true);
+            }
+
+            if (foregroundThread != 0 && targetThread != 0 && targetThread != foregroundThread)
+            {
+                targetAttached = NativeMethods.AttachThreadInput(targetThread, foregroundThread, true);
+            }
+
+            NativeMethods.BringWindowToTop(topLevel);
+            NativeMethods.SetForegroundWindow(topLevel);
+        }
+        finally
+        {
+            if (targetAttached)
+                NativeMethods.AttachThreadInput(targetThread, foregroundThread, false);
+
+            if (currentAttached)
+                NativeMethods.AttachThreadInput(currentThread, foregroundThread, false);
+        }
     }
 
     private static async Task<string?> WaitForRealLocationByTabHandle(IntPtr tabHandle, IntPtr topLevelHwnd, int timeoutMs)
