@@ -6,6 +6,7 @@ using WinTab.Diagnostics;
 using WinTab.Persistence;
 using WinTab.Platform.Win32;
 using WinTab.UI.Localization;
+using WinTab.UI.Themes;
 
 namespace WinTab.App.ViewModels;
 
@@ -15,6 +16,7 @@ public partial class GeneralViewModel : ObservableObject
     private readonly SettingsStore _settingsStore;
     private readonly StartupRegistrar _startupRegistrar;
     private readonly Logger _logger;
+    private bool _isSynchronizingThemeSelection;
 
     [ObservableProperty]
     private bool _runAtStartup;
@@ -23,22 +25,13 @@ public partial class GeneralViewModel : ObservableObject
     private bool _startMinimized;
 
     [ObservableProperty]
-    private bool _showTrayIcon;
-
-    [ObservableProperty]
-    private bool _minimizeToTrayOnClose;
-
-    [ObservableProperty]
     private int _selectedLanguageIndex;
 
     [ObservableProperty]
-    private bool _restoreSession;
+    private bool _isThemeLight;
 
     [ObservableProperty]
-    private bool _autoCloseEmpty;
-
-    [ObservableProperty]
-    private bool _groupSameProcess;
+    private bool _isThemeDark;
 
     public GeneralViewModel(
         AppSettings settings,
@@ -54,12 +47,12 @@ public partial class GeneralViewModel : ObservableObject
         // Load current values from settings
         _runAtStartup = startupRegistrar.IsEnabled();
         _startMinimized = settings.StartMinimized;
-        _showTrayIcon = settings.EnableTrayIcon;
-        _minimizeToTrayOnClose = settings.MinimizeToTrayOnClose;
         _selectedLanguageIndex = settings.Language == Language.Chinese ? 0 : 1;
-        _restoreSession = settings.RestoreSessionOnStartup;
-        _autoCloseEmpty = settings.AutoCloseEmptyGroups;
-        _groupSameProcess = settings.GroupSameProcessWindows;
+
+        if (settings.Theme == ThemeMode.System)
+            settings.Theme = ThemeMode.Light;
+
+        SynchronizeThemeSelection(settings.Theme);
     }
 
     partial void OnRunAtStartupChanged(bool value)
@@ -76,32 +69,6 @@ public partial class GeneralViewModel : ObservableObject
         SaveSettings();
     }
 
-    partial void OnShowTrayIconChanged(bool value)
-    {
-        _settings.EnableTrayIcon = value;
-        App.SetTrayIconVisibility(value);
-
-        if (!value && MinimizeToTrayOnClose)
-        {
-            MinimizeToTrayOnClose = false;
-            return;
-        }
-
-        if (value && !MinimizeToTrayOnClose)
-        {
-            MinimizeToTrayOnClose = true;
-            return;
-        }
-
-        SaveSettings();
-    }
-
-    partial void OnMinimizeToTrayOnCloseChanged(bool value)
-    {
-        _settings.MinimizeToTrayOnClose = value;
-        SaveSettings();
-    }
-
     partial void OnSelectedLanguageIndexChanged(int value)
     {
         var language = value == 0 ? Language.Chinese : Language.English;
@@ -111,22 +78,47 @@ public partial class GeneralViewModel : ObservableObject
         _logger.Info($"Language changed to {language}");
     }
 
-    partial void OnRestoreSessionChanged(bool value)
+    partial void OnIsThemeLightChanged(bool value)
     {
-        _settings.RestoreSessionOnStartup = value;
-        SaveSettings();
+        if (!value || _isSynchronizingThemeSelection)
+            return;
+
+        ApplyTheme(ThemeMode.Light);
     }
 
-    partial void OnAutoCloseEmptyChanged(bool value)
+    partial void OnIsThemeDarkChanged(bool value)
     {
-        _settings.AutoCloseEmptyGroups = value;
-        SaveSettings();
+        if (!value || _isSynchronizingThemeSelection)
+            return;
+
+        ApplyTheme(ThemeMode.Dark);
     }
 
-    partial void OnGroupSameProcessChanged(bool value)
+    private void ApplyTheme(ThemeMode mode)
     {
-        _settings.GroupSameProcessWindows = value;
+        if (_settings.Theme == mode)
+            return;
+
+        _settings.Theme = mode;
+        ThemeManager.ApplyTheme(mode);
+        SynchronizeThemeSelection(mode);
+
         SaveSettings();
+        _logger.Info($"Theme changed to {mode}");
+    }
+
+    private void SynchronizeThemeSelection(ThemeMode mode)
+    {
+        _isSynchronizingThemeSelection = true;
+        try
+        {
+            IsThemeLight = mode == ThemeMode.Light;
+            IsThemeDark = mode == ThemeMode.Dark;
+        }
+        finally
+        {
+            _isSynchronizingThemeSelection = false;
+        }
     }
 
     private void SaveSettings()

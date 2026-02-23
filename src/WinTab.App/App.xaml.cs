@@ -88,6 +88,22 @@ public partial class App : Application
             settingsStore.Save(settings);
         }
 
+        bool normalizedTrayBehavior = false;
+        if (!settings.EnableTrayIcon)
+        {
+            settings.EnableTrayIcon = true;
+            normalizedTrayBehavior = true;
+        }
+
+        if (!settings.MinimizeToTrayOnClose)
+        {
+            settings.MinimizeToTrayOnClose = true;
+            normalizedTrayBehavior = true;
+        }
+
+        if (normalizedTrayBehavior)
+            settingsStore.Save(settings);
+
         // -- 5.1 Pre-flight ------------------------------------------------
         // No-op placeholder: keep settings load spot for future migrations.
 
@@ -172,7 +188,7 @@ public partial class App : Application
         }
 
         // -- 11. Initialize tray icon -------------------------------------
-        SetTrayIconVisibilityCore(settings.EnableTrayIcon);
+        SetTrayIconVisibilityCore(true);
 
         _logger?.Info("WinTab started successfully.");
     }
@@ -282,18 +298,12 @@ public partial class App : Application
 
         services.AddTransient<MainViewModel>();
         services.AddTransient<GeneralViewModel>();
-        services.AddTransient<AppearanceViewModel>();
-        services.AddTransient<AutoGroupingViewModel>();
-        services.AddTransient<ShortcutsViewModel>();
-        services.AddTransient<GroupsViewModel>();
+        services.AddTransient<BehaviorViewModel>();
         services.AddTransient<AboutViewModel>();
 
         services.AddSingleton<MainWindow>();
         services.AddTransient<GeneralPage>();
-        services.AddTransient<AppearancePage>();
-        services.AddTransient<AutoGroupingPage>();
-        services.AddTransient<ShortcutsPage>();
-        services.AddTransient<GroupsPage>();
+        services.AddTransient<BehaviorPage>();
         services.AddTransient<AboutPage>();
     }
 
@@ -397,12 +407,6 @@ public partial class App : Application
 
         _explicitShutdownRequested = true;
         Current.Shutdown();
-    }
-
-    internal static void SetTrayIconVisibility(bool visible)
-    {
-        if (Current is App app)
-            app.SetTrayIconVisibilityCore(visible);
     }
 
     private void SetTrayIconVisibilityCore(bool visible)

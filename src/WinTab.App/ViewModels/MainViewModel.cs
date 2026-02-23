@@ -16,10 +16,7 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel()
     {
         NavigationItems.Add(new NavigationItem("General", "Settings24"));
-        NavigationItems.Add(new NavigationItem("Appearance", "PaintBrush24"));
-        NavigationItems.Add(new NavigationItem("Auto Grouping", "GroupList24"));
-        NavigationItems.Add(new NavigationItem("Shortcuts", "Keyboard24"));
-        NavigationItems.Add(new NavigationItem("Groups", "TabDesktopMultiple24"));
+        NavigationItems.Add(new NavigationItem("Behavior", "Settings24"));
         NavigationItems.Add(new NavigationItem("About", "Info24"));
     }
 }

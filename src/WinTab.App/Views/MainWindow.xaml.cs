@@ -4,20 +4,13 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using WinTab.App.Views.Pages;
-using WinTab.Core.Models;
 
 namespace WinTab.App.Views;
 
 public partial class MainWindow : System.Windows.Window
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly AppSettings _settings;
-
-    public MainWindow(IServiceProvider serviceProvider, AppSettings settings)
+    public MainWindow(IServiceProvider serviceProvider)
     {
-        _serviceProvider = serviceProvider;
-        _settings = settings;
-
         InitializeComponent();
 
         AddHandler(UIElement.PreviewMouseWheelEvent, new MouseWheelEventHandler(OnAnyPreviewMouseWheel), handledEventsToo: true);
@@ -85,17 +78,9 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
-        bool minimizeToTray = _settings.MinimizeToTrayOnClose && _settings.EnableTrayIcon;
-        if (minimizeToTray)
-        {
-            e.Cancel = true;
-            Hide();
-            ShowInTaskbar = false;
-            return;
-        }
-
-        App.RequestExplicitShutdown();
-        base.OnClosing(e);
+        e.Cancel = true;
+        Hide();
+        ShowInTaskbar = false;
     }
 
     /// <summary>

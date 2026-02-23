@@ -58,10 +58,6 @@ public sealed class AppLifecycleService
 
         _logger.Info("AppLifecycleService starting...");
 
-        // Register hotkeys
-        RegisterHotKeys(settings);
-        _hotKeyManager.HotKeyPressed += OnHotKeyPressed;
-
         // Restore session if enabled
         if (settings.RestoreSessionOnStartup)
         {
@@ -83,16 +79,8 @@ public sealed class AppLifecycleService
         // Save current session
         SaveSession();
 
-        _hotKeyManager.HotKeyPressed -= OnHotKeyPressed;
-
-        // Unregister all hotkeys
-        _hotKeyManager.UnregisterAll();
-
         // Dispose event source
         _windowEventSource.Dispose();
-
-        // Dispose hotkey manager
-        _hotKeyManager.Dispose();
 
         // Save settings
         try

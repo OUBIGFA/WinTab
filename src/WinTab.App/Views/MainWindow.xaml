@@ -23,18 +23,9 @@
                 <ui:NavigationViewItem Content="{DynamicResource Nav_General}"
                                        TargetPageType="{x:Type pages:GeneralPage}"
                                        Icon="{ui:SymbolIcon Settings24}" />
-                <ui:NavigationViewItem Content="{DynamicResource Nav_Appearance}"
-                                       TargetPageType="{x:Type pages:AppearancePage}"
-                                       Icon="{ui:SymbolIcon PaintBrush24}" />
-                <ui:NavigationViewItem Content="{DynamicResource Nav_AutoGrouping}"
-                                       TargetPageType="{x:Type pages:AutoGroupingPage}"
-                                       Icon="{ui:SymbolIcon GroupList24}" />
-                <ui:NavigationViewItem Content="{DynamicResource Nav_Shortcuts}"
-                                       TargetPageType="{x:Type pages:ShortcutsPage}"
-                                       Icon="{ui:SymbolIcon Keyboard24}" />
-                <ui:NavigationViewItem Content="{DynamicResource Nav_Groups}"
-                                       TargetPageType="{x:Type pages:GroupsPage}"
-                                       Icon="{ui:SymbolIcon TabDesktopMultiple24}" />
+                <ui:NavigationViewItem Content="{DynamicResource Nav_Behavior}"
+                                       TargetPageType="{x:Type pages:BehaviorPage}"
+                                       Icon="{ui:SymbolIcon Settings24}" />
             </ui:NavigationView.MenuItems>
 
             <ui:NavigationView.FooterMenuItems>

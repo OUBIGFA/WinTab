@@ -8,6 +8,7 @@
 
     <!-- Navigation -->
     <system:String x:Key="Nav_General">General</system:String>
+    <system:String x:Key="Nav_Behavior">Behavior</system:String>
     <system:String x:Key="Nav_Appearance">Appearance</system:String>
     <system:String x:Key="Nav_AutoGrouping">Auto Grouping</system:String>
     <system:String x:Key="Nav_Shortcuts">Shortcuts</system:String>
@@ -21,8 +22,9 @@
     <system:String x:Key="General_TrayIcon">System Tray</system:String>
     <system:String x:Key="General_ShowTrayIcon">Show tray icon</system:String>
     <system:String x:Key="General_CloseButtonBehavior">Close button behavior</system:String>
-    <system:String x:Key="General_CloseButtonBehaviorDesc">When enabled, clicking the top-right close button minimizes WinTab to tray. When disabled, clicking close fully exits WinTab.</system:String>
+    <system:String x:Key="General_CloseButtonBehaviorDesc">Clicking the top-right close button always minimizes WinTab to tray.</system:String>
     <system:String x:Key="General_CloseButtonMinimizeToTray">Minimize to tray on close</system:String>
+    <system:String x:Key="General_TrayExitOnly">Exit is only available from the tray icon right-click menu.</system:String>
     <system:String x:Key="General_Language">Language</system:String>
     <system:String x:Key="General_LanguageLabel">Interface language</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
