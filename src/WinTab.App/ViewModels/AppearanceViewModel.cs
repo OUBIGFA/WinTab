@@ -12,39 +12,14 @@ public partial class AppearanceViewModel : ObservableObject
     private readonly AppSettings _settings;
     private readonly SettingsStore _settingsStore;
     private readonly Logger _logger;
+    private bool _isSynchronizingThemeSelection;
 
     // Theme radio button backing fields
-    [ObservableProperty]
-    private bool _isThemeSystem;
-
     [ObservableProperty]
     private bool _isThemeLight;
 
     [ObservableProperty]
     private bool _isThemeDark;
-
-    // Tab style radio button backing fields
-    [ObservableProperty]
-    private bool _isTabStyleModern;
-
-    [ObservableProperty]
-    private bool _isTabStyleTraditional;
-
-    [ObservableProperty]
-    private bool _isTabStyleCompact;
-
-    // Tab bar settings
-    [ObservableProperty]
-    private bool _useRoundedCorners;
-
-    [ObservableProperty]
-    private bool _useMicaEffect;
-
-    [ObservableProperty]
-    private int _tabBarHeight;
-
-    [ObservableProperty]
-    private double _tabBarOpacity;
 
     public AppearanceViewModel(
         AppSettings settings,
@@ -55,94 +30,54 @@ public partial class AppearanceViewModel : ObservableObject
         _settingsStore = settingsStore;
         _logger = logger;
 
-        // Initialize theme radio buttons
-        _isThemeSystem = settings.Theme == ThemeMode.System;
-        _isThemeLight = settings.Theme == ThemeMode.Light;
-        _isThemeDark = settings.Theme == ThemeMode.Dark;
+        // System theme mode is no longer user-selectable; treat as Light.
+        if (settings.Theme == ThemeMode.System)
+            settings.Theme = ThemeMode.Light;
 
-        // Initialize tab style radio buttons
-        _isTabStyleModern = settings.TabStyle == TabStyle.Modern;
-        _isTabStyleTraditional = settings.TabStyle == TabStyle.Traditional;
-        _isTabStyleCompact = settings.TabStyle == TabStyle.Compact;
-
-        // Initialize tab bar settings
-        _useRoundedCorners = settings.UseRoundedCorners;
-        _useMicaEffect = settings.UseMicaEffect;
-        _tabBarHeight = settings.TabBarHeight;
-        _tabBarOpacity = settings.TabBarOpacity;
-    }
-
-    partial void OnIsThemeSystemChanged(bool value)
-    {
-        if (value) ApplyTheme(ThemeMode.System);
+        SynchronizeThemeSelection(settings.Theme);
     }
 
     partial void OnIsThemeLightChanged(bool value)
     {
-        if (value) ApplyTheme(ThemeMode.Light);
+        if (!value || _isSynchronizingThemeSelection)
+            return;
+
+        ApplyTheme(ThemeMode.Light);
     }
 
     partial void OnIsThemeDarkChanged(bool value)
     {
-        if (value) ApplyTheme(ThemeMode.Dark);
-    }
+        if (!value || _isSynchronizingThemeSelection)
+            return;
 
-    partial void OnIsTabStyleModernChanged(bool value)
-    {
-        if (value) ApplyTabStyle(TabStyle.Modern);
-    }
-
-    partial void OnIsTabStyleTraditionalChanged(bool value)
-    {
-        if (value) ApplyTabStyle(TabStyle.Traditional);
-    }
-
-    partial void OnIsTabStyleCompactChanged(bool value)
-    {
-        if (value) ApplyTabStyle(TabStyle.Compact);
-    }
-
-    partial void OnUseRoundedCornersChanged(bool value)
-    {
-        _settings.UseRoundedCorners = value;
-        SaveSettings();
-    }
-
-    partial void OnUseMicaEffectChanged(bool value)
-    {
-        _settings.UseMicaEffect = value;
-        SaveSettings();
-    }
-
-    partial void OnTabBarHeightChanged(int value)
-    {
-        _settings.TabBarHeight = value;
-        SaveSettings();
-    }
-
-    partial void OnTabBarOpacityChanged(double value)
-    {
-        _settings.TabBarOpacity = value;
-        SaveSettings();
+        ApplyTheme(ThemeMode.Dark);
     }
 
     private void ApplyTheme(ThemeMode mode)
     {
+        if (_settings.Theme == mode)
+            return;
+
         _settings.Theme = mode;
         ThemeManager.ApplyTheme(mode);
-        SaveSettings();
+        SynchronizeThemeSelection(mode);
+
+        _settingsStore.SaveDebounced(_settings);
+
         _logger.Info($"Theme changed to {mode}");
     }
 
-    private void ApplyTabStyle(TabStyle style)
+    private void SynchronizeThemeSelection(ThemeMode mode)
     {
-        _settings.TabStyle = style;
-        SaveSettings();
-        _logger.Info($"Tab style changed to {style}");
-    }
-
-    private void SaveSettings()
-    {
-        _settingsStore.SaveDebounced(_settings);
+        _isSynchronizingThemeSelection = true;
+        try
+        {
+            IsThemeLight = mode == ThemeMode.Light;
+            IsThemeDark = mode == ThemeMode.Dark;
+        }
+        finally
+        {
+            _isSynchronizingThemeSelection = false;
+        }
     }
 }

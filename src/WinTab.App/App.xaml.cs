@@ -22,6 +22,8 @@ namespace WinTab.App;
 
 public partial class App : Application
 {
+    private const int DefaultTabBarHeight = 32;
+
     private static Mutex? _singleInstanceMutex;
     private static bool _ownsSingleInstanceMutex;
     private static bool _explicitShutdownRequested;
@@ -77,6 +79,14 @@ public partial class App : Application
         // -- 5. Load settings ---------------------------------------------
         var settingsStore = new SettingsStore(AppPaths.SettingsPath, _logger);
         AppSettings settings = settingsStore.Load();
+
+        // ThemeMode.System is no longer supported.
+        // If an older settings file still has it, normalize to Light.
+        if (settings.Theme == WinTab.Core.Enums.ThemeMode.System)
+        {
+            settings.Theme = WinTab.Core.Enums.ThemeMode.Light;
+            settingsStore.Save(settings);
+        }
 
         // -- 5.1 Pre-flight ------------------------------------------------
         // No-op placeholder: keep settings load spot for future migrations.
@@ -137,12 +147,15 @@ public partial class App : Application
             var interceptor = _serviceProvider.GetRequiredService<RegistryOpenVerbInterceptor>();
 
             bool isWin11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
-            bool enabledBySetting = settings.EnableExplorerOpenVerbInterception;
+            bool enableExplorerOpenVerbInterception = isWin11;
+
+            // This behavior is now product default on supported OS.
+            settings.EnableExplorerOpenVerbInterception = enableExplorerOpenVerbInterception;
 
             // Always self-check first (repairs old crash residue).
-            interceptor.StartupSelfCheck(settingEnabled: enabledBySetting && isWin11);
+            interceptor.StartupSelfCheck(settingEnabled: enableExplorerOpenVerbInterception);
 
-            if (isWin11 && enabledBySetting)
+            if (enableExplorerOpenVerbInterception)
             {
                 interceptor.EnableOrRepair();
                 StartCompanionWatcher();
@@ -236,7 +249,7 @@ public partial class App : Application
             new TabGroupManager(
                 sp.GetRequiredService<IWindowManager>(),
                 sp.GetRequiredService<IWindowEventSource>(),
-                sp.GetRequiredService<AppSettings>().TabBarHeight));
+                DefaultTabBarHeight));
 
         services.AddSingleton<AppLifecycleService>();
 

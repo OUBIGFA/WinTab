@@ -24,9 +24,6 @@
                     </StackPanel>
                 </ui:CardControl.Header>
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton Content="{DynamicResource Appearance_ThemeSystem}"
-                                 IsChecked="{Binding IsThemeSystem, Mode=TwoWay}"
-                                 GroupName="Theme" />
                     <RadioButton Content="{DynamicResource Appearance_ThemeLight}"
                                  IsChecked="{Binding IsThemeLight, Mode=TwoWay}"
                                  GroupName="Theme" />
@@ -34,84 +31,6 @@
                                  IsChecked="{Binding IsThemeDark, Mode=TwoWay}"
                                  GroupName="Theme" />
                 </StackPanel>
-            </ui:CardControl>
-
-            <!-- Tab Style Section -->
-            <TextBlock Text="{DynamicResource Appearance_TabStyle}"
-                       FontSize="20" FontWeight="SemiBold"
-                       Margin="0,24,0,12" />
-
-            <ui:CardControl Margin="0,0,0,4">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Appearance_TabStyle}" FontWeight="Medium" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <StackPanel Orientation="Horizontal">
-                    <RadioButton Content="{DynamicResource Appearance_TabStyleModern}"
-                                 IsChecked="{Binding IsTabStyleModern, Mode=TwoWay}"
-                                 GroupName="TabStyle" />
-                    <RadioButton Content="{DynamicResource Appearance_TabStyleTraditional}"
-                                 IsChecked="{Binding IsTabStyleTraditional, Mode=TwoWay}"
-                                 GroupName="TabStyle" />
-                    <RadioButton Content="{DynamicResource Appearance_TabStyleCompact}"
-                                 IsChecked="{Binding IsTabStyleCompact, Mode=TwoWay}"
-                                 GroupName="TabStyle" />
-                </StackPanel>
-            </ui:CardControl>
-
-            <!-- Tab Bar Section -->
-            <TextBlock Text="Tab Bar"
-                       FontSize="20" FontWeight="SemiBold"
-                       Margin="0,24,0,12" />
-
-            <ui:CardControl Margin="0,0,0,4">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Appearance_RoundedCorners}" FontWeight="Medium" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding UseRoundedCorners, Mode=TwoWay}" />
-            </ui:CardControl>
-
-            <ui:CardControl Margin="0,0,0,4">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Appearance_MicaEffect}" FontWeight="Medium" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding UseMicaEffect, Mode=TwoWay}" />
-            </ui:CardControl>
-
-            <ui:CardControl Margin="0,0,0,4">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Appearance_TabBarHeight}" FontWeight="Medium" />
-                        <TextBlock Text="{Binding TabBarHeight, StringFormat={}{0} px}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <Slider Minimum="24" Maximum="48"
-                        Value="{Binding TabBarHeight, Mode=TwoWay}"
-                        IsSnapToTickEnabled="True" TickFrequency="2"
-                        Width="200" />
-            </ui:CardControl>
-
-            <ui:CardControl Margin="0,0,0,4">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Appearance_TabBarOpacity}" FontWeight="Medium" />
-                        <TextBlock Text="{Binding TabBarOpacity, StringFormat={}{0:P0}}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <Slider Minimum="0.5" Maximum="1.0"
-                        Value="{Binding TabBarOpacity, Mode=TwoWay}"
-                        IsSnapToTickEnabled="True"
-                        TickFrequency="0.05"
-                        Width="200" />
             </ui:CardControl>
 
         </StackPanel>

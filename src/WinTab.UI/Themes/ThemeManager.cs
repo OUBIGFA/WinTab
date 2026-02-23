@@ -9,7 +9,9 @@ namespace WinTab.UI.Themes;
 
 public static class ThemeManager
 {
-    private static AppThemeMode _currentMode = AppThemeMode.System;
+    private static AppThemeMode _currentMode = AppThemeMode.Light;
+
+    private static readonly object ThemeApplyLock = new();
 
     public static AppThemeMode CurrentMode => _currentMode;
 
@@ -22,23 +24,38 @@ public static class ThemeManager
 
     public static void ApplyTheme(AppThemeMode mode)
     {
-        _currentMode = mode;
+        lock (ThemeApplyLock)
+        {
+            _currentMode = mode;
 
-        var theme = mode switch
-        {
-            AppThemeMode.Light => ApplicationTheme.Light,
-            AppThemeMode.Dark => ApplicationTheme.Dark,
-            _ => ApplicationTheme.Unknown // System default
-        };
+            // Only explicit Light/Dark is supported.
+            var theme = mode == AppThemeMode.Dark
+                ? ApplicationTheme.Dark
+                : ApplicationTheme.Light;
 
-        if (theme == ApplicationTheme.Unknown)
-        {
-            ApplicationThemeManager.ApplySystemTheme();
+            RunOnUiThread(() =>
+            {
+                ApplicationThemeManager.Apply(theme, WindowBackdropType.None, updateAccent: true);
+            });
         }
-        else
+    }
+
+    private static void RunOnUiThread(Action action)
+    {
+        Application? app = Application.Current;
+        if (app?.Dispatcher is null)
         {
-            ApplicationThemeManager.Apply(theme);
+            action();
+            return;
         }
+
+        if (app.Dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        app.Dispatcher.Invoke(action);
     }
 
     public static void ApplyMica(Window window, bool enabled)

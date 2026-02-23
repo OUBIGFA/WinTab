@@ -1,5 +1,4 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using WinTab.Core.Enums;
 using WinTab.Core.Interfaces;
 using WinTab.Core.Models;
@@ -7,7 +6,6 @@ using WinTab.Diagnostics;
 using WinTab.Persistence;
 using WinTab.Platform.Win32;
 using WinTab.UI.Localization;
-using WinTab.App.Services;
 
 namespace WinTab.App.ViewModels;
 
@@ -17,7 +15,6 @@ public partial class GeneralViewModel : ObservableObject
     private readonly SettingsStore _settingsStore;
     private readonly StartupRegistrar _startupRegistrar;
     private readonly Logger _logger;
-    private readonly RegistryOpenVerbInterceptor _openVerbInterceptor;
 
     [ObservableProperty]
     private bool _runAtStartup;
@@ -43,21 +40,16 @@ public partial class GeneralViewModel : ObservableObject
     [ObservableProperty]
     private bool _groupSameProcess;
 
-    [ObservableProperty]
-    private bool _interceptExplorerFolderOpen;
-
     public GeneralViewModel(
         AppSettings settings,
         SettingsStore settingsStore,
         StartupRegistrar startupRegistrar,
-        Logger logger,
-        RegistryOpenVerbInterceptor openVerbInterceptor)
+        Logger logger)
     {
         _settings = settings;
         _settingsStore = settingsStore;
         _startupRegistrar = startupRegistrar;
         _logger = logger;
-        _openVerbInterceptor = openVerbInterceptor;
 
         // Load current values from settings
         _runAtStartup = startupRegistrar.IsEnabled();
@@ -68,7 +60,6 @@ public partial class GeneralViewModel : ObservableObject
         _restoreSession = settings.RestoreSessionOnStartup;
         _autoCloseEmpty = settings.AutoCloseEmptyGroups;
         _groupSameProcess = settings.GroupSameProcessWindows;
-        _interceptExplorerFolderOpen = settings.EnableExplorerOpenVerbInterception;
     }
 
     partial void OnRunAtStartupChanged(bool value)
@@ -138,31 +129,8 @@ public partial class GeneralViewModel : ObservableObject
         SaveSettings();
     }
 
-    partial void OnInterceptExplorerFolderOpenChanged(bool value)
-    {
-        _settings.EnableExplorerOpenVerbInterception = value;
-        SaveSettings();
-    }
-
     private void SaveSettings()
     {
         _settingsStore.SaveDebounced(_settings);
-    }
-
-    [RelayCommand]
-    private void RestoreExplorerDefaults()
-    {
-        try
-        {
-            _openVerbInterceptor.DisableAndRestore();
-            _settings.EnableExplorerOpenVerbInterception = false;
-            SaveSettings();
-
-            _logger.Info("Explorer folder open behavior restored to system defaults.");
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Failed to restore Explorer defaults.", ex);
-        }
     }
 }

@@ -14,7 +14,7 @@ public sealed class AppSettings
     public Language Language { get; set; } = Language.Chinese;
 
     // Appearance
-    public ThemeMode Theme { get; set; } = ThemeMode.System;
+    public ThemeMode Theme { get; set; } = ThemeMode.Light;
     public TabStyle TabStyle { get; set; } = TabStyle.Modern;
     public bool UseRoundedCorners { get; set; } = true;
     public bool UseMicaEffect { get; set; } = true;
@@ -22,7 +22,7 @@ public sealed class AppSettings
     public double TabBarOpacity { get; set; } = 0.95;
 
     // Behavior
-    public bool EnableExplorerOpenVerbInterception { get; set; } = false;
+    public bool EnableExplorerOpenVerbInterception { get; set; } = true;
     public bool AutoApplyRules { get; set; } = false;
     public bool AutoCloseEmptyGroups { get; set; } = true;
     public bool EnableDragToGroup { get; set; } = false;
