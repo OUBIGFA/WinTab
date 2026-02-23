@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using WinTab.Core.Enums;
 using WinTab.Core.Interfaces;
@@ -45,18 +44,12 @@ public sealed class AppLifecycleService
     /// <summary>
     /// Starts all background services based on current settings.
     /// </summary>
-    public void Start(AppSettings settings)
+    public void Start()
     {
         if (_started) return;
         _started = true;
 
         _logger.Info("AppLifecycleService starting...");
-
-        // Restore session if enabled
-        if (settings.RestoreSessionOnStartup)
-        {
-            RestoreSession();
-        }
 
         _logger.Info("AppLifecycleService started.");
     }
@@ -88,51 +81,6 @@ public sealed class AppLifecycleService
 
         _started = false;
         _logger.Info("AppLifecycleService stopped.");
-    }
-
-    private void RestoreSession()
-    {
-        if (_groupManager is null)
-        {
-            _logger.Info("No group manager available; skipping session restore.");
-            return;
-        }
-
-        if (!_sessionStore.HasSession())
-        {
-            _logger.Info("No previous session to restore.");
-            return;
-        }
-
-        try
-        {
-            List<GroupWindowState> savedGroups = _sessionStore.LoadSession();
-            _settings.SavedGroupStates = savedGroups;
-
-            if (savedGroups.Count == 0)
-            {
-                _logger.Info("Session file was empty.");
-                return;
-            }
-
-            List<WindowInfo> availableWindows = _windowManager
-                .EnumerateTopLevelWindows(includeInvisible: true)
-                .Where(CanUseForRestore)
-                .ToList();
-
-            int restoredCount = 0;
-            foreach (GroupWindowState savedGroup in savedGroups)
-            {
-                if (TryRestoreGroup(savedGroup, availableWindows))
-                    restoredCount++;
-            }
-
-            _logger.Info($"Session restore completed: {restoredCount}/{savedGroups.Count} group(s) restored.");
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Failed to restore session.", ex);
-        }
     }
 
     private void SaveSession()
@@ -212,208 +160,5 @@ public sealed class AppLifecycleService
             (uint)NativeConstants.SW_SHOWMAXIMIZED => GroupWindowStateMode.Maximized,
             _ => GroupWindowStateMode.Normal
         };
-    }
-
-    private bool CanUseForRestore(WindowInfo window)
-    {
-        if (window.Handle == IntPtr.Zero)
-            return false;
-
-        string currentProcessName = Process.GetCurrentProcess().ProcessName;
-        if (string.Equals(
-                NormalizeProcessName(window.ProcessName),
-                NormalizeProcessName(currentProcessName),
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        string? currentPath = Environment.ProcessPath;
-        if (!string.IsNullOrWhiteSpace(currentPath) &&
-            !string.IsNullOrWhiteSpace(window.ProcessPath) &&
-            string.Equals(window.ProcessPath, currentPath, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    private bool TryRestoreGroup(GroupWindowState savedGroup, List<WindowInfo> availableWindows)
-    {
-        List<GroupWindowTabState> tabs = savedGroup.Tabs
-            .OrderBy(tab => tab.Order)
-            .ToList();
-
-        if (tabs.Count < 2)
-        {
-            _logger.Warn($"Skipping session group '{savedGroup.GroupName}': not enough tab descriptors.");
-            return false;
-        }
-
-        var usedHandles = new HashSet<IntPtr>();
-        var matchedHandles = new List<IntPtr>(tabs.Count);
-
-        foreach (GroupWindowTabState tab in tabs)
-        {
-            WindowInfo? match = FindBestWindowMatch(tab, availableWindows, usedHandles);
-            if (match is null)
-            {
-                _logger.Warn($"Skipping session group '{savedGroup.GroupName}': could not match all windows.");
-                return false;
-            }
-
-            usedHandles.Add(match.Handle);
-            matchedHandles.Add(match.Handle);
-        }
-
-        try
-        {
-            TabGroup group = _groupManager!.CreateGroup(matchedHandles[0], matchedHandles[1]);
-            for (int i = 2; i < matchedHandles.Count; i++)
-                _groupManager.AddToGroup(group.Id, matchedHandles[i]);
-
-            if (!string.IsNullOrWhiteSpace(savedGroup.GroupName))
-                _groupManager.RenameGroup(group.Id, savedGroup.GroupName);
-
-            ApplySavedLayout(group.Id, matchedHandles, savedGroup);
-            availableWindows.RemoveAll(window => usedHandles.Contains(window.Handle));
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"Failed to restore session group '{savedGroup.GroupName}'.", ex);
-            return false;
-        }
-    }
-
-    private static WindowInfo? FindBestWindowMatch(
-        GroupWindowTabState savedTab,
-        IReadOnlyList<WindowInfo> candidates,
-        HashSet<IntPtr> usedHandles)
-    {
-        WindowInfo? bestMatch = null;
-        int bestScore = int.MinValue;
-
-        foreach (WindowInfo candidate in candidates)
-        {
-            if (usedHandles.Contains(candidate.Handle))
-                continue;
-
-            int score = ScoreWindowMatch(savedTab, candidate);
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestMatch = candidate;
-            }
-        }
-
-        return bestScore >= 30 ? bestMatch : null;
-    }
-
-    private static int ScoreWindowMatch(GroupWindowTabState savedTab, WindowInfo candidate)
-    {
-        int score = 0;
-
-        string expectedProcess = NormalizeProcessName(savedTab.ProcessName);
-        string candidateProcess = NormalizeProcessName(candidate.ProcessName);
-        if (!string.IsNullOrWhiteSpace(expectedProcess))
-        {
-            if (!string.Equals(expectedProcess, candidateProcess, StringComparison.OrdinalIgnoreCase))
-                return int.MinValue;
-
-            score += 100;
-        }
-
-        if (!string.IsNullOrWhiteSpace(savedTab.ProcessPath) && !string.IsNullOrWhiteSpace(candidate.ProcessPath))
-        {
-            if (!string.Equals(savedTab.ProcessPath, candidate.ProcessPath, StringComparison.OrdinalIgnoreCase))
-                return int.MinValue;
-
-            score += 60;
-        }
-
-        if (!string.IsNullOrWhiteSpace(savedTab.ClassName))
-        {
-            if (!string.Equals(savedTab.ClassName, candidate.ClassName, StringComparison.OrdinalIgnoreCase))
-                return int.MinValue;
-
-            score += 20;
-        }
-
-        string expectedTitle = savedTab.WindowTitle.Trim();
-        string candidateTitle = candidate.Title.Trim();
-        if (!string.IsNullOrWhiteSpace(expectedTitle))
-        {
-            if (string.Equals(expectedTitle, candidateTitle, StringComparison.OrdinalIgnoreCase))
-            {
-                score += 40;
-            }
-            else if (candidateTitle.Contains(expectedTitle, StringComparison.OrdinalIgnoreCase) ||
-                     expectedTitle.Contains(candidateTitle, StringComparison.OrdinalIgnoreCase))
-            {
-                score += 20;
-            }
-        }
-
-        return score;
-    }
-
-    private static string NormalizeProcessName(string? processName)
-    {
-        if (string.IsNullOrWhiteSpace(processName))
-            return string.Empty;
-
-        string normalized = processName.Trim();
-        if (normalized.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            normalized = normalized[..^4];
-
-        return normalized;
-    }
-
-    private void ApplySavedLayout(Guid groupId, IReadOnlyList<IntPtr> handles, GroupWindowState savedGroup)
-    {
-        if (handles.Count == 0)
-            return;
-
-        int width = (int)Math.Round(savedGroup.Width);
-        int height = (int)Math.Round(savedGroup.Height);
-        if (width > 0 && height > 0)
-        {
-            _windowManager.SetBounds(
-                handles[0],
-                (int)Math.Round(savedGroup.Left),
-                (int)Math.Round(savedGroup.Top),
-                width,
-                height);
-        }
-
-        int activeIndex = savedGroup.ActiveTabIndex;
-        if (activeIndex < 0 || activeIndex >= handles.Count)
-            activeIndex = 0;
-
-        if (activeIndex != 0)
-            _groupManager!.SwitchTab(groupId, activeIndex);
-
-        ApplyWindowState(handles[activeIndex], savedGroup.State);
-    }
-
-    private void ApplyWindowState(IntPtr hwnd, GroupWindowStateMode state)
-    {
-        switch (state)
-        {
-            case GroupWindowStateMode.Minimized:
-                _windowManager.Minimize(hwnd);
-                break;
-
-            case GroupWindowStateMode.Maximized:
-                NativeMethods.ShowWindow(hwnd, NativeConstants.SW_SHOWMAXIMIZED);
-                break;
-
-            default:
-                _windowManager.Restore(hwnd);
-                break;
-        }
     }
 }

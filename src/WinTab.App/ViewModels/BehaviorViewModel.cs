@@ -15,15 +15,6 @@ public partial class BehaviorViewModel : ObservableObject
     private bool _isUpdatingExplorerOpenVerbToggle;
 
     [ObservableProperty]
-    private bool _restoreSession;
-
-    [ObservableProperty]
-    private bool _autoCloseEmpty;
-
-    [ObservableProperty]
-    private bool _groupSameProcess;
-
-    [ObservableProperty]
     private bool _openChildFolderInNewTabFromActiveTab;
 
     [ObservableProperty]
@@ -42,29 +33,8 @@ public partial class BehaviorViewModel : ObservableObject
         _openVerbInterceptor = openVerbInterceptor;
         _logger = logger;
 
-        _restoreSession = settings.RestoreSessionOnStartup;
-        _autoCloseEmpty = settings.AutoCloseEmptyGroups;
-        _groupSameProcess = settings.GroupSameProcessWindows;
         _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
         _enableExplorerOpenVerbInterception = settings.EnableExplorerOpenVerbInterception;
-    }
-
-    partial void OnRestoreSessionChanged(bool value)
-    {
-        _settings.RestoreSessionOnStartup = value;
-        SaveSettings();
-    }
-
-    partial void OnAutoCloseEmptyChanged(bool value)
-    {
-        _settings.AutoCloseEmptyGroups = value;
-        SaveSettings();
-    }
-
-    partial void OnGroupSameProcessChanged(bool value)
-    {
-        _settings.GroupSameProcessWindows = value;
-        SaveSettings();
     }
 
     partial void OnOpenChildFolderInNewTabFromActiveTabChanged(bool value)

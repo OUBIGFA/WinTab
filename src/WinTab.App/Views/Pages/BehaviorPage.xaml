@@ -39,33 +39,6 @@
                        FontSize="20" FontWeight="SemiBold"
                        Margin="0,20,0,12" />
 
-            <ui:CardControl Margin="0,0,0,4">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource General_RestoreSession}" FontWeight="Medium" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding RestoreSession, Mode=TwoWay}" />
-            </ui:CardControl>
-
-            <ui:CardControl Margin="0,0,0,4">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource General_AutoCloseEmpty}" FontWeight="Medium" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding AutoCloseEmpty, Mode=TwoWay}" />
-            </ui:CardControl>
-
-            <ui:CardControl Margin="0,0,0,4">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource General_GroupSameProcess}" FontWeight="Medium" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding GroupSameProcess, Mode=TwoWay}" />
-            </ui:CardControl>
-
         </StackPanel>
     </ScrollViewer>
 </Page>

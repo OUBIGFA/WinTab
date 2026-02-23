@@ -25,11 +25,9 @@ public sealed class AppSettings
     public bool EnableExplorerOpenVerbInterception { get; set; } = true;
     public bool OpenChildFolderInNewTabFromActiveTab { get; set; } = false;
     public bool AutoApplyRules { get; set; } = false;
-    public bool AutoCloseEmptyGroups { get; set; } = true;
     public bool EnableDragToGroup { get; set; } = false;
     public bool EnableMiddleClickClose { get; set; } = true;
     public bool EnableScrollWheelTabSwitch { get; set; } = true;
-    public bool GroupSameProcessWindows { get; set; }
     public int DragGroupDelay { get; set; } = 300; // milliseconds
 
     // Auto-grouping rules
@@ -37,7 +35,6 @@ public sealed class AppSettings
 
     // Session persistence
     public List<GroupWindowState> SavedGroupStates { get; set; } = [];
-    public bool RestoreSessionOnStartup { get; set; } = true;
 
     // Exclusions
     public List<string> ExcludedProcesses { get; set; } = [];

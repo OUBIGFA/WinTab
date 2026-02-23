@@ -138,7 +138,7 @@ public partial class App : Application
 
         // -- 10. Start lifecycle services ---------------------------------
         _lifecycleService = _serviceProvider.GetRequiredService<AppLifecycleService>();
-        _lifecycleService.Start(settings);
+        _lifecycleService.Start();
 
         // Explorer integration (native Explorer tab conversion path).
         _explorerTabHook = _serviceProvider.GetRequiredService<ExplorerTabHookService>();
