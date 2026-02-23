@@ -20,12 +20,6 @@ public static class AppPaths
         Path.Combine(BaseDirectory, "settings.json");
 
     /// <summary>
-    /// Full path to the session backup file used for crash recovery.
-    /// </summary>
-    public static string SessionBackupPath { get; } =
-        Path.Combine(BaseDirectory, "session_backup.json");
-
-    /// <summary>
     /// Directory containing log files.
     /// </summary>
     public static string LogsDirectory { get; } =

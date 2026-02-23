@@ -39,22 +39,10 @@
     <system:String x:Key="About_OpenLog">Open Log</system:String>
     <system:String x:Key="About_OpenLogFolder">Open Log Folder</system:String>
 
-    <!-- Tab Bar (overlay) -->
-    <system:String x:Key="TabBar_NewTab">New Tab</system:String>
-    <system:String x:Key="TabBar_CloseTab">Close Tab</system:String>
-    <system:String x:Key="TabBar_DetachTab">Detach Tab</system:String>
-    <system:String x:Key="TabBar_CloseOtherTabs">Close Other Tabs</system:String>
-    <system:String x:Key="TabBar_RenameTab">Rename Tab</system:String>
-    <system:String x:Key="TabBar_SetAccentColor">Set Accent Color</system:String>
-
     <!-- Tray Icon -->
     <system:String x:Key="Tray_Open">Show Main Window</system:String>
-    <system:String x:Key="Tray_Settings">Settings</system:String>
-    <system:String x:Key="Tray_EnableGrouping">Enable Grouping</system:String>
-    <system:String x:Key="Tray_DisableGrouping">Disable Grouping</system:String>
     <system:String x:Key="Tray_Exit">Exit App</system:String>
     <system:String x:Key="Tray_Tooltip">WinTab - Window Tab Manager</system:String>
-    <system:String x:Key="Tray_GroupCount">Active groups: {0}</system:String>
 
     <!-- Common -->
     <system:String x:Key="Common_Save">Save</system:String>
@@ -66,15 +54,5 @@
     <system:String x:Key="Common_No">No</system:String>
     <system:String x:Key="Common_Enabled">Enabled</system:String>
     <system:String x:Key="Common_Disabled">Disabled</system:String>
-
-    <!-- Session Recovery -->
-    <system:String x:Key="Session_RecoveryTitle">Session Recovery</system:String>
-    <system:String x:Key="Session_RecoveryMessage">WinTab detected that the previous session was not closed properly. Would you like to restore your window groups?</system:String>
-
-    <!-- Drag to Group -->
-    <system:String x:Key="Drag_EnableDragToGroup">Enable drag-to-group</system:String>
-    <system:String x:Key="Drag_DragDelay">Drag delay</system:String>
-    <system:String x:Key="Drag_EnableMiddleClick">Middle-click to close tab</system:String>
-    <system:String x:Key="Drag_EnableScrollWheel">Scroll wheel to switch tabs</system:String>
 
 </ResourceDictionary>

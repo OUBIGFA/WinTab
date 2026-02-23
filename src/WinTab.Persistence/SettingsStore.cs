@@ -216,24 +216,6 @@ public sealed class SettingsStore : IDisposable
     private bool MigrateIfNeeded(AppSettings settings)
     {
         bool changed = false;
-        bool disabledLegacyOverlayMode = false;
-
-        if (settings.EnableDragToGroup)
-        {
-            settings.EnableDragToGroup = false;
-            disabledLegacyOverlayMode = true;
-            changed = true;
-        }
-
-        if (settings.AutoApplyRules)
-        {
-            settings.AutoApplyRules = false;
-            disabledLegacyOverlayMode = true;
-            changed = true;
-        }
-
-        if (disabledLegacyOverlayMode)
-            _logger?.Info("Disabled legacy overlay grouping features in favor of native Explorer tabs.");
 
         // Currently at schema version 1 -- no migrations required.
         // Future migrations should be applied incrementally:

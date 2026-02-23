@@ -39,22 +39,10 @@
     <system:String x:Key="About_OpenLog">打开日志</system:String>
     <system:String x:Key="About_OpenLogFolder">打开日志文件夹</system:String>
 
-    <!-- Tab Bar (overlay) -->
-    <system:String x:Key="TabBar_NewTab">新建标签</system:String>
-    <system:String x:Key="TabBar_CloseTab">关闭标签</system:String>
-    <system:String x:Key="TabBar_DetachTab">分离标签</system:String>
-    <system:String x:Key="TabBar_CloseOtherTabs">关闭其他标签</system:String>
-    <system:String x:Key="TabBar_RenameTab">重命名标签</system:String>
-    <system:String x:Key="TabBar_SetAccentColor">设置强调色</system:String>
-
     <!-- Tray Icon -->
     <system:String x:Key="Tray_Open">显示主界面</system:String>
-    <system:String x:Key="Tray_Settings">设置</system:String>
-    <system:String x:Key="Tray_EnableGrouping">启用分组</system:String>
-    <system:String x:Key="Tray_DisableGrouping">禁用分组</system:String>
     <system:String x:Key="Tray_Exit">退出软件</system:String>
     <system:String x:Key="Tray_Tooltip">WinTab - 窗口标签管理器</system:String>
-    <system:String x:Key="Tray_GroupCount">活动分组: {0}</system:String>
 
     <!-- Common -->
     <system:String x:Key="Common_Save">保存</system:String>
@@ -66,15 +54,5 @@
     <system:String x:Key="Common_No">否</system:String>
     <system:String x:Key="Common_Enabled">已启用</system:String>
     <system:String x:Key="Common_Disabled">已禁用</system:String>
-
-    <!-- Session Recovery -->
-    <system:String x:Key="Session_RecoveryTitle">会话恢复</system:String>
-    <system:String x:Key="Session_RecoveryMessage">WinTab 检测到上次会话未正常关闭。是否恢复之前的窗口分组？</system:String>
-
-    <!-- Drag to Group -->
-    <system:String x:Key="Drag_EnableDragToGroup">启用拖拽分组</system:String>
-    <system:String x:Key="Drag_DragDelay">拖拽延迟</system:String>
-    <system:String x:Key="Drag_EnableMiddleClick">中键点击关闭标签</system:String>
-    <system:String x:Key="Drag_EnableScrollWheel">滚轮切换标签</system:String>
 
 </ResourceDictionary>

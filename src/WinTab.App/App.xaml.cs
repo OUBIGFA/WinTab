@@ -17,14 +17,11 @@ using WinTab.Persistence;
 using WinTab.Platform.Win32;
 using WinTab.UI.Localization;
 using WinTab.UI.Themes;
-using WinTab.TabHost;
 
 namespace WinTab.App;
 
 public partial class App : Application
 {
-    private const int DefaultTabBarHeight = 32;
-
     private static Mutex? _singleInstanceMutex;
     private static bool _ownsSingleInstanceMutex;
     private static bool _explicitShutdownRequested;
@@ -88,22 +85,6 @@ public partial class App : Application
             settings.Theme = WinTab.Core.Enums.ThemeMode.Light;
             settingsStore.Save(settings);
         }
-
-        bool normalizedTrayBehavior = false;
-        if (!settings.EnableTrayIcon)
-        {
-            settings.EnableTrayIcon = true;
-            normalizedTrayBehavior = true;
-        }
-
-        if (!settings.MinimizeToTrayOnClose)
-        {
-            settings.MinimizeToTrayOnClose = true;
-            normalizedTrayBehavior = true;
-        }
-
-        if (normalizedTrayBehavior)
-            settingsStore.Save(settings);
 
         // -- 5.1 Pre-flight ------------------------------------------------
         // No-op placeholder: keep settings load spot for future migrations.
@@ -263,22 +244,12 @@ public partial class App : Application
         services.AddSingleton(settingsStore);
         services.AddSingleton(settings);
 
-        var sessionStore = new SessionStore(AppPaths.SessionBackupPath, logger);
-        services.AddSingleton(sessionStore);
-
         string exePath = ResolveLaunchExecutablePath();
         var startupRegistrar = new StartupRegistrar("WinTab", exePath);
         services.AddSingleton(startupRegistrar);
 
         services.AddSingleton<IWindowManager, WindowManager>();
         services.AddSingleton<IWindowEventSource, WindowEventWatcher>();
-        services.AddSingleton<DragDetector>();
-
-        services.AddSingleton<IGroupManager>(sp =>
-            new TabGroupManager(
-                sp.GetRequiredService<IWindowManager>(),
-                sp.GetRequiredService<IWindowEventSource>(),
-                DefaultTabBarHeight));
 
         services.AddSingleton<AppLifecycleService>();
 
@@ -291,8 +262,6 @@ public partial class App : Application
 
         // Back to native Explorer-tab pipeline (not overlay hijack).
         services.AddSingleton<ExplorerTabHookService>();
-
-        services.AddSingleton<TabHostBootstrapper>();
 
         services.AddSingleton<TrayIconController>(sp =>
             new TrayIconController(
@@ -309,7 +278,6 @@ public partial class App : Application
                 },
                 exitApp: RequestExplicitShutdown));
 
-        services.AddTransient<MainViewModel>();
         services.AddTransient<GeneralViewModel>();
         services.AddTransient<BehaviorViewModel>();
         services.AddTransient<AboutViewModel>();

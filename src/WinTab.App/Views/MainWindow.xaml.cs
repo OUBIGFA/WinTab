@@ -82,15 +82,4 @@ public partial class MainWindow : System.Windows.Window
         Hide();
         ShowInTaskbar = false;
     }
-
-    /// <summary>
-    /// Shows the window and brings it to front. Called from tray icon.
-    /// </summary>
-    public void BringToForeground()
-    {
-        Show();
-        WindowState = WindowState.Normal;
-        ShowInTaskbar = true;
-        Activate();
-    }
 }

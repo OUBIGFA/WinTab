@@ -61,15 +61,6 @@ public sealed class TrayIconController : IDisposable
         _notifyIcon.Visible = visible;
     }
 
-    public void UpdateTooltip(int groupCount)
-    {
-        string template = LocalizationManager.GetString("Tray_GroupCount");
-        string baseTooltip = LocalizationManager.GetString("Tray_Tooltip");
-        var text = $"{baseTooltip}\n{string.Format(template, groupCount)}";
-        // NotifyIcon.Text has a 128-char limit
-        _notifyIcon.Text = text.Length > 127 ? text[..127] : text;
-    }
-
     public void Dispose()
     {
         if (_disposed) return;
