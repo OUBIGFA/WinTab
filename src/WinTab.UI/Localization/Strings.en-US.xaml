@@ -8,7 +8,7 @@
 
     <!-- Navigation -->
     <system:String x:Key="Nav_General">General</system:String>
-    <system:String x:Key="Nav_Behavior">Behavior</system:String>
+    <system:String x:Key="Nav_Behavior">Other</system:String>
     <system:String x:Key="Nav_About">About</system:String>
 
     <!-- General Page -->
@@ -19,10 +19,12 @@
     <system:String x:Key="General_LanguageLabel">Interface language</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
     <system:String x:Key="General_English">English</system:String>
-    <system:String x:Key="General_Behavior">Behavior</system:String>
+    <system:String x:Key="General_Behavior">Other</system:String>
+    <system:String x:Key="Behavior_Status">Status</system:String>
     <system:String x:Key="General_RestoreSession">Restore previous session on startup</system:String>
     <system:String x:Key="General_AutoCloseEmpty">Auto-close empty groups</system:String>
     <system:String x:Key="General_GroupSameProcess">Auto-group windows from same process</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">Intercept Explorer folder open (open-Verb)</system:String>
     <system:String x:Key="Behavior_OpenChildFolderInNewTab">Open child folders from the current tab in a new tab</system:String>
 
     <!-- Appearance Page -->

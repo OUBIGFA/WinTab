@@ -12,6 +12,7 @@
     <Version>3.0.0</Version>
     <Product>WinTab</Product>
     <Description>Open-source window tab manager for Windows</Description>
+    <ApplicationIcon>Assets\wintab.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

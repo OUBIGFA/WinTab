@@ -2,6 +2,7 @@ using System.Reflection;
 using System.IO;
 using System.Threading;
 using System.Windows;
+using Microsoft.Win32;
 using Microsoft.Extensions.DependencyInjection;
 using Application = System.Windows.Application;
 using WinTab.App.Services;
@@ -171,15 +172,15 @@ public partial class App : Application
             bool isWin11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
             string openVerbHandlerPath = ResolveLaunchExecutablePath();
             bool hasStableOpenVerbHandlerPath = IsStableOpenVerbHandlerPath(openVerbHandlerPath);
-            bool enableExplorerOpenVerbInterception = isWin11 && hasStableOpenVerbHandlerPath;
+            bool enableExplorerOpenVerbInterception =
+                settings.EnableExplorerOpenVerbInterception &&
+                isWin11 &&
+                hasStableOpenVerbHandlerPath;
 
             if (isWin11 && !hasStableOpenVerbHandlerPath)
             {
                 _logger?.Warn($"Explorer open-verb interception disabled for transient executable path: {openVerbHandlerPath}");
             }
-
-            // This behavior is now product default on supported OS.
-            settings.EnableExplorerOpenVerbInterception = enableExplorerOpenVerbInterception;
 
             // Always self-check first (repairs old crash residue).
             interceptor.StartupSelfCheck(settingEnabled: enableExplorerOpenVerbInterception);
@@ -345,6 +346,9 @@ public partial class App : Application
 
     private static bool TryHandleOpenFolderInvocation(string[] args, Logger? logger)
     {
+        using Logger? tempLogger = logger is null ? TryCreateCompanionLogger() : null;
+        Logger? effectiveLogger = logger ?? tempLogger;
+
         // Registry handler: "WinTab.exe --wintab-open-folder \"%1\""
         if (args.Length < 2)
             return false;
@@ -373,14 +377,43 @@ public partial class App : Application
         bool sent = ExplorerOpenRequestClient.TrySendOpenFolder(path);
         if (sent)
         {
-            logger?.Info($"Forwarded open-folder request to existing instance: {path}");
+            effectiveLogger?.Info($"Forwarded open-folder request to existing instance: {path}");
             return true;
         }
 
-        logger?.Warn($"No existing instance pipe; falling back to Explorer open: {path}");
-        TryOpenFolderFallback(path, logger);
+        effectiveLogger?.Warn($"No existing instance pipe; restoring shell defaults and falling back to Explorer open: {path}");
+        TryRestoreExplorerOpenVerbDefaults(effectiveLogger);
+        TryOpenFolderFallback(path, effectiveLogger);
 
         return true;
+    }
+
+    private static void TryRestoreExplorerOpenVerbDefaults(Logger? logger)
+    {
+        try
+        {
+            using RegistryKey? classesRoot = Registry.CurrentUser.OpenSubKey(@"Software\Classes", writable: true);
+            if (classesRoot is not null)
+            {
+                classesRoot.DeleteSubKeyTree(@"Folder\shell\open\command", throwOnMissingSubKey: false);
+                classesRoot.DeleteSubKeyTree(@"Directory\shell\open\command", throwOnMissingSubKey: false);
+                classesRoot.DeleteSubKeyTree(@"Drive\shell\open\command", throwOnMissingSubKey: false);
+            }
+
+            using RegistryKey? folderShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Folder\shell", writable: true);
+            using RegistryKey? directoryShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Directory\shell", writable: true);
+            using RegistryKey? driveShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Drive\shell", writable: true);
+
+            folderShell?.SetValue(string.Empty, "open", RegistryValueKind.String);
+            directoryShell?.SetValue(string.Empty, "none", RegistryValueKind.String);
+            driveShell?.SetValue(string.Empty, "none", RegistryValueKind.String);
+
+            logger?.Info("Restored Explorer open-verb defaults for standalone handler invocation.");
+        }
+        catch (Exception ex)
+        {
+            logger?.Error("Failed to restore Explorer open-verb defaults.", ex);
+        }
     }
 
     private static void TryOpenFolderFallback(string path, Logger? logger)
