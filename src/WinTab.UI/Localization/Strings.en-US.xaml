@@ -9,22 +9,12 @@
     <!-- Navigation -->
     <system:String x:Key="Nav_General">General</system:String>
     <system:String x:Key="Nav_Behavior">Behavior</system:String>
-    <system:String x:Key="Nav_Appearance">Appearance</system:String>
-    <system:String x:Key="Nav_AutoGrouping">Auto Grouping</system:String>
-    <system:String x:Key="Nav_Shortcuts">Shortcuts</system:String>
-    <system:String x:Key="Nav_Groups">Groups</system:String>
     <system:String x:Key="Nav_About">About</system:String>
 
     <!-- General Page -->
     <system:String x:Key="General_Startup">Startup</system:String>
     <system:String x:Key="General_RunAtStartup">Run at Windows startup</system:String>
     <system:String x:Key="General_StartMinimized">Start minimized to system tray</system:String>
-    <system:String x:Key="General_TrayIcon">System Tray</system:String>
-    <system:String x:Key="General_ShowTrayIcon">Show tray icon</system:String>
-    <system:String x:Key="General_CloseButtonBehavior">Close button behavior</system:String>
-    <system:String x:Key="General_CloseButtonBehaviorDesc">Clicking the top-right close button always minimizes WinTab to tray.</system:String>
-    <system:String x:Key="General_CloseButtonMinimizeToTray">Minimize to tray on close</system:String>
-    <system:String x:Key="General_TrayExitOnly">Exit is only available from the tray icon right-click menu.</system:String>
     <system:String x:Key="General_Language">Language</system:String>
     <system:String x:Key="General_LanguageLabel">Interface language</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
@@ -34,73 +24,10 @@
     <system:String x:Key="General_AutoCloseEmpty">Auto-close empty groups</system:String>
     <system:String x:Key="General_GroupSameProcess">Auto-group windows from same process</system:String>
 
-    <system:String x:Key="General_ExplorerRepair">Explorer</system:String>
-    <system:String x:Key="General_InterceptExplorerFolderOpen">Open folders as tabs</system:String>
-    <system:String x:Key="General_InterceptExplorerFolderOpenDesc">When enabled, opening folders from Desktop/Start menu/other apps will reuse an existing File Explorer window as a new tab (temporary per-user override; auto-restores on exit).</system:String>
-    <system:String x:Key="General_RestoreExplorerDefaults">Restore default folder open behavior</system:String>
-    <system:String x:Key="General_RestoreExplorerDefaultsDesc">Use this if opening folders behaves unexpectedly (Explorer may need to restart).</system:String>
-
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">Theme</system:String>
-    <system:String x:Key="Appearance_ThemeSystem">Follow system</system:String>
     <system:String x:Key="Appearance_ThemeLight">Light</system:String>
     <system:String x:Key="Appearance_ThemeDark">Dark</system:String>
-    <system:String x:Key="Appearance_TabStyle">Tab Style</system:String>
-    <system:String x:Key="Appearance_TabStyleModern">Modern</system:String>
-    <system:String x:Key="Appearance_TabStyleTraditional">Traditional</system:String>
-    <system:String x:Key="Appearance_TabStyleCompact">Compact</system:String>
-    <system:String x:Key="Appearance_RoundedCorners">Use rounded corners</system:String>
-    <system:String x:Key="Appearance_MicaEffect">Enable Mica effect</system:String>
-    <system:String x:Key="Appearance_TabBarHeight">Tab bar height</system:String>
-    <system:String x:Key="Appearance_TabBarOpacity">Tab bar opacity</system:String>
-
-    <!-- Auto Grouping Page -->
-    <system:String x:Key="AutoGroup_Title">Auto Grouping Rules</system:String>
-    <system:String x:Key="AutoGroup_Description">When a new window appears, automatically add it to a group based on rules.</system:String>
-    <system:String x:Key="AutoGroup_AddRule">Add Rule</system:String>
-    <system:String x:Key="AutoGroup_RemoveRule">Remove Rule</system:String>
-    <system:String x:Key="AutoGroup_Enabled">Enabled</system:String>
-    <system:String x:Key="AutoGroup_MatchType">Match Type</system:String>
-    <system:String x:Key="AutoGroup_MatchValue">Match Value</system:String>
-    <system:String x:Key="AutoGroup_GroupName">Group Name</system:String>
-    <system:String x:Key="AutoGroup_Priority">Priority</system:String>
-    <system:String x:Key="AutoGroup_MatchType_ProcessName">Process Name</system:String>
-    <system:String x:Key="AutoGroup_MatchType_TitleContains">Title Contains</system:String>
-    <system:String x:Key="AutoGroup_MatchType_TitleRegex">Title Regex</system:String>
-    <system:String x:Key="AutoGroup_MatchType_ClassName">Window Class</system:String>
-    <system:String x:Key="AutoGroup_MatchType_ProcessPath">Process Path</system:String>
-    <system:String x:Key="AutoGroup_AutoApply">Auto-apply rules</system:String>
-    <system:String x:Key="AutoGroup_Exclusions">Exclusion List</system:String>
-    <system:String x:Key="AutoGroup_ExclusionsDesc">Windows from the following processes will not be auto-grouped.</system:String>
-    <system:String x:Key="AutoGroup_AddExclusion">Add Exclusion</system:String>
-    <system:String x:Key="AutoGroup_RemoveExclusion">Remove Exclusion</system:String>
-
-    <!-- Shortcuts Page -->
-    <system:String x:Key="Shortcuts_Title">Keyboard Shortcuts</system:String>
-    <system:String x:Key="Shortcuts_Description">Customize global hotkeys for tab switching and management.</system:String>
-    <system:String x:Key="Shortcuts_Action">Action</system:String>
-    <system:String x:Key="Shortcuts_Binding">Shortcut</system:String>
-    <system:String x:Key="Shortcuts_Enabled">Enabled</system:String>
-    <system:String x:Key="Shortcuts_NextTab">Next Tab</system:String>
-    <system:String x:Key="Shortcuts_PrevTab">Previous Tab</system:String>
-    <system:String x:Key="Shortcuts_CloseTab">Close Tab</system:String>
-    <system:String x:Key="Shortcuts_NewInstance">New Instance</system:String>
-    <system:String x:Key="Shortcuts_DetachTab">Detach Tab</system:String>
-    <system:String x:Key="Shortcuts_MoveLeft">Move Tab Left</system:String>
-    <system:String x:Key="Shortcuts_MoveRight">Move Tab Right</system:String>
-    <system:String x:Key="Shortcuts_ToggleGrouping">Toggle Grouping</system:String>
-    <system:String x:Key="Shortcuts_ClickToRecord">Click here to record shortcut...</system:String>
-
-    <!-- Groups Page -->
-    <system:String x:Key="Groups_Title">Group Management</system:String>
-    <system:String x:Key="Groups_Description">View and manage active window groups.</system:String>
-    <system:String x:Key="Groups_Name">Group Name</system:String>
-    <system:String x:Key="Groups_TabCount">Tab Count</system:String>
-    <system:String x:Key="Groups_ActiveTab">Active Tab</system:String>
-    <system:String x:Key="Groups_Disband">Disband Group</system:String>
-    <system:String x:Key="Groups_DisbandAll">Disband All</system:String>
-    <system:String x:Key="Groups_Refresh">Refresh</system:String>
-    <system:String x:Key="Groups_NoGroups">No active groups.</system:String>
 
     <!-- About Page -->
     <system:String x:Key="About_Title">About WinTab</system:String>

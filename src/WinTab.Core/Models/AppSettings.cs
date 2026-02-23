@@ -31,9 +31,6 @@ public sealed class AppSettings
     public bool GroupSameProcessWindows { get; set; }
     public int DragGroupDelay { get; set; } = 300; // milliseconds
 
-    // Keyboard shortcuts
-    public List<HotKeyBinding> HotKeys { get; set; } = [];
-
     // Auto-grouping rules
     public List<AutoGroupRule> AutoGroupRules { get; set; } = [];
 

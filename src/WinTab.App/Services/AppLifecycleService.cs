@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using WinTab.Core.Enums;
 using WinTab.Core.Interfaces;
@@ -11,9 +10,7 @@ using WinTab.Platform.Win32;
 namespace WinTab.App.Services;
 
 /// <summary>
-/// Orchestrates the startup and shutdown of all background services
-/// (window event watcher, drag detector, hotkey manager, etc.)
-/// in the correct order.
+/// Orchestrates the startup and shutdown of background services.
 /// </summary>
 public sealed class AppLifecycleService
 {
@@ -22,7 +19,6 @@ public sealed class AppLifecycleService
     private readonly SettingsStore _settingsStore;
     private readonly SessionStore _sessionStore;
     private readonly IWindowEventSource _windowEventSource;
-    private readonly IHotKeyManager _hotKeyManager;
     private readonly IWindowManager _windowManager;
     private readonly IGroupManager? _groupManager;
 
@@ -34,7 +30,6 @@ public sealed class AppLifecycleService
         SettingsStore settingsStore,
         SessionStore sessionStore,
         IWindowEventSource windowEventSource,
-        IHotKeyManager hotKeyManager,
         IWindowManager windowManager,
         IGroupManager? groupManager = null)
     {
@@ -43,7 +38,6 @@ public sealed class AppLifecycleService
         _settingsStore = settingsStore;
         _sessionStore = sessionStore;
         _windowEventSource = windowEventSource;
-        _hotKeyManager = hotKeyManager;
         _windowManager = windowManager;
         _groupManager = groupManager;
     }
@@ -94,116 +88,6 @@ public sealed class AppLifecycleService
 
         _started = false;
         _logger.Info("AppLifecycleService stopped.");
-    }
-
-    private void RegisterHotKeys(AppSettings settings)
-    {
-        foreach (HotKeyBinding binding in settings.HotKeys)
-        {
-            if (!binding.Enabled || binding.Key == 0)
-                continue;
-
-            int id = (int)binding.Action;
-            bool registered = _hotKeyManager.Register(id, binding.Modifiers, binding.Key);
-
-            if (registered)
-                _logger.Info($"Hotkey registered: {binding.Action} -> {binding.DisplayString}");
-            else
-                _logger.Warn($"Failed to register hotkey: {binding.Action} -> {binding.DisplayString}");
-        }
-    }
-
-    private void OnHotKeyPressed(object? sender, HotKeyAction action)
-    {
-        try
-        {
-            IntPtr foreground = NativeMethods.GetForegroundWindow();
-            if (foreground == IntPtr.Zero)
-                return;
-
-            if (action == HotKeyAction.NewInstance)
-            {
-                LaunchNewInstanceForWindow(foreground);
-                return;
-            }
-
-            if (_groupManager is null)
-                return;
-
-            TabGroup? group = _groupManager.GetGroupForWindow(foreground);
-            if (group is null)
-                return;
-
-            switch (action)
-            {
-                case HotKeyAction.NextTab:
-                    SwitchTabRelative(group, +1);
-                    break;
-
-                case HotKeyAction.PreviousTab:
-                    SwitchTabRelative(group, -1);
-                    break;
-
-                case HotKeyAction.CloseTab:
-                    _groupManager.CloseTab(group.Id, foreground);
-                    break;
-
-                case HotKeyAction.DetachTab:
-                    _groupManager.RemoveFromGroup(foreground);
-                    break;
-
-                case HotKeyAction.MoveTabLeft:
-                    _groupManager.MoveTab(group.Id, foreground, -1);
-                    break;
-
-                case HotKeyAction.MoveTabRight:
-                    _groupManager.MoveTab(group.Id, foreground, 1);
-                    break;
-
-                case HotKeyAction.ToggleGrouping:
-                    _groupManager.DisbandGroup(group.Id);
-                    break;
-
-                default:
-                    _logger.Info($"Hotkey action is not implemented yet: {action}");
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"Failed to process hotkey action: {action}", ex);
-        }
-    }
-
-    private void SwitchTabRelative(TabGroup group, int delta)
-    {
-        if (group.Tabs.Count <= 1)
-            return;
-
-        int currentIndex = group.Tabs.FindIndex(t => t.Handle == group.ActiveHandle);
-        if (currentIndex < 0)
-            currentIndex = 0;
-
-        int nextIndex = (currentIndex + delta + group.Tabs.Count) % group.Tabs.Count;
-        _groupManager!.SwitchTab(group.Id, nextIndex);
-    }
-
-    private void LaunchNewInstanceForWindow(IntPtr hwnd)
-    {
-        var info = _windowManager.GetWindowInfo(hwnd);
-        string? processPath = info?.ProcessPath;
-
-        if (string.IsNullOrWhiteSpace(processPath) || !File.Exists(processPath))
-        {
-            _logger.Warn("Unable to launch a new instance: process path was not available.");
-            return;
-        }
-
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = processPath,
-            UseShellExecute = true
-        });
     }
 
     private void RestoreSession()

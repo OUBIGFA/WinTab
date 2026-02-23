@@ -258,7 +258,6 @@ public partial class App : Application
 
         services.AddSingleton<IWindowManager, WindowManager>();
         services.AddSingleton<IWindowEventSource, WindowEventWatcher>();
-        services.AddSingleton<IHotKeyManager, GlobalHotKeyManager>();
         services.AddSingleton<DragDetector>();
 
         services.AddSingleton<IGroupManager>(sp =>

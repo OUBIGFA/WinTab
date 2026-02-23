@@ -9,22 +9,12 @@
     <!-- Navigation -->
     <system:String x:Key="Nav_General">常规</system:String>
     <system:String x:Key="Nav_Behavior">行为</system:String>
-    <system:String x:Key="Nav_Appearance">外观</system:String>
-    <system:String x:Key="Nav_AutoGrouping">自动分组</system:String>
-    <system:String x:Key="Nav_Shortcuts">快捷键</system:String>
-    <system:String x:Key="Nav_Groups">分组管理</system:String>
     <system:String x:Key="Nav_About">关于</system:String>
 
     <!-- General Page -->
     <system:String x:Key="General_Startup">启动</system:String>
     <system:String x:Key="General_RunAtStartup">开机自启动</system:String>
     <system:String x:Key="General_StartMinimized">启动时最小化到系统托盘</system:String>
-    <system:String x:Key="General_TrayIcon">系统托盘</system:String>
-    <system:String x:Key="General_ShowTrayIcon">显示系统托盘图标</system:String>
-    <system:String x:Key="General_CloseButtonBehavior">关闭按钮行为</system:String>
-    <system:String x:Key="General_CloseButtonBehaviorDesc">点击右上角关闭按钮将始终最小化到托盘。</system:String>
-    <system:String x:Key="General_CloseButtonMinimizeToTray">关闭按钮最小化到托盘</system:String>
-    <system:String x:Key="General_TrayExitOnly">退出入口仅保留在托盘图标右键菜单。</system:String>
     <system:String x:Key="General_Language">语言</system:String>
     <system:String x:Key="General_LanguageLabel">界面语言</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
@@ -34,73 +24,10 @@
     <system:String x:Key="General_AutoCloseEmpty">自动关闭空分组</system:String>
     <system:String x:Key="General_GroupSameProcess">自动合并同进程窗口</system:String>
 
-    <system:String x:Key="General_ExplorerRepair">资源管理器</system:String>
-    <system:String x:Key="General_InterceptExplorerFolderOpen">将文件夹作为标签页打开</system:String>
-    <system:String x:Key="General_InterceptExplorerFolderOpenDesc">启用后，从桌面/开始菜单/第三方应用打开文件夹会复用已有资源管理器窗口并在新标签页打开（仅当前用户的临时覆盖；退出自动还原）。</system:String>
-    <system:String x:Key="General_RestoreExplorerDefaults">还原默认打开行为</system:String>
-    <system:String x:Key="General_RestoreExplorerDefaultsDesc">当打开文件夹行为异常时使用（可能需要重启 Explorer）。</system:String>
-
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">主题</system:String>
-    <system:String x:Key="Appearance_ThemeSystem">跟随系统</system:String>
     <system:String x:Key="Appearance_ThemeLight">浅色</system:String>
     <system:String x:Key="Appearance_ThemeDark">深色</system:String>
-    <system:String x:Key="Appearance_TabStyle">标签样式</system:String>
-    <system:String x:Key="Appearance_TabStyleModern">现代</system:String>
-    <system:String x:Key="Appearance_TabStyleTraditional">经典</system:String>
-    <system:String x:Key="Appearance_TabStyleCompact">紧凑</system:String>
-    <system:String x:Key="Appearance_RoundedCorners">使用圆角</system:String>
-    <system:String x:Key="Appearance_MicaEffect">启用 Mica 效果</system:String>
-    <system:String x:Key="Appearance_TabBarHeight">标签栏高度</system:String>
-    <system:String x:Key="Appearance_TabBarOpacity">标签栏不透明度</system:String>
-
-    <!-- Auto Grouping Page -->
-    <system:String x:Key="AutoGroup_Title">自动分组规则</system:String>
-    <system:String x:Key="AutoGroup_Description">当新窗口出现时，自动根据规则将其添加到对应的分组。</system:String>
-    <system:String x:Key="AutoGroup_AddRule">添加规则</system:String>
-    <system:String x:Key="AutoGroup_RemoveRule">移除规则</system:String>
-    <system:String x:Key="AutoGroup_Enabled">启用</system:String>
-    <system:String x:Key="AutoGroup_MatchType">匹配类型</system:String>
-    <system:String x:Key="AutoGroup_MatchValue">匹配值</system:String>
-    <system:String x:Key="AutoGroup_GroupName">组名称</system:String>
-    <system:String x:Key="AutoGroup_Priority">优先级</system:String>
-    <system:String x:Key="AutoGroup_MatchType_ProcessName">进程名称</system:String>
-    <system:String x:Key="AutoGroup_MatchType_TitleContains">标题包含</system:String>
-    <system:String x:Key="AutoGroup_MatchType_TitleRegex">标题正则</system:String>
-    <system:String x:Key="AutoGroup_MatchType_ClassName">窗口类名</system:String>
-    <system:String x:Key="AutoGroup_MatchType_ProcessPath">进程路径</system:String>
-    <system:String x:Key="AutoGroup_AutoApply">自动应用规则</system:String>
-    <system:String x:Key="AutoGroup_Exclusions">排除列表</system:String>
-    <system:String x:Key="AutoGroup_ExclusionsDesc">以下进程的窗口将不会被自动分组。</system:String>
-    <system:String x:Key="AutoGroup_AddExclusion">添加排除</system:String>
-    <system:String x:Key="AutoGroup_RemoveExclusion">移除排除</system:String>
-
-    <!-- Shortcuts Page -->
-    <system:String x:Key="Shortcuts_Title">键盘快捷键</system:String>
-    <system:String x:Key="Shortcuts_Description">自定义全局快捷键来控制标签切换和管理。</system:String>
-    <system:String x:Key="Shortcuts_Action">动作</system:String>
-    <system:String x:Key="Shortcuts_Binding">快捷键</system:String>
-    <system:String x:Key="Shortcuts_Enabled">启用</system:String>
-    <system:String x:Key="Shortcuts_NextTab">下一个标签</system:String>
-    <system:String x:Key="Shortcuts_PrevTab">上一个标签</system:String>
-    <system:String x:Key="Shortcuts_CloseTab">关闭标签</system:String>
-    <system:String x:Key="Shortcuts_NewInstance">新建实例</system:String>
-    <system:String x:Key="Shortcuts_DetachTab">分离标签</system:String>
-    <system:String x:Key="Shortcuts_MoveLeft">向左移动标签</system:String>
-    <system:String x:Key="Shortcuts_MoveRight">向右移动标签</system:String>
-    <system:String x:Key="Shortcuts_ToggleGrouping">开关分组</system:String>
-    <system:String x:Key="Shortcuts_ClickToRecord">点击此处录制快捷键...</system:String>
-
-    <!-- Groups Page -->
-    <system:String x:Key="Groups_Title">分组管理</system:String>
-    <system:String x:Key="Groups_Description">查看和管理当前活动的窗口分组。</system:String>
-    <system:String x:Key="Groups_Name">组名称</system:String>
-    <system:String x:Key="Groups_TabCount">标签数</system:String>
-    <system:String x:Key="Groups_ActiveTab">活动标签</system:String>
-    <system:String x:Key="Groups_Disband">解散分组</system:String>
-    <system:String x:Key="Groups_DisbandAll">解散全部</system:String>
-    <system:String x:Key="Groups_Refresh">刷新</system:String>
-    <system:String x:Key="Groups_NoGroups">当前没有活动的分组。</system:String>
 
     <!-- About Page -->
     <system:String x:Key="About_Title">关于 WinTab</system:String>
