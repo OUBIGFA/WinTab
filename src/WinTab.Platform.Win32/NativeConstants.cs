@@ -86,6 +86,7 @@ public static class NativeConstants
 
     public const int WM_NULL             = 0x0000;
     public const int WM_DESTROY          = 0x0002;
+    public const int WM_SETREDRAW        = 0x000B;
     public const int WM_CLOSE            = 0x0010;
     public const int WM_QUIT             = 0x0012;
     public const int WM_GETICON          = 0x007F;
@@ -103,6 +104,14 @@ public static class NativeConstants
     // Explorer internal command IDs
     public const int EXPLORER_CMD_OPEN_NEW_TAB = 0xA21B;
     public const int EXPLORER_CMD_CLOSE_TAB    = 0xA021;
+    public const int EXPLORER_CMD_SELECT_TAB_BY_INDEX = 0xA221;
+
+    // RedrawWindow flags
+    public const uint RDW_INVALIDATE     = 0x0001;
+    public const uint RDW_ERASE          = 0x0004;
+    public const uint RDW_ALLCHILDREN    = 0x0080;
+    public const uint RDW_UPDATENOW      = 0x0100;
+    public const uint RDW_FRAME          = 0x0400;
 
     // ─── WM_GETICON wParam values ───────────────────────────────────────────
 

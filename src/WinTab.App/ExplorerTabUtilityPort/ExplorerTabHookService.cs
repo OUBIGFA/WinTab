@@ -22,31 +22,35 @@ namespace WinTab.App.ExplorerTabUtilityPort;
 /// </summary>
 public sealed class ExplorerTabHookService : IDisposable
 {
-    public async Task OpenLocationAsTabAsync(string location)
+    public async Task<bool> OpenLocationAsTabAsync(string location)
     {
         if (string.IsNullOrWhiteSpace(location))
-            return;
+            return false;
+
+        location = location.Trim();
+
+        if (await TryActivateExistingTabByLocation(location))
+            return true;
 
         // If no Explorer window is available, fall back to normal explorer.exe open.
         IntPtr targetTopLevel = PickTargetExplorerWindow(exclude: IntPtr.Zero);
         if (targetTopLevel == IntPtr.Zero)
         {
-            LaunchExplorerWindow(location);
-            return;
+            return TryLaunchExplorerWindow(location);
         }
 
         bool opened = await OpenLocationInNewTab(targetTopLevel, location);
         if (!opened)
         {
             _logger.Warn($"OpenLocationAsTabAsync: tab-open failed, fallback to normal explorer open for '{location}'.");
-            LaunchExplorerWindow(location);
-            return;
+            return TryLaunchExplorerWindow(location);
         }
 
         TryBringToForeground(targetTopLevel);
+        return true;
     }
 
-    private static void LaunchExplorerWindow(string location)
+    private bool TryLaunchExplorerWindow(string location)
     {
         try
         {
@@ -56,10 +60,12 @@ public sealed class ExplorerTabHookService : IDisposable
                 Arguments = $"\"{location}\"",
                 UseShellExecute = true
             });
+            return true;
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore
+            _logger.Warn($"Failed to launch explorer fallback for '{location}': {ex.Message}");
+            return false;
         }
     }
 
@@ -89,6 +95,7 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly ConcurrentDictionary<IntPtr, DateTimeOffset> _pending = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _knownExplorerTopLevels = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _earlyHiddenExplorer = new();
+    private readonly ConcurrentDictionary<IntPtr, ConcurrentDictionary<IntPtr, int>> _tabIndexCache = new();
     private readonly object _sendLock = new();
 
     private IntPtr _lastExplorerForeground;
@@ -156,6 +163,354 @@ public sealed class ExplorerTabHookService : IDisposable
     }
 
     private readonly record struct RegisteredCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string? Location);
+    private readonly record struct ExistingTabCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string Location);
+
+    private async Task<bool> TryActivateExistingTabByLocation(string location, IntPtr excludeTopLevel = default)
+    {
+        ExistingTabCandidate? candidate = await UiAsync(() => TryFindExistingTabByLocationUi(location, excludeTopLevel));
+        if (candidate is null)
+            return false;
+
+        bool activated = await TryActivateTabHandle(candidate.Value.TopLevelHwnd, candidate.Value.TabHandle);
+        if (!activated)
+        {
+            // Do not create duplicate tabs when an existing tab has already been found.
+            TryBringToForeground(candidate.Value.TopLevelHwnd);
+            _logger.Warn($"Found existing tab for '{location}' but failed to activate it precisely; skipped duplicate creation.");
+            return true;
+        }
+
+        _logger.Info($"Activated existing Explorer tab: {candidate.Value.Location}");
+        return true;
+    }
+
+    private ExistingTabCandidate? TryFindExistingTabByLocationUi(string location, IntPtr excludeTopLevel)
+    {
+        if (!IsRealFileSystemLocation(location))
+            return null;
+
+        IntPtr foreground = NativeMethods.GetForegroundWindow();
+        IntPtr lastForeground = _lastExplorerForeground;
+
+        ExistingTabCandidate? firstMatch = null;
+        ExistingTabCandidate? preferredLastForegroundMatch = null;
+
+        foreach (object tab in GetShellWindowsSnapshotUi())
+        {
+            try
+            {
+                string? tabLocation = TryGetComLocation(tab);
+                if (tabLocation is null ||
+                    !IsRealFileSystemLocation(tabLocation) ||
+                    !PathsEquivalent(tabLocation, location))
+                    continue;
+
+                IntPtr tabHandle = GetTabHandle(tab);
+                if (tabHandle == IntPtr.Zero || !NativeMethods.IsWindow(tabHandle))
+                    continue;
+
+                IntPtr topLevel = NativeMethods.GetAncestor(tabHandle, NativeConstants.GA_ROOT);
+                if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel))
+                    continue;
+
+                if (excludeTopLevel != IntPtr.Zero && topLevel == excludeTopLevel)
+                    continue;
+
+                if (!IsExplorerTopLevelWindow(topLevel))
+                    continue;
+
+                var candidate = new ExistingTabCandidate(topLevel, tabHandle, tabLocation!);
+                if (topLevel == foreground)
+                    return candidate;
+
+                if (lastForeground != IntPtr.Zero && topLevel == lastForeground)
+                    preferredLastForegroundMatch = candidate;
+
+                firstMatch ??= candidate;
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(tab);
+            }
+        }
+
+        return preferredLastForegroundMatch ?? firstMatch;
+    }
+
+    private async Task<bool> TryActivateTabHandle(IntPtr explorerTopLevel, IntPtr tabHandle)
+    {
+        if (explorerTopLevel == IntPtr.Zero || tabHandle == IntPtr.Zero)
+            return false;
+
+        if (!NativeMethods.IsWindow(explorerTopLevel) || !NativeMethods.IsWindow(tabHandle))
+            return false;
+
+        bool targetIsForeground = NativeMethods.GetForegroundWindow() == explorerTopLevel;
+
+        if (!targetIsForeground)
+            NativeMethods.ShowWindow(explorerTopLevel, NativeConstants.SW_SHOWNOACTIVATE);
+
+        if (GetActiveTabHandle(explorerTopLevel) == tabHandle)
+        {
+            TryBringToForeground(explorerTopLevel);
+            return true;
+        }
+
+        List<IntPtr> tabs = GetAllTabHandles(explorerTopLevel);
+        if (tabs.Count == 0)
+            return false;
+
+        int preferredIndex = TryGetCachedTabIndex(explorerTopLevel, tabHandle, tabs);
+        if (preferredIndex >= 0 && await TryActivateTabByIndex(explorerTopLevel, tabHandle, preferredIndex, timeoutMs: 220))
+        {
+            RememberTabIndex(explorerTopLevel, tabHandle, preferredIndex);
+            TryBringToForeground(explorerTopLevel);
+            return true;
+        }
+
+        int comIndex = await UiAsync(() => TryGetComTabIndexUi(explorerTopLevel, tabHandle));
+
+        if (comIndex >= 0 &&
+            comIndex != preferredIndex &&
+            await TryActivateTabByIndex(explorerTopLevel, tabHandle, comIndex, timeoutMs: 220))
+        {
+            RememberTabIndex(explorerTopLevel, tabHandle, comIndex);
+            TryBringToForeground(explorerTopLevel);
+            return true;
+        }
+
+        int matchedIndex;
+        if (targetIsForeground)
+        {
+            bool lockReady = TryEnterFrontProbeRedrawLock(explorerTopLevel, out bool redrawLocked, out bool windowLocked);
+            if (!lockReady)
+            {
+                _logger.Warn($"Activation probe skipped (no redraw lock) for Explorer 0x{explorerTopLevel.ToInt64():X}.");
+                return false;
+            }
+
+            try
+            {
+                matchedIndex = await ProbeTabIndexForHandle(explorerTopLevel, tabHandle, tabs, skipPrimary: preferredIndex, skipSecondary: comIndex);
+            }
+            finally
+            {
+                ExitFrontProbeRedrawLock(explorerTopLevel, redrawLocked, windowLocked);
+            }
+        }
+        else
+        {
+            matchedIndex = await ProbeTabIndexForHandle(explorerTopLevel, tabHandle, tabs, skipPrimary: preferredIndex, skipSecondary: comIndex);
+        }
+
+        if (matchedIndex >= 0)
+        {
+            RememberTabIndex(explorerTopLevel, tabHandle, matchedIndex);
+            TryBringToForeground(explorerTopLevel);
+            return true;
+        }
+
+        bool activeNow = GetActiveTabHandle(explorerTopLevel) == tabHandle;
+        if (activeNow)
+            TryBringToForeground(explorerTopLevel);
+
+        return activeNow;
+    }
+
+    private int TryGetCachedTabIndex(IntPtr explorerTopLevel, IntPtr tabHandle, List<IntPtr> tabs)
+    {
+        if (_tabIndexCache.TryGetValue(explorerTopLevel, out ConcurrentDictionary<IntPtr, int>? perWindow) &&
+            perWindow.TryGetValue(tabHandle, out int cachedIndex) &&
+            cachedIndex >= 0 &&
+            cachedIndex < tabs.Count)
+        {
+            return cachedIndex;
+        }
+
+        return -1;
+    }
+
+    private void RememberTabIndex(IntPtr explorerTopLevel, IntPtr tabHandle, int index)
+    {
+        if (index < 0)
+            return;
+
+        ConcurrentDictionary<IntPtr, int> perWindow = _tabIndexCache.GetOrAdd(
+            explorerTopLevel,
+            static _ => new ConcurrentDictionary<IntPtr, int>());
+
+        perWindow[tabHandle] = index;
+    }
+
+    private async Task<bool> TryActivateTabByIndex(IntPtr explorerTopLevel, IntPtr tabHandle, int index, int timeoutMs)
+    {
+        if (!TrySelectTabByIndex(explorerTopLevel, index))
+            return false;
+
+        return await WaitForActiveTabHandle(explorerTopLevel, tabHandle, timeoutMs: timeoutMs);
+    }
+
+    private async Task<int> ProbeTabIndexForHandle(IntPtr explorerTopLevel, IntPtr tabHandle, List<IntPtr> tabs, int skipPrimary, int skipSecondary)
+    {
+        for (int i = 0; i < tabs.Count; i++)
+        {
+            if (i == skipPrimary || i == skipSecondary)
+                continue;
+
+            if (!TrySelectTabByIndex(explorerTopLevel, i))
+                continue;
+
+            if (await WaitForActiveTabHandle(explorerTopLevel, tabHandle, timeoutMs: 120))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static bool TryEnterFrontProbeRedrawLock(IntPtr explorerTopLevel, out bool redrawLocked, out bool windowLocked)
+    {
+        redrawLocked = false;
+        windowLocked = false;
+
+        if (explorerTopLevel == IntPtr.Zero || !NativeMethods.IsWindow(explorerTopLevel))
+            return false;
+
+        try
+        {
+            windowLocked = NativeMethods.LockWindowUpdate(explorerTopLevel);
+        }
+        catch
+        {
+            // ignore
+        }
+
+        if (!windowLocked)
+            return false;
+
+        try
+        {
+            NativeMethods.SendMessage(
+                explorerTopLevel,
+                (uint)NativeConstants.WM_SETREDRAW,
+                IntPtr.Zero,
+                IntPtr.Zero);
+
+            redrawLocked = true;
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return true;
+    }
+
+    private static void ExitFrontProbeRedrawLock(IntPtr explorerTopLevel, bool redrawLocked, bool windowLocked)
+    {
+        if (windowLocked)
+        {
+            try
+            {
+                NativeMethods.LockWindowUpdate(IntPtr.Zero);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        if (!redrawLocked || explorerTopLevel == IntPtr.Zero || !NativeMethods.IsWindow(explorerTopLevel))
+            return;
+
+        try
+        {
+            NativeMethods.SendMessage(
+                explorerTopLevel,
+                (uint)NativeConstants.WM_SETREDRAW,
+                new IntPtr(1),
+                IntPtr.Zero);
+
+            uint flags = NativeConstants.RDW_INVALIDATE |
+                         NativeConstants.RDW_ERASE |
+                         NativeConstants.RDW_FRAME |
+                         NativeConstants.RDW_ALLCHILDREN |
+                         NativeConstants.RDW_UPDATENOW;
+
+            NativeMethods.RedrawWindow(explorerTopLevel, IntPtr.Zero, IntPtr.Zero, flags);
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private static int TryGetComTabIndexUi(IntPtr explorerTopLevel, IntPtr tabHandle)
+    {
+        if (explorerTopLevel == IntPtr.Zero || tabHandle == IntPtr.Zero)
+            return -1;
+
+        int index = 0;
+        foreach (object tab in GetShellWindowsSnapshotUi())
+        {
+            try
+            {
+                IntPtr handle = GetTabHandle(tab);
+                if (handle == IntPtr.Zero)
+                    continue;
+
+                IntPtr topLevel = NativeMethods.GetAncestor(handle, NativeConstants.GA_ROOT);
+                if (topLevel != explorerTopLevel)
+                    continue;
+
+                if (handle == tabHandle)
+                    return index;
+
+                index++;
+            }
+            catch
+            {
+                // ignore
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(tab);
+            }
+        }
+
+        return -1;
+    }
+
+    private static bool TrySelectTabByIndex(IntPtr explorerTopLevel, int index)
+    {
+        if (index < 0 || explorerTopLevel == IntPtr.Zero || !NativeMethods.IsWindow(explorerTopLevel))
+            return false;
+
+        NativeMethods.SendMessage(
+            explorerTopLevel,
+            (uint)NativeConstants.WM_COMMAND,
+            new IntPtr(NativeConstants.EXPLORER_CMD_SELECT_TAB_BY_INDEX),
+            new IntPtr(index + 1));
+
+        return true;
+    }
+
+    private static async Task<bool> WaitForActiveTabHandle(IntPtr explorerTopLevel, IntPtr expectedTabHandle, int timeoutMs)
+    {
+        int start = Environment.TickCount;
+        while (Environment.TickCount - start < timeoutMs)
+        {
+            if (GetActiveTabHandle(explorerTopLevel) == expectedTabHandle)
+                return true;
+
+            await Task.Delay(25);
+        }
+
+        return GetActiveTabHandle(explorerTopLevel) == expectedTabHandle;
+    }
 
     private bool TryHookShellWindowRegistered()
     {
@@ -408,6 +763,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _knownExplorerTopLevels.TryRemove(hwnd, out _);
         _earlyHiddenExplorer.TryRemove(hwnd, out _);
         _pending.TryRemove(hwnd, out _);
+        _tabIndexCache.TryRemove(hwnd, out _);
     }
 
     private void OnWindowShown(object? sender, IntPtr hwnd)
@@ -536,6 +892,20 @@ public sealed class ExplorerTabHookService : IDisposable
             if (string.IsNullOrWhiteSpace(location))
             {
                 _logger.Info($"Skip convert: location not ready for 0x{sourceTopLevel.ToInt64():X}");
+                return;
+            }
+
+            if (await TryActivateExistingTabByLocation(location, excludeTopLevel: sourceTopLevel))
+            {
+                bool closeExistingPosted = _windowManager.Close(sourceTopLevel);
+                if (!closeExistingPosted && _windowManager.IsAlive(sourceTopLevel))
+                {
+                    _logger.Warn($"Convert warning: failed to close source window after existing-tab activation 0x{sourceTopLevel.ToInt64():X}");
+                    return;
+                }
+
+                converted = true;
+                _logger.Info($"Converted Explorer window to existing tab: {location} ({sw.ElapsedMilliseconds} ms)");
                 return;
             }
 
@@ -1264,14 +1634,28 @@ public sealed class ExplorerTabHookService : IDisposable
     {
         try
         {
-            string left = Path.GetFullPath(a).TrimEnd('\\', '/');
-            string right = Path.GetFullPath(b).TrimEnd('\\', '/');
+            string left = NormalizePathForCompare(Path.GetFullPath(a));
+            string right = NormalizePathForCompare(Path.GetFullPath(b));
             return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
-            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(
+                NormalizePathForCompare(a),
+                NormalizePathForCompare(b),
+                StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    private static string NormalizePathForCompare(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return string.Empty;
+
+        return path
+            .Replace('/', '\\')
+            .TrimEnd('\\')
+            .Normalize(NormalizationForm.FormKC);
     }
 
     private static string NormalizeExeName(string processName)

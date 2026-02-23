@@ -149,11 +149,17 @@ public partial class App : Application
             try
             {
                 var hook = _serviceProvider.GetRequiredService<ExplorerTabHookService>();
-                await hook.OpenLocationAsTabAsync(path);
+                bool handled = await hook.OpenLocationAsTabAsync(path);
+                if (!handled)
+                {
+                    _logger?.Warn($"Open-folder request was not completed by tab hook; fallback open: {path}");
+                    TryOpenFolderFallback(path, _logger);
+                }
             }
             catch (Exception ex)
             {
                 _logger?.Error("Failed to handle open-folder request.", ex);
+                TryOpenFolderFallback(path, _logger);
             }
         });
 
@@ -163,7 +169,14 @@ public partial class App : Application
             var interceptor = _serviceProvider.GetRequiredService<RegistryOpenVerbInterceptor>();
 
             bool isWin11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
-            bool enableExplorerOpenVerbInterception = isWin11;
+            string openVerbHandlerPath = ResolveLaunchExecutablePath();
+            bool hasStableOpenVerbHandlerPath = IsStableOpenVerbHandlerPath(openVerbHandlerPath);
+            bool enableExplorerOpenVerbInterception = isWin11 && hasStableOpenVerbHandlerPath;
+
+            if (isWin11 && !hasStableOpenVerbHandlerPath)
+            {
+                _logger?.Warn($"Explorer open-verb interception disabled for transient executable path: {openVerbHandlerPath}");
+            }
 
             // This behavior is now product default on supported OS.
             settings.EnableExplorerOpenVerbInterception = enableExplorerOpenVerbInterception;
@@ -471,5 +484,30 @@ public partial class App : Application
         string fileName = Path.GetFileName(path);
         return string.Equals(fileName, "dotnet", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(fileName, "dotnet.exe", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsStableOpenVerbHandlerPath(string exePath)
+    {
+        if (string.IsNullOrWhiteSpace(exePath))
+            return false;
+
+        try
+        {
+            string fullPath = Path.GetFullPath(exePath).Replace('/', '\\');
+            if (!File.Exists(fullPath))
+                return false;
+
+            if (fullPath.Contains("\\tasks\\build_tmp\\", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (fullPath.Contains("\\obj\\", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
