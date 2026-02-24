@@ -22,8 +22,13 @@
     <system:String x:Key="General_English">English</system:String>
     <system:String x:Key="Behavior_Status">状态</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">接管资源管理器打开文件夹（open-Verb 拦截）</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">拦截系统 open 动作，并尽量在已有资源管理器窗口中以标签页方式打开。</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">添加新标签时默认沿用当前活动标签页路径</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">开启：新标签页默认打开当前活动标签页所在路径；关闭：新标签页默认打开“此电脑”。</system:String>
     <system:String x:Key="Behavior_OpenChildFolderInNewTab">在当前活动标签页目录内打开文件夹时新建标签页</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">开启后，当前标签页下的子目录会在新标签页打开，而不是覆盖当前标签页。</system:String>
     <system:String x:Key="Behavior_CloseTabOnDoubleClick">双击标签页标题区域关闭（模拟中键单击）</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">仅在标签页标题区域触发，避免误触资源管理器工具栏按钮。</system:String>
 
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">主题</system:String>

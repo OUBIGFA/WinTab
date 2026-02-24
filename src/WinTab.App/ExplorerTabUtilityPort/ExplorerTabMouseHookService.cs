@@ -15,6 +15,20 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     private const string ExplorerTabClass = "ShellTabWindowClass";
     private const int RoleSystemPageTab = 0x25;
     private const int RoleSystemPageTabList = 0x3C;
+    private const int RoleSystemToolBar = 0x16;
+    private const int RoleSystemPushButton = 0x2B;
+    private const int RoleSystemSplitButton = 0x3E;
+    private const int RoleSystemButtonDropDown = 0x38;
+    private const int RoleSystemButtonMenu = 0x39;
+    private const int RoleSystemButtonDropDownGrid = 0x3A;
+
+    private enum AccessiblePointKind
+    {
+        Unknown,
+        Tab,
+        NavigationControl,
+        Other
+    }
 
     private readonly object _sync = new();
     private readonly Logger _logger;
@@ -211,8 +225,12 @@ public sealed class ExplorerTabMouseHookService : IDisposable
 
     private bool IsPointInTabTitleArea(NativeStructs.POINT point, IntPtr topLevelHandle)
     {
-        if (IsPointOnAccessibleTab(point))
+        AccessiblePointKind pointKind = GetAccessiblePointKind(point);
+        if (pointKind == AccessiblePointKind.Tab)
             return true;
+
+        if (pointKind == AccessiblePointKind.NavigationControl)
+            return false;
 
         if (!NativeMethods.GetWindowRect(topLevelHandle, out NativeStructs.RECT topLevelRect))
             return false;
@@ -221,26 +239,34 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         return point.Y >= topLevelRect.Top && point.Y <= maxHeaderY;
     }
 
-    private static bool IsPointOnAccessibleTab(NativeStructs.POINT point)
+    private static AccessiblePointKind GetAccessiblePointKind(NativeStructs.POINT point)
     {
         if (NativeMethods.AccessibleObjectFromPoint(point, out Accessibility.IAccessible accObj, out object childId) != 0)
-            return false;
+            return AccessiblePointKind.Unknown;
 
         if (accObj is null)
-            return false;
+            return AccessiblePointKind.Unknown;
 
         try
         {
-            int roleFromChild = RoleToInt(accObj.get_accRole(childId));
-            if (roleFromChild is RoleSystemPageTab or RoleSystemPageTabList)
-                return true;
+            int? roleFromChild = TryGetAccessibleRole(accObj, childId);
+            int? roleFromSelf = TryGetAccessibleRole(accObj, 0);
 
-            int roleFromSelf = RoleToInt(accObj.get_accRole(0));
-            return roleFromSelf is RoleSystemPageTab or RoleSystemPageTabList;
+            bool isTabLike =
+                IsTabRole(roleFromChild) ||
+                IsTabRole(roleFromSelf) ||
+                (HasTabLikeAccessibleAncestor(accObj) &&
+                 (IsTabButtonRole(roleFromChild) || IsTabButtonRole(roleFromSelf)));
+
+            if (isTabLike)
+                return AccessiblePointKind.Tab;
+
+            bool isNavigationLike = IsNavigationLikeRole(roleFromChild) || IsNavigationLikeRole(roleFromSelf);
+            return isNavigationLike ? AccessiblePointKind.NavigationControl : AccessiblePointKind.Other;
         }
         catch
         {
-            return false;
+            return AccessiblePointKind.Unknown;
         }
         finally
         {
@@ -253,6 +279,93 @@ public sealed class ExplorerTabMouseHookService : IDisposable
                 // ignore release failures
             }
         }
+    }
+
+    private static int? TryGetAccessibleRole(Accessibility.IAccessible accessible, object childId)
+    {
+        try
+        {
+            object roleValue = accessible.get_accRole(childId);
+            return roleValue is null ? null : RoleToInt(roleValue);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool HasTabLikeAccessibleAncestor(Accessibility.IAccessible accessible)
+    {
+        object? parentObj;
+        try
+        {
+            parentObj = accessible.accParent;
+        }
+        catch
+        {
+            return false;
+        }
+
+        for (int depth = 0; depth < 8 && parentObj is not null; depth++)
+        {
+            if (parentObj is not Accessibility.IAccessible parentAccessible)
+                return false;
+
+            object? nextParent = null;
+
+            try
+            {
+                int? parentRole = TryGetAccessibleRole(parentAccessible, 0);
+                if (IsTabRole(parentRole))
+                    return true;
+
+                nextParent = parentAccessible.accParent;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                try
+                {
+                    Marshal.FinalReleaseComObject(parentAccessible);
+                }
+                catch
+                {
+                }
+            }
+
+            parentObj = nextParent;
+        }
+
+        return false;
+    }
+
+    private static bool IsTabRole(int? role)
+    {
+        return role is RoleSystemPageTab or RoleSystemPageTabList;
+    }
+
+    private static bool IsTabButtonRole(int? role)
+    {
+        return role is
+            RoleSystemPushButton or
+            RoleSystemSplitButton or
+            RoleSystemButtonDropDown or
+            RoleSystemButtonMenu or
+            RoleSystemButtonDropDownGrid;
+    }
+
+    private static bool IsNavigationLikeRole(int? role)
+    {
+        return role is
+            RoleSystemToolBar or
+            RoleSystemPushButton or
+            RoleSystemSplitButton or
+            RoleSystemButtonDropDown or
+            RoleSystemButtonMenu or
+            RoleSystemButtonDropDownGrid;
     }
 
     private static int RoleToInt(object roleValue)

@@ -59,9 +59,7 @@ public partial class App : Application
 
         if (e.Args.Length >= 1 && string.Equals(e.Args[0], "--wintab-companion", StringComparison.OrdinalIgnoreCase))
         {
-            using Logger? companionLogger = TryCreateCompanionLogger();
-            int code = ExplorerOpenVerbCompanion.Run(e.Args, companionLogger);
-            Shutdown(code);
+            Shutdown(0);
             return;
         }
 
@@ -191,7 +189,6 @@ public partial class App : Application
             if (enableExplorerOpenVerbInterception)
             {
                 interceptor.EnableOrRepair();
-                StartCompanionWatcher();
             }
             else
             {
@@ -535,28 +532,6 @@ public partial class App : Application
         catch (Exception ex)
         {
             _logger?.Error("Failed to update tray icon visibility.", ex);
-        }
-    }
-
-    private void StartCompanionWatcher()
-    {
-        try
-        {
-            int pid = System.Diagnostics.Process.GetCurrentProcess().Id;
-            string exePath = ResolveLaunchExecutablePath();
-
-            // Companion is the same exe in a special mode.
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = exePath,
-                Arguments = $"--wintab-companion {pid}",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error("Failed to start companion watcher.", ex);
         }
     }
 

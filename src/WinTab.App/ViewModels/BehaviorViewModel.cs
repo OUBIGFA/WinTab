@@ -18,6 +18,9 @@ public partial class BehaviorViewModel : ObservableObject
     private bool _isUpdatingCloseTabOnDoubleClickToggle;
 
     [ObservableProperty]
+    private bool _openNewTabFromActiveTabPath;
+
+    [ObservableProperty]
     private bool _openChildFolderInNewTabFromActiveTab;
 
     [ObservableProperty]
@@ -41,9 +44,16 @@ public partial class BehaviorViewModel : ObservableObject
         _tabMouseHookService = tabMouseHookService;
         _logger = logger;
 
+        _openNewTabFromActiveTabPath = settings.OpenNewTabFromActiveTabPath;
         _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
         _enableExplorerOpenVerbInterception = settings.EnableExplorerOpenVerbInterception;
         _closeTabOnDoubleClick = settings.CloseTabOnDoubleClick;
+    }
+
+    partial void OnOpenNewTabFromActiveTabPathChanged(bool value)
+    {
+        _settings.OpenNewTabFromActiveTabPath = value;
+        SaveSettings();
     }
 
     partial void OnOpenChildFolderInNewTabFromActiveTabChanged(bool value)

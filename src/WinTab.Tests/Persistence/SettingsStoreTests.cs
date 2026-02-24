@@ -24,6 +24,7 @@ public sealed class SettingsStoreTests
 
             settings.RunAtStartup.Should().BeFalse();
             settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
+            settings.OpenNewTabFromActiveTabPath.Should().BeTrue();
             settings.OpenChildFolderInNewTabFromActiveTab.Should().BeFalse();
             settings.CloseTabOnDoubleClick.Should().BeFalse();
             settings.Theme.Should().Be(ThemeMode.Light);
@@ -50,6 +51,7 @@ public sealed class SettingsStoreTests
                 RunAtStartup = true,
                 StartMinimized = true,
                 EnableExplorerOpenVerbInterception = false,
+                OpenNewTabFromActiveTabPath = false,
                 OpenChildFolderInNewTabFromActiveTab = true,
                 CloseTabOnDoubleClick = true,
                 Theme = ThemeMode.Dark,
@@ -62,6 +64,7 @@ public sealed class SettingsStoreTests
             restored.RunAtStartup.Should().BeTrue();
             restored.StartMinimized.Should().BeTrue();
             restored.EnableExplorerOpenVerbInterception.Should().BeFalse();
+            restored.OpenNewTabFromActiveTabPath.Should().BeFalse();
             restored.OpenChildFolderInNewTabFromActiveTab.Should().BeTrue();
             restored.CloseTabOnDoubleClick.Should().BeTrue();
             restored.Theme.Should().Be(ThemeMode.Dark);

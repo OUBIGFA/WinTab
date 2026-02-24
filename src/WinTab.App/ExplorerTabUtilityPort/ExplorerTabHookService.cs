@@ -124,6 +124,7 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly IWindowManager _windowManager;
     private readonly AppSettings _settings;
     private readonly Logger _logger;
+    private readonly bool _autoConvertEnabled;
 
     private readonly Action<int> _windowRegisteredHandler;
     private readonly NativeMethods.WinEventDelegate _createEventCallback;
@@ -134,6 +135,7 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly IntPtr _createEventHook;
 
     private readonly ConcurrentDictionary<IntPtr, DateTimeOffset> _pending = new();
+    private readonly ConcurrentDictionary<IntPtr, DateTimeOffset> _suppressNewTabDefaultUntil = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _knownExplorerTopLevels = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _earlyHiddenExplorer = new();
     private readonly ConcurrentDictionary<IntPtr, ConcurrentDictionary<IntPtr, int>> _tabIndexCache = new();
@@ -152,21 +154,16 @@ public sealed class ExplorerTabHookService : IDisposable
         _windowRegisteredHandler = OnShellWindowRegistered;
         _createEventCallback = OnExplorerObjectCreate;
 
-        bool enableAutoConvert = string.Equals(
+        _autoConvertEnabled = string.Equals(
             Environment.GetEnvironmentVariable("WINTAB_AUTO_CONVERT_EXPLORER"),
             "1",
             StringComparison.Ordinal);
 
-        if (!enableAutoConvert)
-        {
-            _createEventHook = IntPtr.Zero;
-            _logger.Info("ExplorerTabHookService started in on-demand mode (auto-convert disabled).");
-            return;
-        }
-
-        _windowEvents.WindowShown += OnWindowShown;
         _windowEvents.WindowForegroundChanged += OnWindowForegroundChanged;
         _windowEvents.WindowDestroyed += OnWindowDestroyed;
+
+        if (_autoConvertEnabled)
+            _windowEvents.WindowShown += OnWindowShown;
 
         IntPtr currentForeground = NativeMethods.GetForegroundWindow();
         if (currentForeground != IntPtr.Zero && IsExplorerTopLevelWindow(currentForeground))
@@ -182,12 +179,14 @@ public sealed class ExplorerTabHookService : IDisposable
         {
             _logger.Info("ExplorerTabHookService: ShellWindows.WindowRegistered hooked.");
         }
-        else
+        else if (_autoConvertEnabled)
         {
             _logger.Warn("ExplorerTabHookService: ShellWindows.WindowRegistered hook unavailable, using WindowShown fallback.");
         }
 
-        // Always install EVENT_OBJECT_CREATE to reduce flash when possible.
+        // Install EVENT_OBJECT_CREATE hook:
+        // - auto-convert mode: reduce flash by early hiding new Explorer windows
+        // - on-demand mode: observe newly created tab windows for default new-tab behavior
         const uint flags = NativeConstants.WINEVENT_OUTOFCONTEXT | NativeConstants.WINEVENT_SKIPOWNPROCESS;
         _createEventHook = NativeMethods.SetWinEventHook(
             NativeConstants.EVENT_OBJECT_CREATE,
@@ -199,12 +198,18 @@ public sealed class ExplorerTabHookService : IDisposable
             flags);
 
         if (_createEventHook == IntPtr.Zero)
-            _logger.Warn("ExplorerTabHookService: EVENT_OBJECT_CREATE hook unavailable (flash may occur).");
+            _logger.Warn("ExplorerTabHookService: EVENT_OBJECT_CREATE hook unavailable.");
+
+        if (!_autoConvertEnabled)
+        {
+            _logger.Info("ExplorerTabHookService started in on-demand mode (auto-convert disabled).");
+            return;
+        }
 
         _logger.Info("ExplorerTabHookService started (ETU-style, no COMReference).");
     }
 
-    private readonly record struct RegisteredCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string? Location);
+    private readonly record struct RegisteredCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string? Location, bool IsKnownTopLevel);
     private readonly record struct ExistingTabCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string Location);
 
     private async Task<bool> TryActivateExistingTabByLocation(string location, IntPtr excludeTopLevel = default)
@@ -598,8 +603,35 @@ public sealed class ExplorerTabHookService : IDisposable
 
         try
         {
-            RegisteredCandidate? candidate = await WaitForRegisteredCandidate(cookie, timeoutMs: 1200);
+            bool shouldHandleNewTabDefault = _settings.OpenNewTabFromActiveTabPath;
+
+            RegisteredCandidate? candidate = await WaitForRegisteredCandidate(
+                cookie,
+                timeoutMs: 1200,
+                includeKnownTopLevel: shouldHandleNewTabDefault);
+
             if (candidate is null)
+                return;
+
+            if (shouldHandleNewTabDefault && candidate.Value.IsKnownTopLevel)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await TryApplyNewTabDefaultLocation(
+                            candidate.Value.TopLevelHwnd,
+                            candidate.Value.TabHandle,
+                            candidate.Value.Location);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Debug($"Failed to apply new-tab default location: {ex.Message}");
+                    }
+                });
+            }
+
+            if (!_autoConvertEnabled || candidate.Value.IsKnownTopLevel)
                 return;
 
             IntPtr hwnd = candidate.Value.TopLevelHwnd;
@@ -638,6 +670,109 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
+    private async Task TryApplyNewTabDefaultLocation(IntPtr topLevel, IntPtr suggestedTabHandle, string? suggestedLocation)
+    {
+        if (_disposed || !_settings.OpenNewTabFromActiveTabPath)
+            return;
+
+        if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel) || !IsExplorerTopLevelWindow(topLevel))
+            return;
+
+        if (IsNewTabDefaultSuppressed(topLevel))
+            return;
+
+        await Task.Delay(80);
+
+        IntPtr newTabHandle = GetActiveTabHandle(topLevel);
+        if (newTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(newTabHandle))
+            newTabHandle = suggestedTabHandle;
+
+        if (newTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(newTabHandle))
+            return;
+
+        string? newTabLocation = await UiAsync(() => TryGetLocationByTabHandleUi(newTabHandle));
+        if (!IsRealFileSystemLocation(newTabLocation) && newTabHandle == suggestedTabHandle)
+            newTabLocation = suggestedLocation;
+
+        // Sometimes the registration callback arrives before Explorer actually
+        // switches active tab; retry once before deciding no action is needed.
+        if (IsRealFileSystemLocation(newTabLocation))
+        {
+            await Task.Delay(120);
+
+            IntPtr refreshedActiveTab = GetActiveTabHandle(topLevel);
+            if (refreshedActiveTab != IntPtr.Zero && NativeMethods.IsWindow(refreshedActiveTab))
+                newTabHandle = refreshedActiveTab;
+
+            newTabLocation = await UiAsync(() => TryGetLocationByTabHandleUi(newTabHandle));
+        }
+
+        if (IsRealFileSystemLocation(newTabLocation))
+            return;
+
+        string? sourceLocation = await UiAsync(() => TryGetPreferredSourceLocationForNewTabUi(topLevel, newTabHandle));
+        if (!IsRealFileSystemLocation(sourceLocation))
+            return;
+
+        bool navigated = await NavigateTabByHandleWithRetry(newTabHandle, sourceLocation!, timeoutMs: 420);
+        if (!navigated)
+            return;
+
+        _ = await WaitUntilTabLocationMatches(newTabHandle, sourceLocation!, timeoutMs: 420, pollMs: 40);
+        _logger.Info($"Aligned new Explorer tab to active tab location: {sourceLocation}");
+    }
+
+    private static string? TryGetPreferredSourceLocationForNewTabUi(IntPtr topLevel, IntPtr newTabHandle)
+    {
+        if (topLevel == IntPtr.Zero || newTabHandle == IntPtr.Zero)
+            return null;
+
+        List<IntPtr> tabs = GetAllTabHandles(topLevel);
+        if (tabs.Count == 0)
+            return null;
+
+        if (tabs.Count >= 2 && tabs[0] == newTabHandle)
+        {
+            string? previousActiveLocation = TryGetLocationByTabHandleUi(tabs[1]);
+            if (IsRealFileSystemLocation(previousActiveLocation))
+                return previousActiveLocation;
+        }
+
+        foreach (IntPtr tabHandle in tabs)
+        {
+            if (tabHandle == newTabHandle)
+                continue;
+
+            string? location = TryGetLocationByTabHandleUi(tabHandle);
+            if (IsRealFileSystemLocation(location))
+                return location;
+        }
+
+        return null;
+    }
+
+    private void SuppressNewTabDefaultBehavior(IntPtr explorerTopLevel, TimeSpan duration)
+    {
+        if (explorerTopLevel == IntPtr.Zero)
+            return;
+
+        _suppressNewTabDefaultUntil[explorerTopLevel] = DateTimeOffset.UtcNow.Add(duration);
+    }
+
+    private bool IsNewTabDefaultSuppressed(IntPtr explorerTopLevel)
+    {
+        if (!_suppressNewTabDefaultUntil.TryGetValue(explorerTopLevel, out DateTimeOffset untilUtc))
+            return false;
+
+        if (untilUtc <= DateTimeOffset.UtcNow)
+        {
+            _suppressNewTabDefaultUntil.TryRemove(explorerTopLevel, out _);
+            return false;
+        }
+
+        return true;
+    }
+
     private void OnExplorerObjectCreate(
         IntPtr hWinEventHook,
         uint eventType,
@@ -653,12 +788,41 @@ public sealed class ExplorerTabHookService : IDisposable
         if (idObject != NativeConstants.OBJID_WINDOW || idChild != 0)
             return;
 
-        if (_pending.ContainsKey(hwnd) || _knownExplorerTopLevels.ContainsKey(hwnd))
-            return;
-
         var classBuilder = new StringBuilder(32);
         NativeMethods.GetClassName(hwnd, classBuilder, classBuilder.Capacity);
-        if (!string.Equals(classBuilder.ToString(), ExplorerWindowClass, StringComparison.OrdinalIgnoreCase))
+        string windowClass = classBuilder.ToString();
+
+        if (string.Equals(windowClass, ExplorerTabClass, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!_settings.OpenNewTabFromActiveTabPath)
+                return;
+
+            IntPtr topLevel = NativeMethods.GetAncestor(hwnd, NativeConstants.GA_ROOT);
+            if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel))
+                return;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await TryApplyNewTabDefaultLocation(topLevel, hwnd, suggestedLocation: null);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Debug($"Failed to handle tab-create event: {ex.Message}");
+                }
+            });
+
+            return;
+        }
+
+        if (!string.Equals(windowClass, ExplorerWindowClass, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (!_autoConvertEnabled)
+            return;
+
+        if (_pending.ContainsKey(hwnd) || _knownExplorerTopLevels.ContainsKey(hwnd))
             return;
 
         // Hide first (fast) to reduce flash; we'll validate later.
@@ -667,13 +831,19 @@ public sealed class ExplorerTabHookService : IDisposable
             _earlyHiddenExplorer.TryAdd(hwnd, 0);
     }
 
-    private async Task<RegisteredCandidate?> WaitForRegisteredCandidate(int cookie, int timeoutMs)
+    private async Task<RegisteredCandidate?> WaitForRegisteredCandidate(int cookie, int timeoutMs, bool includeKnownTopLevel)
     {
         int start = Environment.TickCount;
         while (Environment.TickCount - start < timeoutMs)
         {
             RegisteredCandidate? candidate = await UiAsync(() =>
-                TryTakeRegisteredCandidateByCookieUi(cookie) ?? TryTakeRegisteredCandidateUi());
+                TryTakeRegisteredCandidateByCookieUi(cookie, includeKnownTopLevel));
+
+            if (candidate is not null)
+                return candidate;
+
+            if (_autoConvertEnabled)
+                candidate = await UiAsync(() => TryTakeRegisteredCandidateUi(includeKnownTopLevel: false));
 
             if (candidate is not null)
                 return candidate;
@@ -684,7 +854,7 @@ public sealed class ExplorerTabHookService : IDisposable
         return null;
     }
 
-    private RegisteredCandidate? TryTakeRegisteredCandidateByCookieUi(int cookie)
+    private RegisteredCandidate? TryTakeRegisteredCandidateByCookieUi(int cookie, bool includeKnownTopLevel)
     {
         object? windows = GetShellWindowsCollectionUi();
         if (windows is null)
@@ -703,18 +873,20 @@ public sealed class ExplorerTabHookService : IDisposable
             if (topLevel == IntPtr.Zero)
                 return null;
 
-            if (_knownExplorerTopLevels.ContainsKey(topLevel))
+            bool knownTopLevel = _knownExplorerTopLevels.ContainsKey(topLevel);
+            if (knownTopLevel && !includeKnownTopLevel)
                 return null;
 
             if (!IsExplorerTopLevelWindow(topLevel))
                 return null;
 
-            _knownExplorerTopLevels.TryAdd(topLevel, 0);
+            if (!knownTopLevel)
+                _knownExplorerTopLevels.TryAdd(topLevel, 0);
 
             IntPtr tabHandle = GetTabHandle(tab);
             string? location = TryGetComLocation(tab);
 
-            return new RegisteredCandidate(topLevel, tabHandle, location);
+            return new RegisteredCandidate(topLevel, tabHandle, location, knownTopLevel);
         }
         catch
         {
@@ -727,7 +899,7 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
-    private RegisteredCandidate? TryTakeRegisteredCandidateUi()
+    private RegisteredCandidate? TryTakeRegisteredCandidateUi(bool includeKnownTopLevel)
     {
         foreach (object tab in GetShellWindowsSnapshotUi())
         {
@@ -738,18 +910,20 @@ public sealed class ExplorerTabHookService : IDisposable
                 if (topLevel == IntPtr.Zero)
                     continue;
 
-                if (_knownExplorerTopLevels.ContainsKey(topLevel))
+                bool knownTopLevel = _knownExplorerTopLevels.ContainsKey(topLevel);
+                if (knownTopLevel && !includeKnownTopLevel)
                     continue;
 
                 if (!IsExplorerTopLevelWindow(topLevel))
                     continue;
 
-                _knownExplorerTopLevels.TryAdd(topLevel, 0);
+                if (!knownTopLevel)
+                    _knownExplorerTopLevels.TryAdd(topLevel, 0);
 
                 IntPtr tabHandle = GetTabHandle(tab);
                 string? location = TryGetComLocation(tab);
 
-                return new RegisteredCandidate(topLevel, tabHandle, location);
+                return new RegisteredCandidate(topLevel, tabHandle, location, knownTopLevel);
             }
             catch
             {
@@ -805,6 +979,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _knownExplorerTopLevels.TryRemove(hwnd, out _);
         _earlyHiddenExplorer.TryRemove(hwnd, out _);
         _pending.TryRemove(hwnd, out _);
+        _suppressNewTabDefaultUntil.TryRemove(hwnd, out _);
         _tabIndexCache.TryRemove(hwnd, out _);
     }
 
@@ -1102,6 +1277,8 @@ public sealed class ExplorerTabHookService : IDisposable
 
         IntPtr oldActiveTab = activeTab;
         List<IntPtr> before = GetAllTabHandles(targetTopLevel);
+
+        SuppressNewTabDefaultBehavior(targetTopLevel, TimeSpan.FromMilliseconds(1500));
 
         NativeMethods.PostMessage(
             activeTab,
