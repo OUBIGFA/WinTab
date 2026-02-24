@@ -2,7 +2,9 @@
 ; Supports: custom install path, .NET 9 runtime detection, bilingual (Chinese/English)
 
 #define AppName "WinTab"
-#define AppVersion "1.0.0"
+#ifndef AppVersion
+  #define AppVersion "1.0.0"
+#endif
 #define AppPublisher "WinTab Contributors"
 #define AppURL "https://github.com/user/WinTab"
 #define AppExeName "WinTab.exe"
