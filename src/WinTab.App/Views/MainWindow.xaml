@@ -29,6 +29,9 @@
             </ui:NavigationView.MenuItems>
 
             <ui:NavigationView.FooterMenuItems>
+                <ui:NavigationViewItem Content="{DynamicResource Nav_Uninstall}"
+                                       TargetPageType="{x:Type pages:UninstallPage}"
+                                       Icon="{ui:SymbolIcon Settings24}" />
                 <ui:NavigationViewItem Content="{DynamicResource Nav_About}"
                                        TargetPageType="{x:Type pages:AboutPage}"
                                        Icon="{ui:SymbolIcon Info24}" />

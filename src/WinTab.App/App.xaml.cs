@@ -292,11 +292,13 @@ public partial class App : Application
 
         services.AddTransient<GeneralViewModel>();
         services.AddTransient<BehaviorViewModel>();
+        services.AddTransient<UninstallViewModel>();
         services.AddTransient<AboutViewModel>();
 
         services.AddSingleton<MainWindow>();
         services.AddTransient<GeneralPage>();
         services.AddTransient<BehaviorPage>();
+        services.AddTransient<UninstallPage>();
         services.AddTransient<AboutPage>();
     }
 

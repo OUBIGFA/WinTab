@@ -55,15 +55,32 @@ jobs:
         run: |
           Get-ChildItem -Path "publish/win-x64" -Filter "*.pdb" -Recurse | Remove-Item -Force
 
+      - name: Ensure Inno Setup is available
+        id: inno
+        shell: pwsh
+        run: |
+          $paths = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+
+          $isccPath = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $isccPath) {
+            choco install innosetup --no-progress -y
+            $isccPath = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+
+          if (-not $isccPath) {
+            throw "ISCC.exe not found after installation attempt."
+          }
+
+          "iscc_path=$isccPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
       - name: Build installer with Inno Setup
         shell: pwsh
         run: |
-          $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $isccPath)) {
-            $isccPath = "C:\Program Files\Inno Setup 6\ISCC.exe"
-          }
-
-          & $isccPath "/DAppVersion=${{ steps.meta.outputs.version }}" installers/WinTab.iss
+          & "${{ steps.inno.outputs.iscc_path }}" "/DAppVersion=${{ steps.meta.outputs.version }}" installers/WinTab.iss
 
       - name: Create portable ZIP
         shell: pwsh

@@ -9,6 +9,7 @@
     <!-- Navigation -->
     <system:String x:Key="Nav_General">General</system:String>
     <system:String x:Key="Nav_Behavior">Behavior</system:String>
+    <system:String x:Key="Nav_Uninstall">Uninstall</system:String>
     <system:String x:Key="Nav_About">About</system:String>
 
     <!-- General Page -->
@@ -37,6 +38,23 @@
     <system:String x:Key="About_LogLocation">Log file location</system:String>
     <system:String x:Key="About_OpenLog">Open Log</system:String>
     <system:String x:Key="About_OpenLogFolder">Open Log Folder</system:String>
+
+    <!-- Uninstall Page -->
+    <system:String x:Key="Uninstall_Title">Uninstall WinTab</system:String>
+    <system:String x:Key="Uninstall_Description">Start the uninstaller here. For installed mode, the wizard keeps user data by default and lets you choose full cleanup.</system:String>
+    <system:String x:Key="Uninstall_DefaultBehavior">Tip: the uninstall wizard keeps settings and logs by default; choosing "Yes" also removes user data.</system:String>
+    <system:String x:Key="Uninstall_ModeLabel">Run mode</system:String>
+    <system:String x:Key="Uninstall_ModeInstalled">Installed</system:String>
+    <system:String x:Key="Uninstall_ModePortable">Portable</system:String>
+    <system:String x:Key="Uninstall_PathLabel">Uninstaller</system:String>
+    <system:String x:Key="Uninstall_PathMissing">Uninstaller not found (use "Open system uninstall settings").</system:String>
+    <system:String x:Key="Uninstall_Button">Uninstall WinTab</system:String>
+    <system:String x:Key="Uninstall_OpenSystem">Open system uninstall settings</system:String>
+    <system:String x:Key="Uninstall_OpenFolder">Open app directory</system:String>
+    <system:String x:Key="Uninstall_ConfirmTitle">Confirm Uninstall</system:String>
+    <system:String x:Key="Uninstall_Confirm">WinTab uninstaller will be started. Continue?</system:String>
+    <system:String x:Key="Uninstall_LaunchFailed">Unable to start uninstaller. Please use system uninstall settings.</system:String>
+    <system:String x:Key="Uninstall_PortableHint">Portable mode detected. Close WinTab and delete the app directory to uninstall.</system:String>
 
     <!-- Tray Icon -->
     <system:String x:Key="Tray_Open">Show Main Window</system:String>
