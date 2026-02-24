@@ -126,6 +126,10 @@ public partial class App : Application
 
         MainWindow = mainWindow;
 
+        // Re-apply once after window creation to ensure first paint uses
+        // the configured theme resources on all visual elements.
+        ThemeManager.ApplyTheme(settings.Theme);
+
         // -- 10. Start lifecycle services ---------------------------------
         _lifecycleService = _serviceProvider.GetRequiredService<AppLifecycleService>();
         _lifecycleService.Start();

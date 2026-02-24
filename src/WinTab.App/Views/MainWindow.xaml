@@ -15,23 +15,19 @@
                            IsPaneToggleVisible="True"
                            OpenPaneLength="200">
 
-            <ui:NavigationView.Header>
-                <ui:BreadcrumbBar x:Name="BreadcrumbBar" Margin="42,32,0,0" />
-            </ui:NavigationView.Header>
-
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="{DynamicResource Nav_General}"
                                        TargetPageType="{x:Type pages:GeneralPage}"
                                        Icon="{ui:SymbolIcon Settings24}" />
                 <ui:NavigationViewItem Content="{DynamicResource Nav_Behavior}"
                                        TargetPageType="{x:Type pages:BehaviorPage}"
-                                       Icon="{ui:SymbolIcon Settings24}" />
+                                       Icon="{ui:SymbolIcon CursorClick24}" />
             </ui:NavigationView.MenuItems>
 
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="{DynamicResource Nav_Uninstall}"
                                        TargetPageType="{x:Type pages:UninstallPage}"
-                                       Icon="{ui:SymbolIcon Settings24}" />
+                                       Icon="{ui:SymbolIcon Delete24}" />
                 <ui:NavigationViewItem Content="{DynamicResource Nav_About}"
                                        TargetPageType="{x:Type pages:AboutPage}"
                                        Icon="{ui:SymbolIcon Info24}" />

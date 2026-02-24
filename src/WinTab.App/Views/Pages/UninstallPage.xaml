@@ -14,9 +14,9 @@
 
             <TextBlock Text="{DynamicResource Uninstall_Title}"
                        FontSize="20" FontWeight="SemiBold"
-                       Margin="0,0,0,12" />
+                       Margin="0,0,0,16" />
 
-            <ui:CardControl Margin="0,0,0,4">
+            <ui:CardControl Margin="0,0,0,8">
                 <ui:CardControl.Header>
                     <TextBlock Text="{DynamicResource Uninstall_Description}"
                                TextWrapping="Wrap"
@@ -41,14 +41,16 @@
 
                     <StackPanel Orientation="Horizontal">
                         <ui:Button Content="{DynamicResource Uninstall_Button}"
-                                   Icon="{ui:SymbolIcon Settings24}"
+                                   Icon="{ui:SymbolIcon Delete24}"
                                    Command="{Binding StartUninstallCommand}" />
                         <ui:Button Content="{DynamicResource Uninstall_OpenSystem}"
-                                   Icon="{ui:SymbolIcon Settings24}"
-                                   Command="{Binding OpenSystemUninstallCommand}" />
+                                   Icon="{ui:SymbolIcon WindowWrench24}"
+                                   Command="{Binding OpenSystemUninstallCommand}"
+                                   Margin="8,0,0,0" />
                         <ui:Button Content="{DynamicResource Uninstall_OpenFolder}"
                                    Icon="{ui:SymbolIcon Folder24}"
-                                   Command="{Binding OpenAppDirectoryCommand}" />
+                                   Command="{Binding OpenAppDirectoryCommand}"
+                                   Margin="8,0,0,0" />
                     </StackPanel>
                 </StackPanel>
             </ui:CardControl>
