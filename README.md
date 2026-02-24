@@ -156,7 +156,7 @@ Compress-Archive -Path publish/win-x64\* -DestinationPath publish/WinTab_1.0.0_p
 
 工作流文件：`.github/workflows/build-release.yml`
 
-- 推送到 `main`：自动构建、测试、打包并上传 Actions Artifacts。
+- 推送到 `master`：自动构建、测试、打包并上传 Actions Artifacts。
 - 推送 tag（如 `1.0.0`）：在上面基础上自动创建 GitHub Release 并上传：
   - `WinTab_Setup_<version>.exe`
   - `WinTab_Setup_<version>.exe.sha256`
@@ -166,7 +166,7 @@ Compress-Archive -Path publish/win-x64\* -DestinationPath publish/WinTab_1.0.0_p
 发布建议流程：
 
 ```powershell
-git push origin main
+git push origin master
 git tag 1.0.0
 git push origin 1.0.0
 ```
