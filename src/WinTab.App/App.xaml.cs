@@ -25,6 +25,7 @@ public partial class App : Application
     private static Mutex? _singleInstanceMutex;
     private static bool _ownsSingleInstanceMutex;
     private static bool _explicitShutdownRequested;
+    private const string CleanupArgument = "--wintab-cleanup";
     private IServiceProvider? _serviceProvider;
     private TrayIconController? _trayIconController;
     private Logger? _logger;
@@ -44,6 +45,13 @@ public partial class App : Application
 
         // -- 2. Command-line utility modes --------------------------------
         // Handle command modes before single-instance gate and before main logger lock.
+        if (e.Args.Length >= 1 && string.Equals(e.Args[0], CleanupArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            int code = RunUninstallCleanup();
+            Shutdown(code);
+            return;
+        }
+
         if (e.Args.Length >= 1 && string.Equals(e.Args[0], "--wintab-companion", StringComparison.OrdinalIgnoreCase))
         {
             using Logger? companionLogger = TryCreateCompanionLogger();
@@ -273,6 +281,10 @@ public partial class App : Application
                         window.Show();
                         window.WindowState = WindowState.Normal;
                         window.ShowInTaskbar = true;
+                        
+                        // Center window on screen when restored from tray
+                        window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+                        
                         window.Activate();
                     }
                 },
@@ -381,6 +393,18 @@ public partial class App : Application
         catch (Exception ex)
         {
             logger?.Error("Failed to restore Explorer open-verb defaults.", ex);
+        }
+    }
+
+    private static void TryDeleteExplorerOpenVerbBackupRegistryCache()
+    {
+        try
+        {
+            using RegistryKey? softwareRoot = Registry.CurrentUser.OpenSubKey(@"Software", writable: true);
+            softwareRoot?.DeleteSubKeyTree(@"WinTab\Backups\ExplorerOpenVerb", throwOnMissingSubKey: false);
+        }
+        catch
+        {
         }
     }
 
@@ -509,6 +533,57 @@ public partial class App : Application
         catch
         {
             return false;
+        }
+    }
+
+    private static int RunUninstallCleanup()
+    {
+        string exePath = ResolveLaunchExecutablePath();
+        Logger? cleanupLogger = null;
+        int failureCount = 0;
+
+        try
+        {
+            try
+            {
+                var startupRegistrar = new StartupRegistrar("WinTab", exePath);
+                startupRegistrar.SetEnabled(false);
+
+                if (startupRegistrar.IsEnabled())
+                    failureCount++;
+            }
+            catch
+            {
+                failureCount++;
+            }
+
+            try
+            {
+                cleanupLogger = TryCreateCompanionLogger();
+                if (cleanupLogger is null)
+                {
+                    string tempLogPath = Path.Combine(Path.GetTempPath(), "WinTab", "wintab-cleanup.log");
+                    cleanupLogger = new Logger(tempLogPath);
+                }
+
+                var interceptor = new RegistryOpenVerbInterceptor(exePath, cleanupLogger);
+                interceptor.DisableAndRestore();
+            }
+            catch (Exception ex)
+            {
+                failureCount++;
+                cleanupLogger?.Error("Uninstall cleanup failed to restore Explorer open-verb state.", ex);
+                TryRestoreExplorerOpenVerbDefaults(cleanupLogger);
+            }
+
+            TryDeleteExplorerOpenVerbBackupRegistryCache();
+
+            cleanupLogger?.Info("Uninstall cleanup completed.");
+            return failureCount == 0 ? 0 : 1;
+        }
+        finally
+        {
+            cleanupLogger?.Dispose();
         }
     }
 }

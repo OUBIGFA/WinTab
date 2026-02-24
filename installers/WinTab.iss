@@ -2,7 +2,7 @@
 ; Supports: custom install path, .NET 9 runtime detection, bilingual (Chinese/English)
 
 #define AppName "WinTab"
-#define AppVersion "3.0.0"
+#define AppVersion "1.0.0"
 #define AppPublisher "WinTab Contributors"
 #define AppURL "https://github.com/user/WinTab"
 #define AppExeName "WinTab.exe"
@@ -31,18 +31,22 @@ PrivilegesRequired=admin
 UninstallDisplayName={#AppName}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+ShowLanguageDialog=yes
+LanguageDetectionMethod=locale
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "chinesesimplified"; MessagesFile: "Languages\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
 chinesesimplified.DotNetRequired=WinTab 需要 .NET 9 桌面运行时。%n%n是否立即下载并安装？
-english.DotNetRequired=WinTab requires .NET 9 Desktop Runtime.%n%nWould you like to download and install it now?
 chinesesimplified.DotNetDownloading=正在下载 .NET 9 桌面运行时...
-english.DotNetDownloading=Downloading .NET 9 Desktop Runtime...
 chinesesimplified.LaunchAtStartup=开机自启动
+chinesesimplified.RemoveUserDataPrompt=是否同时删除用户配置和日志（AppData\Roaming\WinTab）？%n%n默认保留，选择"是"才会删除。
+english.DotNetRequired=WinTab requires .NET 9 Desktop Runtime.%n%nWould you like to download and install it now?
+english.DotNetDownloading=Downloading .NET 9 Desktop Runtime...
 english.LaunchAtStartup=Run at Windows startup
+english.RemoveUserDataPrompt=Do you also want to remove user settings and logs (AppData\Roaming\WinTab)?%n%nDefault is to keep them. Choose Yes to delete.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -64,13 +68,38 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; F
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
 
 [UninstallDelete]
-Type: filesandirs; Name: "{app}"
+Type: filesandordirs; Name: "{app}"
+Type: filesandordirs; Name: "{userappdata}\WinTab"; Check: ShouldRemoveUserData
 
 [UninstallRun]
+; Best-effort app-side cleanup for registry handlers/startup entries
+Filename: "{app}\{#AppExeName}"; Parameters: "--wintab-cleanup"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "WinTabCleanup"
 ; Remove startup registry entry on uninstall
-Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v ""{#AppName}"" /f"; Flags: runhidden
+Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v ""{#AppName}"" /f"; Flags: runhidden; RunOnceId: "WinTabStartupRunCleanup"
 
 [Code]
+var
+  RemoveUserDataOnUninstall: Boolean;
+
+function InitializeUninstall(): Boolean;
+var
+  Choice: Integer;
+begin
+  Result := True;
+  RemoveUserDataOnUninstall := False;
+
+  if UninstallSilent then
+    exit;
+
+  Choice := MsgBox(CustomMessage('RemoveUserDataPrompt'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2);
+  RemoveUserDataOnUninstall := Choice = IDYES;
+end;
+
+function ShouldRemoveUserData(): Boolean;
+begin
+  Result := RemoveUserDataOnUninstall;
+end;
+
 function IsDotNet9DesktopInstalled: Boolean;
 var
   ResultCode: Integer;

@@ -35,10 +35,6 @@
                                  IsEnabled="{Binding IsOpenChildFolderInNewTabOptionEnabled}" />
             </ui:CardControl>
 
-            <TextBlock Text="{DynamicResource General_Behavior}"
-                       FontSize="20" FontWeight="SemiBold"
-                       Margin="0,20,0,12" />
-
         </StackPanel>
     </ScrollViewer>
 </Page>

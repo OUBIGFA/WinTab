@@ -8,7 +8,7 @@
 
     <!-- Navigation -->
     <system:String x:Key="Nav_General">General</system:String>
-    <system:String x:Key="Nav_Behavior">Other</system:String>
+    <system:String x:Key="Nav_Behavior">Behavior</system:String>
     <system:String x:Key="Nav_About">About</system:String>
 
     <!-- General Page -->
@@ -19,7 +19,6 @@
     <system:String x:Key="General_LanguageLabel">Interface language</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
     <system:String x:Key="General_English">English</system:String>
-    <system:String x:Key="General_Behavior">Other</system:String>
     <system:String x:Key="Behavior_Status">Status</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">Intercept Explorer folder open (open-Verb)</system:String>
     <system:String x:Key="Behavior_OpenChildFolderInNewTab">Open child folders from the current tab in a new tab</system:String>
@@ -32,7 +31,7 @@
     <!-- About Page -->
     <system:String x:Key="About_Title">About WinTab</system:String>
     <system:String x:Key="About_Version">Version</system:String>
-    <system:String x:Key="About_Description">WinTab is an open-source Windows window tab manager that lets you combine multiple application windows into a tabbed interface.</system:String>
+    <system:String x:Key="About_Description">WinTab is an open-source Windows window tab tool that gives Explorer a browser-like tab experience.</system:String>
     <system:String x:Key="About_License">License: MIT</system:String>
     <system:String x:Key="About_GitHub">GitHub</system:String>
     <system:String x:Key="About_LogLocation">Log file location</system:String>

@@ -8,7 +8,7 @@
 
     <!-- Navigation -->
     <system:String x:Key="Nav_General">常规</system:String>
-    <system:String x:Key="Nav_Behavior">其他</system:String>
+    <system:String x:Key="Nav_Behavior">行为</system:String>
     <system:String x:Key="Nav_About">关于</system:String>
 
     <!-- General Page -->
@@ -19,7 +19,6 @@
     <system:String x:Key="General_LanguageLabel">界面语言</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
     <system:String x:Key="General_English">English</system:String>
-    <system:String x:Key="General_Behavior">其他</system:String>
     <system:String x:Key="Behavior_Status">状态</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">接管资源管理器打开文件夹（open-Verb 拦截）</system:String>
     <system:String x:Key="Behavior_OpenChildFolderInNewTab">在当前活动标签页目录内打开文件夹时新建标签页</system:String>
@@ -32,7 +31,7 @@
     <!-- About Page -->
     <system:String x:Key="About_Title">关于 WinTab</system:String>
     <system:String x:Key="About_Version">版本</system:String>
-    <system:String x:Key="About_Description">WinTab 是一款开源的 Windows 窗口标签管理工具，让您可以将多个应用程序窗口合并为标签式界面。</system:String>
+    <system:String x:Key="About_Description">本软件是开源的 Windows 窗口标签工具，让资源管理器拥有类似浏览器的标签页体验。</system:String>
     <system:String x:Key="About_License">开源协议: MIT</system:String>
     <system:String x:Key="About_GitHub">GitHub</system:String>
     <system:String x:Key="About_LogLocation">日志文件位置</system:String>
