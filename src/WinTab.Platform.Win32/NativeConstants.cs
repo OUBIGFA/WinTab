@@ -203,6 +203,8 @@ public static class NativeConstants
     // ─── GetSystemMetrics Indexes ───────────────────────────────────────────
 
     public const int SM_CYCAPTION  = 4;
+    public const int SM_CXDOUBLECLK = 36;
+    public const int SM_CYDOUBLECLK = 37;
     public const int SM_CYFRAME    = 33;
     public const int SM_CXSCREEN   = 0;
     public const int SM_CYSCREEN   = 1;

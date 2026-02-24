@@ -185,6 +185,9 @@ public static class NativeMethods
     public static extern short GetAsyncKeyState(int vKey);
 
     [DllImport("user32.dll")]
+    public static extern uint GetDoubleClickTime();
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
@@ -248,6 +251,12 @@ public static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern IntPtr WindowFromPoint(POINT Point);
+
+    [DllImport("oleacc.dll")]
+    public static extern int AccessibleObjectFromPoint(
+        POINT pt,
+        [Out, MarshalAs(UnmanagedType.Interface)] out Accessibility.IAccessible ppacc,
+        [Out] out object pvarChild);
 
     [DllImport("user32.dll")]
     public static extern int GetSystemMetrics(int nIndex);

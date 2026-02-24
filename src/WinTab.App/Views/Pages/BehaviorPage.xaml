@@ -35,6 +35,15 @@
                                  IsEnabled="{Binding IsOpenChildFolderInNewTabOptionEnabled}" />
             </ui:CardControl>
 
+            <ui:CardControl Margin="0,0,0,4">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick}" FontWeight="Medium" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}" />
+            </ui:CardControl>
+
         </StackPanel>
     </ScrollViewer>
 </Page>

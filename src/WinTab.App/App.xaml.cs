@@ -31,6 +31,7 @@ public partial class App : Application
     private Logger? _logger;
     private AppLifecycleService? _lifecycleService;
     private ExplorerTabHookService? _explorerTabHook;
+    private ExplorerTabMouseHookService? _explorerTabMouseHook;
     private ExplorerOpenRequestServer? _openRequestServer;
 
     public static IServiceProvider Services { get; private set; } = null!;
@@ -131,6 +132,7 @@ public partial class App : Application
 
         // Explorer integration (native Explorer tab conversion path).
         _explorerTabHook = _serviceProvider.GetRequiredService<ExplorerTabHookService>();
+        _explorerTabMouseHook = _serviceProvider.GetRequiredService<ExplorerTabMouseHookService>();
 
         // IPC handler: allow handler invocations to forward open-folder requests.
         _openRequestServer = _serviceProvider.GetRequiredService<ExplorerOpenRequestServer>();
@@ -270,6 +272,7 @@ public partial class App : Application
 
         // Back to native Explorer-tab pipeline (not overlay hijack).
         services.AddSingleton<ExplorerTabHookService>();
+        services.AddSingleton<ExplorerTabMouseHookService>();
 
         services.AddSingleton<TrayIconController>(sp =>
             new TrayIconController(

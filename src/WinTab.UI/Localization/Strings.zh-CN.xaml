@@ -23,6 +23,7 @@
     <system:String x:Key="Behavior_Status">状态</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">接管资源管理器打开文件夹（open-Verb 拦截）</system:String>
     <system:String x:Key="Behavior_OpenChildFolderInNewTab">在当前活动标签页目录内打开文件夹时新建标签页</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick">双击标签页标题区域关闭（模拟中键单击）</system:String>
 
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">主题</system:String>

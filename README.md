@@ -11,6 +11,7 @@ WinTab 是一款开源的 Windows 窗口标签工具，让资源管理器拥有�
 - 可选行为开关：
   - 接管资源管理器 `open` 行为（open-verb 拦截）。
   - 在当前活动标签页目录下打开子目录时，改为新建标签页。
+  - 双击资源管理器标签页标题区域时关闭标签页（模拟鼠标中键单击，默认关闭）。
 - 稳定性与清理：
   - 崩溃日志与运行日志。
   - 退出或卸载时尽量恢复注册表覆盖，减少残留。
@@ -67,6 +68,7 @@ WinTab 是一款开源的 Windows 窗口标签工具，让资源管理器拥有�
   "Theme": "Light",
   "EnableExplorerOpenVerbInterception": true,
   "OpenChildFolderInNewTabFromActiveTab": false,
+  "CloseTabOnDoubleClick": false,
   "SchemaVersion": 1
 }
 ```

@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using WinTab.App.ExplorerTabUtilityPort;
 using WinTab.App.Services;
 using WinTab.Core.Models;
 using WinTab.Diagnostics;
@@ -11,8 +12,10 @@ public partial class BehaviorViewModel : ObservableObject
     private readonly AppSettings _settings;
     private readonly SettingsStore _settingsStore;
     private readonly RegistryOpenVerbInterceptor _openVerbInterceptor;
+    private readonly ExplorerTabMouseHookService _tabMouseHookService;
     private readonly Logger _logger;
     private bool _isUpdatingExplorerOpenVerbToggle;
+    private bool _isUpdatingCloseTabOnDoubleClickToggle;
 
     [ObservableProperty]
     private bool _openChildFolderInNewTabFromActiveTab;
@@ -20,21 +23,27 @@ public partial class BehaviorViewModel : ObservableObject
     [ObservableProperty]
     private bool _enableExplorerOpenVerbInterception;
 
+    [ObservableProperty]
+    private bool _closeTabOnDoubleClick;
+
     public bool IsOpenChildFolderInNewTabOptionEnabled => EnableExplorerOpenVerbInterception;
 
     public BehaviorViewModel(
         AppSettings settings,
         SettingsStore settingsStore,
         RegistryOpenVerbInterceptor openVerbInterceptor,
+        ExplorerTabMouseHookService tabMouseHookService,
         Logger logger)
     {
         _settings = settings;
         _settingsStore = settingsStore;
         _openVerbInterceptor = openVerbInterceptor;
+        _tabMouseHookService = tabMouseHookService;
         _logger = logger;
 
         _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
         _enableExplorerOpenVerbInterception = settings.EnableExplorerOpenVerbInterception;
+        _closeTabOnDoubleClick = settings.CloseTabOnDoubleClick;
     }
 
     partial void OnOpenChildFolderInNewTabFromActiveTabChanged(bool value)
@@ -76,6 +85,22 @@ public partial class BehaviorViewModel : ObservableObject
         }
     }
 
+    partial void OnCloseTabOnDoubleClickChanged(bool value)
+    {
+        if (_isUpdatingCloseTabOnDoubleClickToggle)
+            return;
+
+        bool applied = _tabMouseHookService.SetEnabled(value);
+        if (applied != value)
+        {
+            SetCloseTabOnDoubleClickToggle(applied);
+            return;
+        }
+
+        _settings.CloseTabOnDoubleClick = applied;
+        SaveSettings();
+    }
+
     private void SetExplorerOpenVerbToggle(bool value)
     {
         _isUpdatingExplorerOpenVerbToggle = true;
@@ -90,6 +115,21 @@ public partial class BehaviorViewModel : ObservableObject
         finally
         {
             _isUpdatingExplorerOpenVerbToggle = false;
+        }
+    }
+
+    private void SetCloseTabOnDoubleClickToggle(bool value)
+    {
+        _isUpdatingCloseTabOnDoubleClickToggle = true;
+        try
+        {
+            CloseTabOnDoubleClick = value;
+            _settings.CloseTabOnDoubleClick = value;
+            SaveSettings();
+        }
+        finally
+        {
+            _isUpdatingCloseTabOnDoubleClickToggle = false;
         }
     }
 

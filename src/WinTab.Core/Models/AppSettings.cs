@@ -17,6 +17,7 @@ public sealed class AppSettings
     // Behavior
     public bool EnableExplorerOpenVerbInterception { get; set; } = true;
     public bool OpenChildFolderInNewTabFromActiveTab { get; set; } = false;
+    public bool CloseTabOnDoubleClick { get; set; } = false;
 
     // Schema version for migration
     public int SchemaVersion { get; set; } = 1;
