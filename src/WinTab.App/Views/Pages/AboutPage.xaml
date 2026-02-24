@@ -13,39 +13,45 @@
         <StackPanel Margin="0,0,24,24" MaxWidth="800"
                     HorizontalAlignment="Left">
 
-            <!-- App Identity -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
-                <Image Source="/Assets/wintab.ico"
-                       Width="64" Height="64"
-                       RenderOptions.BitmapScalingMode="HighQuality" />
-                <StackPanel VerticalAlignment="Center" Margin="16,0,0,0">
-                    <TextBlock Text="{DynamicResource App_Name}"
-                               FontSize="28" FontWeight="Bold" />
-                    <TextBlock FontSize="14"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                        <Run Text="{DynamicResource About_Version}" />
-                        <Run Text=" " />
-                        <Run Text="{Binding Version, Mode=OneWay}" />
-                    </TextBlock>
+            <StackPanel HorizontalAlignment="Center" MaxWidth="600">
+                <!-- App Identity -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,24" HorizontalAlignment="Center">
+                    <Image Source="/Assets/wintab.ico"
+                           Width="64" Height="64"
+                           RenderOptions.BitmapScalingMode="HighQuality" />
+                    <StackPanel VerticalAlignment="Center" Margin="16,0,0,0">
+                        <TextBlock Text="{DynamicResource App_Name}"
+                                   FontSize="28" FontWeight="Bold"
+                                   TextAlignment="Center" />
+                        <TextBlock FontSize="14"
+                                   TextAlignment="Center"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                            <Run Text="{DynamicResource About_Version}" />
+                            <Run Text=" " />
+                            <Run Text="{Binding Version, Mode=OneWay}" />
+                        </TextBlock>
+                    </StackPanel>
                 </StackPanel>
+
+                <!-- Description -->
+                <ui:CardControl Margin="0,0,0,8" HorizontalAlignment="Center" Width="600">
+                    <ui:CardControl.Header>
+                        <TextBlock Text="{DynamicResource About_Description}"
+                                   TextWrapping="Wrap"
+                                   MaxWidth="560"
+                                   TextAlignment="Center" />
+                    </ui:CardControl.Header>
+                </ui:CardControl>
+
+                <!-- License -->
+                <ui:CardControl Margin="0,0,0,8" HorizontalAlignment="Center" Width="600">
+                    <ui:CardControl.Header>
+                        <TextBlock Text="{DynamicResource About_License}"
+                                   FontWeight="Medium"
+                                   TextAlignment="Center" />
+                    </ui:CardControl.Header>
+                </ui:CardControl>
             </StackPanel>
-
-            <!-- Description -->
-            <ui:CardControl Margin="0,0,0,8">
-                <ui:CardControl.Header>
-                    <TextBlock Text="{DynamicResource About_Description}"
-                               TextWrapping="Wrap"
-                               MaxWidth="600" />
-                </ui:CardControl.Header>
-            </ui:CardControl>
-
-            <!-- License -->
-            <ui:CardControl Margin="0,0,0,8">
-                <ui:CardControl.Header>
-                    <TextBlock Text="{DynamicResource About_License}"
-                               FontWeight="Medium" />
-                </ui:CardControl.Header>
-            </ui:CardControl>
 
             <!-- Log File Location -->
             <TextBlock Text="{DynamicResource About_LogLocation}"

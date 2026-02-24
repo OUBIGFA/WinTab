@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Win32;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,6 +26,7 @@ public partial class App : Application
     private static Mutex? _singleInstanceMutex;
     private static bool _ownsSingleInstanceMutex;
     private static bool _explicitShutdownRequested;
+    private const string ActivationEventName = "WinTab_ActivateMainWindow";
     private const string CleanupArgument = "--wintab-cleanup";
     private IServiceProvider? _serviceProvider;
     private TrayIconController? _trayIconController;
@@ -33,6 +35,8 @@ public partial class App : Application
     private ExplorerTabHookService? _explorerTabHook;
     private ExplorerTabMouseHookService? _explorerTabMouseHook;
     private ExplorerOpenRequestServer? _openRequestServer;
+    private EventWaitHandle? _activationEvent;
+    private CancellationTokenSource? _activationListenerCts;
 
     public static IServiceProvider Services { get; private set; } = null!;
     internal static bool IsExplicitShutdownRequested => _explicitShutdownRequested;
@@ -74,10 +78,14 @@ public partial class App : Application
         _ownsSingleInstanceMutex = isNewInstance;
         if (!isNewInstance)
         {
+            SignalExistingInstanceActivation();
             ActivateExistingInstance();
             Shutdown();
             return;
         }
+
+        _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivationEventName);
+        StartActivationListener();
 
         // -- 4. Create logger ---------------------------------------------
         _logger = new Logger(AppPaths.LogPath);
@@ -211,6 +219,9 @@ public partial class App : Application
             _lifecycleService?.Stop();
             _trayIconController?.Dispose();
             _openRequestServer?.Dispose();
+            _activationListenerCts?.Cancel();
+            _activationListenerCts?.Dispose();
+            _activationEvent?.Dispose();
 
             try
             {
@@ -315,7 +326,9 @@ public partial class App : Application
         {
             using var current = System.Diagnostics.Process.GetCurrentProcess();
             var existing = System.Diagnostics.Process.GetProcessesByName(current.ProcessName)
-                .FirstOrDefault(p => p.Id != current.Id);
+                .Where(p => p.Id != current.Id)
+                .OrderBy(p => p.StartTime)
+                .FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
 
             if (existing is null)
                 return;
@@ -331,6 +344,57 @@ public partial class App : Application
         {
             // Best effort only.
         }
+    }
+
+    private static void SignalExistingInstanceActivation()
+    {
+        try
+        {
+            using var activationEvent = EventWaitHandle.OpenExisting(ActivationEventName);
+            activationEvent.Set();
+        }
+        catch
+        {
+        }
+    }
+
+    private void StartActivationListener()
+    {
+        if (_activationEvent is null)
+            return;
+
+        _activationListenerCts = new CancellationTokenSource();
+        var token = _activationListenerCts.Token;
+        var activationEvent = _activationEvent;
+
+        Task.Run(() =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                activationEvent.WaitOne();
+                if (token.IsCancellationRequested)
+                    break;
+
+                try
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (Current.MainWindow is not Window window)
+                            return;
+
+                        if (!window.IsVisible)
+                            window.Show();
+
+                        window.ShowInTaskbar = true;
+                        window.WindowState = WindowState.Normal;
+                        window.Activate();
+                    });
+                }
+                catch
+                {
+                }
+            }
+        }, token);
     }
 
     private static bool TryHandleOpenFolderInvocation(string[] args, Logger? logger)
