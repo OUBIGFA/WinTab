@@ -126,3 +126,44 @@
 - Packaging: `dotnet publish src/WinTab.App/WinTab.App.csproj -c Release -r win-x64 --self-contained false -o publish/win-x64` succeeded.
 - Packaging: Inno Setup compile succeeded, installer output `publish/installer/WinTab_Setup_1.0.0.exe`.
 - SHA256: `25d7e73527d79324fc70e832b697302e7b759748b08f305c549c710b3a20fa22`.
+
+## 2026-02-25 Double-Click Scope Tightening Plan
+
+- [x] Analyze current hit-test path and confirm why address/toolbar area can still trigger close
+- [x] Tighten predicate to tab-title-only behavior with strict fallback gating
+- [x] Build and run tests to verify no regression
+- [x] Package latest installer for user verification
+- [x] Record review notes and checksum
+
+## 2026-02-25 Double-Click Scope Tightening Review
+
+- Requirement update: only tab title area should trigger close; address bar and navigation/refresh toolbar region must not trigger.
+- Fix: in `IsPointInTabTitleArea`, `Unknown/Other` fallback now requires point ancestry to be under `ShellTabWindowClass` and uses a capped top strip (`maxTabStripHeight`) instead of broad `ExplorerTop->TabTop` range.
+- Existing hard block for accessibility `NavigationControl` roles remains, reducing accidental toolbar/button closes.
+- File changed: `src/WinTab.App/ExplorerTabUtilityPort/ExplorerTabMouseHookService.cs`.
+- Verification: `dotnet build WinTab.slnx -c Release` succeeded (0 warnings, 0 errors).
+- Verification: `dotnet test src/WinTab.Tests/WinTab.Tests.csproj -c Release` passed (3/3).
+- Packaging: `dotnet publish src/WinTab.App/WinTab.App.csproj -c Release -r win-x64 --self-contained false -o publish/win-x64` succeeded.
+- Packaging: Inno Setup compile succeeded, installer output `publish/installer/WinTab_Setup_1.0.0.exe`.
+- SHA256: `bfd32ad0407b21e89abf8700e67745310dc6428a7f0ad635df98740506535d56`.
+
+## 2026-02-25 Double-Click Scope Tightening Plan (Round 2)
+
+- [x] Re-check why strict title-only build disabled closing entirely on user machine
+- [x] Remove over-strict ancestry gate and keep narrow top-strip + navigation-role exclusion
+- [x] Build and run tests to verify no regression
+- [x] Package latest installer for user verification
+- [x] Record review notes and checksum
+
+## 2026-02-25 Double-Click Scope Tightening Review (Round 2)
+
+- User feedback indicated strict ancestry gate made close-on-double-click non-functional.
+- Root cause: requiring point ancestry under `ShellTabWindowClass` can reject valid tab-title clicks on some Explorer builds.
+- Fix: removed ancestry hard gate and kept two constraints only: accessibility navigation-role rejection + narrow top-strip cap geometry for fallback.
+- Tuning: top-strip cap uses `caption + frame + 8` clamped to `[30,56]`, reducing address/toolbar inclusion while keeping tab-title clicks viable.
+- File changed: `src/WinTab.App/ExplorerTabUtilityPort/ExplorerTabMouseHookService.cs`.
+- Verification: `dotnet build WinTab.slnx -c Release` succeeded (0 warnings, 0 errors).
+- Verification: `dotnet test src/WinTab.Tests/WinTab.Tests.csproj -c Release` passed (3/3).
+- Packaging: `dotnet publish src/WinTab.App/WinTab.App.csproj -c Release -r win-x64 --self-contained false -o publish/win-x64` succeeded.
+- Packaging: Inno Setup compile succeeded, installer output `publish/installer/WinTab_Setup_1.0.0.exe`.
+- SHA256: `81bd15eb0b79a0b8c534d21907dea629df6984d0128c0ccae54048dcefe326bc`.

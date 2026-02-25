@@ -250,19 +250,15 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         if (!NativeMethods.GetWindowRect(tabHandle, out NativeStructs.RECT tabRect))
             return false;
 
+        int captionHeight = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYCAPTION));
+        int frameHeight = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYFRAME));
+        int maxTabStripHeight = Math.Clamp(captionHeight + frameHeight + 8, 30, 56);
+
         int headerTop = explorerRect.Top;
-        int headerBottomExclusive = tabRect.Top;
+        int headerBottomExclusive = Math.Min(tabRect.Top, headerTop + maxTabStripHeight);
 
         if (headerBottomExclusive <= headerTop)
-        {
-            int fallbackHeight = Math.Max(
-                48,
-                Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYCAPTION)) +
-                Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYFRAME)) +
-                40);
-
-            headerBottomExclusive = headerTop + fallbackHeight;
-        }
+            headerBottomExclusive = headerTop + maxTabStripHeight;
 
         // The tab title strip sits above the ShellTabWindowClass content area.
         return point.Y >= headerTop && point.Y < headerBottomExclusive;
