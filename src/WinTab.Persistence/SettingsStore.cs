@@ -11,7 +11,7 @@ namespace WinTab.Persistence;
 /// </summary>
 public sealed class SettingsStore : IDisposable
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
     private static readonly TimeSpan DebounceInterval = TimeSpan.FromMilliseconds(500);
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -217,22 +217,13 @@ public sealed class SettingsStore : IDisposable
     {
         bool changed = false;
 
-        // Currently at schema version 1 -- no migrations required.
-        // Future migrations should be applied incrementally:
-        //
-        // if (settings.SchemaVersion < 2)
-        // {
-        //     // Apply v1 → v2 migration
-        //     settings.SchemaVersion = 2;
-        //     _logger?.Info("Migrated settings from v1 to v2.");
-        // }
-        //
-        // if (settings.SchemaVersion < 3)
-        // {
-        //     // Apply v2 → v3 migration
-        //     settings.SchemaVersion = 3;
-        //     _logger?.Info("Migrated settings from v2 to v3.");
-        // }
+        if (settings.SchemaVersion < 2)
+        {
+            settings.PersistExplorerOpenVerbInterceptionAcrossExit = false;
+            settings.SchemaVersion = 2;
+            _logger?.Info("Migrated settings from v1 to v2.");
+            changed = true;
+        }
 
         if (settings.SchemaVersion < CurrentSchemaVersion)
         {

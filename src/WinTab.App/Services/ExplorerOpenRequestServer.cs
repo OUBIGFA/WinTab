@@ -19,7 +19,11 @@ public sealed class ExplorerOpenRequestServer : IDisposable
         _logger = logger;
     }
 
-    public void Start(Func<string, Task> onOpenFolder)
+    /// <summary>
+    /// Starts the server. The callback receives (path, clickTimeForegroundHwnd).
+    /// clickTimeForegroundHwnd is IntPtr.Zero if the request came from a legacy client.
+    /// </summary>
+    public void Start(Func<string, IntPtr, Task> onOpenFolder)
     {
         ArgumentNullException.ThrowIfNull(onOpenFolder);
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -47,11 +51,27 @@ public sealed class ExplorerOpenRequestServer : IDisposable
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
 
+                    // New protocol: OPEN_EX <foreground_hwnd_decimal> <path>
+                    if (line.StartsWith("OPEN_EX ", StringComparison.Ordinal))
+                    {
+                        string remainder = line[8..].Trim();
+                        int spaceIdx = remainder.IndexOf(' ');
+                        if (spaceIdx > 0 &&
+                            long.TryParse(remainder[..spaceIdx], out long hwndLong))
+                        {
+                            string path = remainder[(spaceIdx + 1)..].Trim();
+                            _logger.Info($"Pipe: open-ex request (fg=0x{hwndLong:X}): {path}");
+                            await onOpenFolder(path, new IntPtr(hwndLong));
+                            continue;
+                        }
+                    }
+
+                    // Legacy protocol: OPEN <path>
                     if (line.StartsWith("OPEN ", StringComparison.Ordinal))
                     {
                         string path = line[5..].Trim();
                         _logger.Info($"Pipe: open request: {path}");
-                        await onOpenFolder(path);
+                        await onOpenFolder(path, IntPtr.Zero);
                     }
                 }
                 catch (OperationCanceledException)

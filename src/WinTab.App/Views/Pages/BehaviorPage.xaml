@@ -31,6 +31,19 @@
             <ui:CardControl Margin="0,0,0,8">
                 <ui:CardControl.Header>
                     <StackPanel>
+                        <TextBlock Text="{DynamicResource Behavior_PersistExplorerOpenVerbInterceptionAcrossExit}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource Behavior_PersistExplorerOpenVerbInterceptionAcrossExit_Desc}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   FontSize="12" Margin="0,2,0,0" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding PersistExplorerOpenVerbInterceptionAcrossExit, Mode=TwoWay}"
+                                 IsEnabled="{Binding EnableExplorerOpenVerbInterception}" />
+            </ui:CardControl>
+
+            <ui:CardControl Margin="0,0,0,8">
+                <ui:CardControl.Header>
+                    <StackPanel>
                         <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath}" FontWeight="Medium" />
                         <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath_Desc}"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"

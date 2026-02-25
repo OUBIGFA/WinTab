@@ -28,7 +28,38 @@ public sealed class SettingsStoreTests
             settings.OpenChildFolderInNewTabFromActiveTab.Should().BeFalse();
             settings.CloseTabOnDoubleClick.Should().BeFalse();
             settings.Theme.Should().Be(ThemeMode.Light);
-            settings.SchemaVersion.Should().Be(1);
+            settings.PersistExplorerOpenVerbInterceptionAcrossExit.Should().BeFalse();
+            settings.SchemaVersion.Should().Be(2);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_WhenSchemaV1_MigratesPersistFlagFromInterceptionToggle()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "WinTabSettingsStoreTests", Guid.NewGuid().ToString("N"));
+        string settingsPath = Path.Combine(tempDir, "settings.json");
+
+        try
+        {
+            Directory.CreateDirectory(tempDir);
+            File.WriteAllText(settingsPath, """
+{
+  "EnableExplorerOpenVerbInterception": false,
+  "SchemaVersion": 1
+}
+""");
+
+            var store = new SettingsStore(settingsPath);
+            AppSettings settings = store.Load();
+
+            settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
+            settings.PersistExplorerOpenVerbInterceptionAcrossExit.Should().BeFalse();
+            settings.SchemaVersion.Should().Be(2);
         }
         finally
         {
@@ -55,7 +86,8 @@ public sealed class SettingsStoreTests
                 OpenChildFolderInNewTabFromActiveTab = true,
                 CloseTabOnDoubleClick = true,
                 Theme = ThemeMode.Dark,
-                Language = Language.English
+                Language = Language.English,
+                PersistExplorerOpenVerbInterceptionAcrossExit = false
             };
 
             store.Save(source);
@@ -69,7 +101,8 @@ public sealed class SettingsStoreTests
             restored.CloseTabOnDoubleClick.Should().BeTrue();
             restored.Theme.Should().Be(ThemeMode.Dark);
             restored.Language.Should().Be(Language.English);
-            restored.SchemaVersion.Should().Be(1);
+            restored.PersistExplorerOpenVerbInterceptionAcrossExit.Should().BeFalse();
+            restored.SchemaVersion.Should().Be(2);
         }
         finally
         {

@@ -28,7 +28,26 @@
       "Bash(dotnet:*)",
       "Read(C:\\Users\\bigfa\\AppData\\Roaming\\WinTab\\settings.json)",
       "Read(C:\\Users\\bigfa\\AppData\\Roaming\\WinTab\\logs\\wintab.log)",
-      "Read(C:\\Users\\bigfa\\AppData\\Roaming\\WinTab\\logs\\crash.log)"
+      "Read(C:\\Users\\bigfa\\AppData\\Roaming\\WinTab\\logs\\crash.log)",
+      "Bash(cmd.exe:*)",
+      "Bash(cmd:*)",
+      "Bash(\"/c/Program:*)",
+      "Read(E:\\_BIGFA Free\\_code\\WinTab\\src\\WinTab.Persistence\\AppPaths.cs)",
+      "Read(E:\\_BIGFA Free\\_code\\WinTab\\src\\WinTab.Platform.Win32\\StartupRegistrar.cs)",
+      "Bash(tasklist:*)",
+      "Read(E:\\\\_BIGFA Free\\\\_code\\\\WinTab\\\\src\\\\WinTab.App\\\\ExplorerTabUtilityPort\\\\ExplorerTabHookService.cs)",
+      "Read(E:\\\\_BIGFA Free\\\\_code\\\\WinTab\\\\src\\\\WinTab.App\\\\Startup\\\\AppBootstrapper.cs)",
+      "Read(E:\\\\_BIGFA Free\\\\_code\\\\WinTab\\\\src\\\\WinTab.App\\\\App.xaml.cs)",
+      "Read(E:\\\\_BIGFA Free\\\\_code\\\\WinTab\\\\src\\\\WinTab.App\\\\ExplorerTabUtilityPort\\\\ExplorerTabMouseHookService.cs)",
+      "Read(E:\\\\_BIGFA Free\\\\_code\\\\WinTab\\\\src\\\\WinTab.App\\\\Services\\\\AppLifecycleService.cs)",
+      "Read(E:\\\\_BIGFA Free\\\\_code\\\\WinTab\\\\src\\\\WinTab.App\\\\Services\\\\ExplorerOpenRequestServer.cs)",
+      "Bash(taskkill:*)",
+      "Bash(C:\\Users\\bigfa\\.claude\\projects\\E---BIGFA-Free--code-WinTab\\309a10d1-820a-4b13-aa3c-195b38943cbb\\tool-results\\call_bIkBV9vHrdV3mAzxBTdkGZNO.txt:*)",
+      "Bash(mkdir:*)",
+      "Bash(command:*)",
+      "Bash(go:*)",
+      "Bash(\"C:\\Program:*)",
+      "Bash(\"C:\\\\Program Files \\(x86\\)\\\\Inno Setup 6\\\\ISCC.exe\":*)"
     ]
   }
 }

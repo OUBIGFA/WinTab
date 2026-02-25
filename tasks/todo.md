@@ -83,3 +83,46 @@
 - Added bilingual installer messages in `installers/WinTab.iss` for reinstall page and failure paths.
 - Updated README to document reinstall options and silent parameters.
 - Verification: `"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installers/WinTab.iss` succeeded; output `publish/installer/WinTab_Setup_1.0.0.exe`.
+
+## 2026-02-25 Double-Click Close Regression Plan
+
+- [x] Reproduce and pinpoint why double-clicking Explorer tab title does not close tabs
+- [x] Implement targeted fix in Explorer mouse hook without broad behavior changes
+- [x] Build and run tests to verify no regression
+- [x] Package a latest installer for user validation
+- [x] Record review notes with root cause and verification evidence
+
+## 2026-02-25 Double-Click Close Regression Review
+
+- Root cause: double-click recognition depended on tab handle stability across both clicks, but Explorer can switch active tab after the first click (especially when clicking an inactive tab), causing second-click mismatch and no close.
+- Root cause: title-area hit testing relied only on one geometric window relation in some builds; when that relation is unstable, valid title clicks can be filtered out.
+- Fix: relaxed double-click matching to use top-level Explorer window + system double-click time/position thresholds, and improved title-area classification with layered checks (MSAA tab positive, navigation-control negative, tab-content negative, geometry fallback with metrics-based header fallback).
+- Hook behavior: when close triggers, the low-level hook now consumes the click so Explorer native double-click title actions do not race with close.
+- File changed: `src/WinTab.App/ExplorerTabUtilityPort/ExplorerTabMouseHookService.cs`.
+- Verification: `dotnet build WinTab.slnx -c Release` succeeded (0 warnings, 0 errors).
+- Verification: `dotnet test src/WinTab.Tests/WinTab.Tests.csproj -c Release` passed (3/3).
+- Packaging: `dotnet publish src/WinTab.App/WinTab.App.csproj -c Release -r win-x64 --self-contained false -o publish/win-x64` succeeded.
+- Packaging: Inno Setup compile succeeded, installer output `publish/installer/WinTab_Setup_1.0.0.exe`.
+- SHA256: `7ad2251901c354fea11e0cda50fa45226412701fc6fa45e935ac38b709e2cd9d`.
+
+## 2026-02-25 Double-Click Close Regression Plan (Round 2)
+
+- [x] Re-check failure path against user logs and identify over-filtering conditions
+- [x] Remove brittle hit-test rejection and adjust close command target strategy
+- [x] Build and run tests to verify no regression
+- [x] Package latest installer for user verification
+- [x] Record review notes and updated checksum
+
+## 2026-02-25 Double-Click Close Regression Review (Round 2)
+
+- User signal: feature was enabled in logs, but no close behavior observed in Explorer.
+- Root cause candidate 1: `IsPointWithinTabWindow(...)` hard rejection could classify valid tab-title clicks as invalid on some Explorer builds where `WindowFromPoint` maps title regions under tab window ancestry.
+- Root cause candidate 2: posting close command to top-level window can be less reliable than posting to resolved tab handle in this codebase's existing path.
+- Fix: removed `IsPointWithinTabWindow(...)` rejection from title-area predicate and switched close command target preference to resolved `tabHandle` (fallback to top-level only when tab handle is unavailable).
+- Observability: added info log `Explorer tab double-click detected; sending close command.` to confirm recognition path in user logs.
+- File changed: `src/WinTab.App/ExplorerTabUtilityPort/ExplorerTabMouseHookService.cs`.
+- Verification: `dotnet build WinTab.slnx -c Release` succeeded (0 warnings, 0 errors).
+- Verification: `dotnet test src/WinTab.Tests/WinTab.Tests.csproj -c Release` passed (3/3).
+- Packaging: `dotnet publish src/WinTab.App/WinTab.App.csproj -c Release -r win-x64 --self-contained false -o publish/win-x64` succeeded.
+- Packaging: Inno Setup compile succeeded, installer output `publish/installer/WinTab_Setup_1.0.0.exe`.
+- SHA256: `25d7e73527d79324fc70e832b697302e7b759748b08f305c549c710b3a20fa22`.

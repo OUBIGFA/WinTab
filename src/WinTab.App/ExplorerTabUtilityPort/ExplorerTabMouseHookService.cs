@@ -43,7 +43,6 @@ public sealed class ExplorerTabMouseHookService : IDisposable
 
     private long _lastClickTick;
     private IntPtr _lastClickTopLevelHandle;
-    private IntPtr _lastClickTabHandle;
     private NativeStructs.POINT _lastClickPoint;
 
     public ExplorerTabMouseHookService(AppSettings settings, Logger logger)
@@ -140,7 +139,11 @@ public sealed class ExplorerTabMouseHookService : IDisposable
 
         try
         {
-            HandleLeftButtonDown(lParam);
+            if (HandleLeftButtonDown(lParam))
+            {
+                // Eat the double-click so Explorer doesn't execute its native action (e.g., maximize window)
+                return new IntPtr(1);
+            }
         }
         catch (Exception ex)
         {
@@ -150,7 +153,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         return NativeMethods.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 
-    private void HandleLeftButtonDown(IntPtr lParam)
+    private bool HandleLeftButtonDown(IntPtr lParam)
     {
         var info = Marshal.PtrToStructure<NativeStructs.MSLLHOOKSTRUCT>(lParam);
         if (!TryResolveExplorerTabByPoint(info.pt, out IntPtr topLevelHandle, out IntPtr tabHandle))
@@ -160,24 +163,23 @@ public sealed class ExplorerTabMouseHookService : IDisposable
                 ResetClickState();
             }
 
-            return;
+            return false;
         }
 
         lock (_sync)
         {
             if (_disposed || !_enabled)
-                return;
+                return false;
 
-            if (!IsPointInTabTitleArea(info.pt))
+            if (!IsPointInTabTitleArea(info.pt, topLevelHandle, tabHandle))
             {
                 ResetClickState();
-                return;
+                return false;
             }
 
             long now = Environment.TickCount64;
             bool isDoubleClick =
                 _lastClickTopLevelHandle == topLevelHandle &&
-                _lastClickTabHandle == tabHandle &&
                 now - _lastClickTick >= 0 &&
                 now - _lastClickTick <= _doubleClickTimeMs &&
                 Math.Abs(info.pt.X - _lastClickPoint.X) <= _doubleClickWidth &&
@@ -185,14 +187,15 @@ public sealed class ExplorerTabMouseHookService : IDisposable
 
             _lastClickTick = now;
             _lastClickTopLevelHandle = topLevelHandle;
-            _lastClickTabHandle = tabHandle;
             _lastClickPoint = info.pt;
 
             if (!isDoubleClick)
-                return;
+                return false;
 
             ResetClickState();
-            CloseTab(tabHandle);
+            _logger.Info("Explorer tab double-click detected; sending close command.");
+            CloseTab(topLevelHandle, tabHandle);
+            return true;
         }
     }
 
@@ -213,16 +216,56 @@ public sealed class ExplorerTabMouseHookService : IDisposable
             return false;
 
         tabHandle = TryFindAncestorWindowByClass(pointWindow, ExplorerTabClass, stopAt: topLevelHandle);
+        if (tabHandle == IntPtr.Zero || !NativeMethods.IsWindow(tabHandle))
+        {
+            tabHandle = NativeMethods.FindWindowEx(topLevelHandle, IntPtr.Zero, ExplorerTabClass, null);
+        }
+
         return tabHandle != IntPtr.Zero && NativeMethods.IsWindow(tabHandle);
     }
 
-    private static bool IsPointInTabTitleArea(NativeStructs.POINT point)
+    /// <summary>
+    /// Geometric check: the click point is in the tab title strip if its Y coordinate
+    /// is above the top edge of the ShellTabWindowClass (the content area) but still
+    /// within the CabinetWClass (the Explorer window). This is far more reliable than
+    /// the Accessibility API for the Windows 11 Explorer tab bar, which lives in the
+    /// custom title bar area and does not consistently report PageTab roles.
+    /// </summary>
+    private static bool IsPointInTabTitleArea(NativeStructs.POINT point, IntPtr topLevelHandle, IntPtr tabHandle)
     {
         AccessiblePointKind pointKind = GetAccessiblePointKind(point);
         if (pointKind == AccessiblePointKind.Tab)
             return true;
 
-        return false;
+        if (pointKind == AccessiblePointKind.NavigationControl)
+            return false;
+
+        if (!NativeMethods.GetWindowRect(topLevelHandle, out NativeStructs.RECT explorerRect))
+            return false;
+
+        // Click must be within the Explorer window horizontally.
+        if (point.X < explorerRect.Left || point.X > explorerRect.Right)
+            return false;
+
+        if (!NativeMethods.GetWindowRect(tabHandle, out NativeStructs.RECT tabRect))
+            return false;
+
+        int headerTop = explorerRect.Top;
+        int headerBottomExclusive = tabRect.Top;
+
+        if (headerBottomExclusive <= headerTop)
+        {
+            int fallbackHeight = Math.Max(
+                48,
+                Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYCAPTION)) +
+                Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYFRAME)) +
+                40);
+
+            headerBottomExclusive = headerTop + fallbackHeight;
+        }
+
+        // The tab title strip sits above the ShellTabWindowClass content area.
+        return point.Y >= headerTop && point.Y < headerBottomExclusive;
     }
 
     private static IntPtr TryFindAncestorWindowByClass(IntPtr hwnd, string expectedClass, IntPtr stopAt)
@@ -392,13 +435,23 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         return string.Equals(className.ToString(), expectedClass, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void CloseTab(IntPtr tabHandle)
+    /// <summary>
+    /// Closes the currently active tab by sending WM_COMMAND with EXPLORER_CMD_CLOSE_TAB.
+    /// Prefer the resolved tab handle and fall back to top-level Explorer window when needed.
+    /// </summary>
+    private static void CloseTab(IntPtr topLevelHandle, IntPtr tabHandle)
     {
-        if (tabHandle == IntPtr.Zero || !NativeMethods.IsWindow(tabHandle))
+        IntPtr commandTarget = IntPtr.Zero;
+        if (tabHandle != IntPtr.Zero && NativeMethods.IsWindow(tabHandle))
+            commandTarget = tabHandle;
+        else if (topLevelHandle != IntPtr.Zero && NativeMethods.IsWindow(topLevelHandle))
+            commandTarget = topLevelHandle;
+
+        if (commandTarget == IntPtr.Zero)
             return;
 
         NativeMethods.PostMessage(
-            tabHandle,
+            commandTarget,
             (uint)NativeConstants.WM_COMMAND,
             new IntPtr(NativeConstants.EXPLORER_CMD_CLOSE_TAB),
             new IntPtr(1));
@@ -408,7 +461,6 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     {
         _lastClickTick = 0;
         _lastClickTopLevelHandle = IntPtr.Zero;
-        _lastClickTabHandle = IntPtr.Zero;
         _lastClickPoint = default;
     }
 

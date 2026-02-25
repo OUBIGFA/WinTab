@@ -5,3 +5,4 @@
 - For Explorer tab interactions, do not assume cursor-hit child windows are `ShellTabWindowClass`; resolve Explorer top-level from the cursor first, then target the active tab handle under that top-level to avoid no-op click handling.
 - For theme regressions that self-heal after toggling, always verify startup order and avoid local visual overrides (for example `Background="Transparent"` on the main window) that can bypass initial theme resources.
 - If a reliability helper runs as the same executable (for example `WinTab.exe --wintab-companion`), treat it as a user-visible duplicate instance risk; prefer in-process recovery paths or one-shot handlers over long-lived sidecar processes.
+- For Explorer tab-bar hit-testing, do not assume `ShellTabWindowClass` always sits below the title strip on every Windows build; avoid hard rejections based on point-within-tab-window unless validated by live telemetry.

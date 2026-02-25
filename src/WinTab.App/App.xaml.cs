@@ -146,12 +146,12 @@ public partial class App : Application
 
         // IPC handler: allow handler invocations to forward open-folder requests.
         _openRequestServer = _serviceProvider.GetRequiredService<ExplorerOpenRequestServer>();
-        _openRequestServer.Start(async path =>
+        _openRequestServer.Start(async (path, clickTimeForeground) =>
         {
             try
             {
                 var hook = _serviceProvider.GetRequiredService<ExplorerTabHookService>();
-                bool handled = await hook.OpenLocationAsTabAsync(path);
+                bool handled = await hook.OpenLocationAsTabAsync(path, clickTimeForeground);
                 if (!handled)
                 {
                     _logger?.Warn($"Open-folder request was not completed by tab hook; fallback open: {path}");
@@ -175,12 +175,16 @@ public partial class App : Application
             bool hasStableOpenVerbHandlerPath = IsStableOpenVerbHandlerPath(openVerbHandlerPath);
             bool enableExplorerOpenVerbInterception =
                 settings.EnableExplorerOpenVerbInterception &&
-                isWin11 &&
                 hasStableOpenVerbHandlerPath;
 
-            if (isWin11 && !hasStableOpenVerbHandlerPath)
+            if (!hasStableOpenVerbHandlerPath)
             {
                 _logger?.Warn($"Explorer open-verb interception disabled for transient executable path: {openVerbHandlerPath}");
+            }
+
+            if (!isWin11 && settings.EnableExplorerOpenVerbInterception)
+            {
+                _logger?.Warn("Explorer open-verb interception is running in compatibility mode on non-Windows 11 systems.");
             }
 
             // Always self-check first (repairs old crash residue).
@@ -192,7 +196,6 @@ public partial class App : Application
             }
             else
             {
-                // Ensure we do not leave overrides enabled on unsupported OS.
                 interceptor.DisableAndRestore();
             }
         }
@@ -222,13 +225,18 @@ public partial class App : Application
 
             try
             {
-                // Best-effort restore on clean exit.
-                var interceptor = _serviceProvider?.GetService<RegistryOpenVerbInterceptor>();
-                interceptor?.DisableAndRestore();
+                AppSettings? settings = _serviceProvider?.GetService<AppSettings>();
+                if (settings is not null &&
+                    settings.EnableExplorerOpenVerbInterception &&
+                    !settings.PersistExplorerOpenVerbInterceptionAcrossExit)
+                {
+                    var interceptor = _serviceProvider?.GetService<RegistryOpenVerbInterceptor>();
+                    interceptor?.DisableAndRestore();
+                }
             }
             catch (Exception ex)
             {
-                _logger?.Error("Failed to restore Explorer open-verb interception on exit.", ex);
+                _logger?.Error("Failed to process Explorer open-verb interception state on exit.", ex);
             }
 
             if (_serviceProvider is IDisposable disposableProvider)
@@ -413,6 +421,10 @@ public partial class App : Application
         if (string.IsNullOrWhiteSpace(path))
             return true;
 
+        // Capture foreground BEFORE granting foreground rights — this is the accurate snapshot
+        // of what was foreground at the moment the user initiated the open action.
+        nint clickTimeForeground = (nint)NativeMethods.GetForegroundWindow();
+
         try
         {
             // The handler process is launched by a user-initiated shell action,
@@ -424,7 +436,7 @@ public partial class App : Application
             // best effort
         }
 
-        bool sent = ExplorerOpenRequestClient.TrySendOpenFolder(path);
+        bool sent = ExplorerOpenRequestClient.TrySendOpenFolderEx(path, clickTimeForeground);
         if (sent)
         {
             effectiveLogger?.Info($"Forwarded open-folder request to existing instance: {path}");
@@ -445,9 +457,16 @@ public partial class App : Application
             using RegistryKey? classesRoot = Registry.CurrentUser.OpenSubKey(@"Software\Classes", writable: true);
             if (classesRoot is not null)
             {
-                classesRoot.DeleteSubKeyTree(@"Folder\shell\open\command", throwOnMissingSubKey: false);
-                classesRoot.DeleteSubKeyTree(@"Directory\shell\open\command", throwOnMissingSubKey: false);
-                classesRoot.DeleteSubKeyTree(@"Drive\shell\open\command", throwOnMissingSubKey: false);
+                string[] classes = new[] { "Folder", "Directory", "Drive" };
+                string[] verbs = new[] { "open", "explore", "opennewwindow" };
+
+                foreach (string cls in classes)
+                {
+                    foreach (string verb in verbs)
+                    {
+                        classesRoot.DeleteSubKeyTree($@"{cls}\shell\{verb}\command", throwOnMissingSubKey: false);
+                    }
+                }
             }
 
             using RegistryKey? folderShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Folder\shell", writable: true);

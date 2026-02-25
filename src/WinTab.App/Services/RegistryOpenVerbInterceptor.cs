@@ -12,7 +12,13 @@ public sealed class RegistryOpenVerbInterceptor
 {
     private const string OpenVerb = "open";
     private const string NoneVerb = "none";
-    private const string CommandSubKey = @"shell\open\command";
+
+    private static readonly string[] TargetVerbs =
+    [
+        "open",
+        "explore",
+        "opennewwindow"
+    ];
 
     private const string BackupRegistryPath = @"Software\WinTab\Backups\ExplorerOpenVerb";
     private const string BackupRegistryValueName = "BackupJson";
@@ -46,9 +52,12 @@ public sealed class RegistryOpenVerbInterceptor
         {
             foreach (string cls in TargetClasses)
             {
-                string? cmd = ReadCommand(cls);
-                if (!CommandPointsToWinTab(cmd))
-                    return false;
+                foreach (string verb in TargetVerbs)
+                {
+                    string? cmd = ReadCommand(cls, verb);
+                    if (!CommandPointsToWinTab(cmd))
+                        return false;
+                }
             }
 
             return true;
@@ -171,12 +180,13 @@ public sealed class RegistryOpenVerbInterceptor
         {
             ExePath = _exePath,
             CreatedAtUtc = DateTimeOffset.UtcNow,
-            Entries = TargetClasses.Select(cls => new BackupEntry
+            Entries = TargetClasses.SelectMany(cls => TargetVerbs.Select(verb => new BackupEntry
             {
                 ClassName = cls,
+                Verb = verb,
                 DefaultVerb = ReadEffectiveDefaultVerb(cls),
-                OpenCommandDefault = ReadEffectiveCommandDefaultValue(cls),
-            }).ToList(),
+                CommandDefault = ReadEffectiveCommandDefaultValue(cls, verb),
+            })).ToList(),
         };
 
         backup.Sha256 = ComputeSha256(JsonSerializer.Serialize(backup with { Sha256 = null }));
@@ -247,10 +257,13 @@ public sealed class RegistryOpenVerbInterceptor
     {
         foreach (string cls in TargetClasses)
         {
-            using RegistryKey key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\{CommandSubKey}", writable: true)
-                ?? throw new InvalidOperationException("Failed to create registry key.");
+            foreach (string verb in TargetVerbs)
+            {
+                using RegistryKey key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\shell\{verb}\command", writable: true)
+                    ?? throw new InvalidOperationException("Failed to create registry key.");
 
-            key.SetValue(string.Empty, BuildOverrideCommand(), RegistryValueKind.String);
+                key.SetValue(string.Empty, BuildOverrideCommand(), RegistryValueKind.String);
+            }
         }
 
         // Ensure default verb points to open (standard), but we do not touch other verbs.
@@ -273,7 +286,10 @@ public sealed class RegistryOpenVerbInterceptor
 
         foreach (string cls in TargetClasses)
         {
-            root.DeleteSubKeyTree($@"{cls}\{CommandSubKey}", throwOnMissingSubKey: false);
+            foreach (string verb in TargetVerbs)
+            {
+                root.DeleteSubKeyTree($@"{cls}\{BuildCommandSubKey(verb)}", throwOnMissingSubKey: false);
+            }
         }
     }
 
@@ -307,13 +323,23 @@ public sealed class RegistryOpenVerbInterceptor
     {
         foreach (string cls in TargetClasses)
         {
-            string? verb = ReadEffectiveDefaultVerb(cls);
-            if (!string.Equals(verb, OpenVerb, StringComparison.OrdinalIgnoreCase))
+            string? defaultVerb = ReadEffectiveDefaultVerb(cls);
+            if (!string.Equals(defaultVerb, OpenVerb, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            string? command = ReadEffectiveCommandDefaultValue(cls);
-            if (string.IsNullOrWhiteSpace(command))
+            string? openCommand = ReadEffectiveCommandDefaultValue(cls, OpenVerb);
+            if (string.IsNullOrWhiteSpace(openCommand))
                 return true;
+
+            foreach (string verb in TargetVerbs)
+            {
+                string? command = ReadCommand(cls, verb);
+                if (string.IsNullOrWhiteSpace(command))
+                    continue;
+
+                if (!CommandPointsToWinTab(command))
+                    return true;
+            }
         }
 
         return false;
@@ -323,14 +349,17 @@ public sealed class RegistryOpenVerbInterceptor
     {
         foreach (string cls in TargetClasses)
         {
-            string? command = ReadCommand(cls);
-            if (string.IsNullOrWhiteSpace(command))
-                continue;
-
-            if (command.Contains(HandlerArgNew, StringComparison.OrdinalIgnoreCase) ||
-                command.Contains(HandlerArgLegacy, StringComparison.OrdinalIgnoreCase))
+            foreach (string verb in TargetVerbs)
             {
-                return true;
+                string? command = ReadCommand(cls, verb);
+                if (string.IsNullOrWhiteSpace(command))
+                    continue;
+
+                if (command.Contains(HandlerArgNew, StringComparison.OrdinalIgnoreCase) ||
+                    command.Contains(HandlerArgLegacy, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
             }
         }
 
@@ -343,47 +372,60 @@ public sealed class RegistryOpenVerbInterceptor
         if (root is null)
             return;
 
-        foreach (BackupEntry entry in backup.Entries)
+        var entriesByClass = backup.Entries
+            .GroupBy(e => e.ClassName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (string cls in TargetClasses)
         {
-            // Restore default verb
-            using (RegistryKey? shell = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{entry.ClassName}\shell", writable: true))
+            entriesByClass.TryGetValue(cls, out List<BackupEntry>? classEntries);
+
+            string? defaultVerb = classEntries?.FirstOrDefault()?.DefaultVerb;
+            using (RegistryKey? shell = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\shell", writable: true))
             {
                 if (shell is not null)
                 {
-                    if (entry.DefaultVerb is null)
+                    if (defaultVerb is null)
                         shell.DeleteValue(string.Empty, throwOnMissingValue: false);
                     else
-                        shell.SetValue(string.Empty, entry.DefaultVerb, RegistryValueKind.String);
+                        shell.SetValue(string.Empty, defaultVerb, RegistryValueKind.String);
                 }
             }
 
-            // Restore open\command default value
-            string commandKey = $@"{entry.ClassName}\{CommandSubKey}";
-            if (entry.OpenCommandDefault is null)
+            foreach (string verb in TargetVerbs)
             {
-                root.DeleteSubKeyTree(commandKey, throwOnMissingSubKey: false);
-            }
-            else
-            {
-                using RegistryKey k = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{commandKey}", writable: true)
-                    ?? throw new InvalidOperationException("Failed to create registry key.");
+                BackupEntry? entry = classEntries?.FirstOrDefault(e =>
+                    string.Equals(e.Verb, verb, StringComparison.OrdinalIgnoreCase));
 
-                k.SetValue(string.Empty, entry.OpenCommandDefault, RegistryValueKind.String);
+                string commandKey = $@"{cls}\shell\{verb}\command";
+                if (entry is null || entry.CommandDefault is null)
+                {
+                    root.DeleteSubKeyTree(commandKey, throwOnMissingSubKey: false);
+                }
+                else
+                {
+                    using RegistryKey k = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{commandKey}", writable: true)
+                        ?? throw new InvalidOperationException("Failed to create registry key.");
+
+                    k.SetValue(string.Empty, entry.CommandDefault, RegistryValueKind.String);
+                }
             }
         }
 
         _logger.Info("Restored Explorer open-verb defaults from backup." );
     }
 
-    private string? ReadCommand(string className)
+    private static string BuildCommandSubKey(string verb) => $@"shell\{verb}\command";
+
+    private string? ReadCommand(string className, string verb)
     {
-        using RegistryKey? k = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{className}\{CommandSubKey}");
+        using RegistryKey? k = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{className}\{BuildCommandSubKey(verb)}");
         return k?.GetValue(string.Empty) as string;
     }
 
-    private static string? ReadEffectiveCommandDefaultValue(string className)
+    private static string? ReadEffectiveCommandDefaultValue(string className, string verb)
     {
-        using RegistryKey? k = Registry.ClassesRoot.OpenSubKey($@"{className}\{CommandSubKey}", writable: false);
+        using RegistryKey? k = Registry.ClassesRoot.OpenSubKey($@"{className}\{BuildCommandSubKey(verb)}", writable: false);
         return k?.GetValue(string.Empty) as string;
     }
 
@@ -444,7 +486,8 @@ public sealed class RegistryOpenVerbInterceptor
     private sealed record BackupEntry
     {
         public required string ClassName { get; init; }
+        public required string Verb { get; init; }
         public string? DefaultVerb { get; init; }
-        public string? OpenCommandDefault { get; init; }
+        public string? CommandDefault { get; init; }
     }
 }

@@ -23,14 +23,14 @@ namespace WinTab.App.ExplorerTabUtilityPort;
 /// </summary>
 public sealed class ExplorerTabHookService : IDisposable
 {
-    public async Task<bool> OpenLocationAsTabAsync(string location)
+    public async Task<bool> OpenLocationAsTabAsync(string location, IntPtr clickTimeForeground = default)
     {
         if (string.IsNullOrWhiteSpace(location))
             return false;
 
         location = location.Trim();
 
-        if (await TryNavigateCurrentActiveTabLikeExplorer(location))
+        if (await TryNavigateCurrentActiveTabLikeExplorer(location, clickTimeForeground))
             return true;
 
         if (await TryActivateExistingTabByLocation(location))
@@ -73,38 +73,42 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
-    private async Task<bool> TryNavigateCurrentActiveTabLikeExplorer(string location)
+    private async Task<bool> TryNavigateCurrentActiveTabLikeExplorer(string location, IntPtr clickTimeForeground)
     {
         if (_settings.OpenChildFolderInNewTabFromActiveTab)
             return false;
 
-        if (!IsRealFileSystemLocation(location))
+        // clickTimeForeground is captured by the handler process at the exact moment the user clicked,
+        // before the shell hands off control. This is the authoritative foreground for determining
+        // if the open action originated from within an Explorer window.
+        IntPtr explorerWindow = IntPtr.Zero;
+        if (clickTimeForeground != IntPtr.Zero && IsExplorerTopLevelWindow(clickTimeForeground))
+            explorerWindow = clickTimeForeground;
+
+        // Fallback: if the foreground wasn't captured (legacy pipe protocol), check now.
+        if (explorerWindow == IntPtr.Zero)
+        {
+            IntPtr fg = NativeMethods.GetForegroundWindow();
+            if (IsExplorerTopLevelWindow(fg))
+                explorerWindow = fg;
+        }
+
+        if (explorerWindow == IntPtr.Zero || !NativeMethods.IsWindow(explorerWindow))
             return false;
 
-        IntPtr foreground = NativeMethods.GetForegroundWindow();
-        if (foreground == IntPtr.Zero || !IsExplorerTopLevelWindow(foreground))
-            return false;
-
-        IntPtr activeTab = GetActiveTabHandle(foreground);
+        IntPtr activeTab = GetActiveTabHandle(explorerWindow);
         if (activeTab == IntPtr.Zero || !NativeMethods.IsWindow(activeTab))
             return false;
 
-        string? currentLocation = await UiAsync(() => TryGetLocationByTabHandleUi(activeTab));
-        if (!IsRealFileSystemLocation(currentLocation))
-            return false;
-
-        if (!IsChildPathOf(currentLocation!, location))
-            return false;
-
-        bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: 420);
+        bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: 600);
         if (!navigated)
             return false;
 
-        bool confirmed = await WaitUntilTabLocationMatches(activeTab, location, timeoutMs: 420, pollMs: 40);
+        bool confirmed = await WaitUntilTabLocationMatches(activeTab, location, timeoutMs: 600, pollMs: 40);
         if (!confirmed)
             return false;
 
-        TryBringToForeground(foreground);
+        TryBringToForeground(explorerWindow);
         _logger.Info($"Navigated active Explorer tab directly: {location}");
         return true;
     }
