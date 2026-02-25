@@ -47,8 +47,8 @@
 
     <!-- Uninstall Page -->
     <system:String x:Key="Uninstall_Title">Uninstall WinTab</system:String>
-    <system:String x:Key="Uninstall_Description">Start the uninstaller here. For installed mode, the wizard keeps user data by default and lets you choose full cleanup.</system:String>
-    <system:String x:Key="Uninstall_DefaultBehavior">Tip: the uninstall wizard keeps settings and logs by default; choosing "Yes" also removes user data.</system:String>
+    <system:String x:Key="Uninstall_Description">Start the uninstaller here. Installed mode keeps user data by default, and you can choose full cleanup with the checkbox.</system:String>
+    <system:String x:Key="Uninstall_DefaultBehavior">Tip: by default only app files are removed; enable "Remove user data" to also delete settings and logs.</system:String>
     <system:String x:Key="Uninstall_ModeLabel">Run mode</system:String>
     <system:String x:Key="Uninstall_ModeInstalled">Installed</system:String>
     <system:String x:Key="Uninstall_ModePortable">Portable</system:String>
@@ -57,6 +57,8 @@
     <system:String x:Key="Uninstall_Button">Uninstall WinTab</system:String>
     <system:String x:Key="Uninstall_OpenSystem">Open system uninstall settings</system:String>
     <system:String x:Key="Uninstall_OpenFolder">Open app directory</system:String>
+    <system:String x:Key="Uninstall_RemoveUserData">Remove user data</system:String>
+    <system:String x:Key="Uninstall_RemoveUserData_Desc">Off by default. Enable only if you want full cleanup (delete AppData\Roaming\WinTab).</system:String>
     <system:String x:Key="Uninstall_ConfirmTitle">Confirm Uninstall</system:String>
     <system:String x:Key="Uninstall_Confirm">WinTab uninstaller will be started. Continue?</system:String>
     <system:String x:Key="Uninstall_LaunchFailed">Unable to start uninstaller. Please use system uninstall settings.</system:String>

@@ -47,8 +47,8 @@
 
     <!-- Uninstall Page -->
     <system:String x:Key="Uninstall_Title">卸载 WinTab</system:String>
-    <system:String x:Key="Uninstall_Description">在此启动卸载程序。安装版在卸载向导中默认保留用户配置，可按需选择彻底删除。</system:String>
-    <system:String x:Key="Uninstall_DefaultBehavior">提示：卸载向导默认保留配置与日志；若你选择“是”，会同时删除用户数据目录。</system:String>
+    <system:String x:Key="Uninstall_Description">在此启动卸载程序。安装版默认保留用户配置，可按需勾选删除用户数据。</system:String>
+    <system:String x:Key="Uninstall_DefaultBehavior">提示：默认仅卸载程序文件；若勾选“删除用户数据”，会同时删除配置与日志目录。</system:String>
     <system:String x:Key="Uninstall_ModeLabel">运行模式</system:String>
     <system:String x:Key="Uninstall_ModeInstalled">安装版</system:String>
     <system:String x:Key="Uninstall_ModePortable">便携版</system:String>
@@ -57,6 +57,8 @@
     <system:String x:Key="Uninstall_Button">卸载 WinTab</system:String>
     <system:String x:Key="Uninstall_OpenSystem">打开系统卸载设置</system:String>
     <system:String x:Key="Uninstall_OpenFolder">打开程序目录</system:String>
+    <system:String x:Key="Uninstall_RemoveUserData">删除用户数据</system:String>
+    <system:String x:Key="Uninstall_RemoveUserData_Desc">默认不勾选。仅在需要彻底清理时勾选（删除 AppData\Roaming\WinTab）。</system:String>
     <system:String x:Key="Uninstall_ConfirmTitle">确认卸载</system:String>
     <system:String x:Key="Uninstall_Confirm">即将启动 WinTab 卸载程序，是否继续？</system:String>
     <system:String x:Key="Uninstall_LaunchFailed">无法启动卸载程序，请改用系统卸载设置。</system:String>

@@ -14,12 +14,20 @@ public sealed partial class UninstallViewModel : ObservableObject
     private readonly Logger _logger;
     private readonly string _appDirectory;
     private readonly string? _uninstallerPath;
+    private readonly bool _isPortable;
+
+    private const string RemoveUserDataArgument = "/REMOVEUSERDATA=1";
 
     [ObservableProperty]
     private string _modeText;
 
     [ObservableProperty]
     private string _uninstallerPathText;
+
+    [ObservableProperty]
+    private bool _removeUserDataOnUninstall;
+
+    public bool IsRemoveUserDataOptionEnabled => !_isPortable;
 
     public UninstallViewModel(Logger logger)
     {
@@ -30,9 +38,9 @@ public sealed partial class UninstallViewModel : ObservableObject
 
         _uninstallerPath = ResolveUninstallerPath(_appDirectory);
 
-        bool isPortable = AppPaths.IsPortable;
+        _isPortable = AppPaths.IsPortable;
         _modeText = LocalizationManager.GetString(
-            isPortable ? "Uninstall_ModePortable" : "Uninstall_ModeInstalled");
+            _isPortable ? "Uninstall_ModePortable" : "Uninstall_ModeInstalled");
 
         _uninstallerPathText = _uninstallerPath
             ?? LocalizationManager.GetString("Uninstall_PathMissing");
@@ -41,7 +49,7 @@ public sealed partial class UninstallViewModel : ObservableObject
     [RelayCommand]
     private void StartUninstall()
     {
-        if (AppPaths.IsPortable)
+        if (_isPortable)
         {
             string title = LocalizationManager.GetString("Uninstall_ConfirmTitle");
             string message = LocalizationManager.GetString("Uninstall_PortableHint");
@@ -85,6 +93,7 @@ public sealed partial class UninstallViewModel : ObservableObject
             Process.Start(new ProcessStartInfo
             {
                 FileName = _uninstallerPath,
+                Arguments = RemoveUserDataOnUninstall ? RemoveUserDataArgument : string.Empty,
                 WorkingDirectory = _appDirectory,
                 UseShellExecute = true,
             });

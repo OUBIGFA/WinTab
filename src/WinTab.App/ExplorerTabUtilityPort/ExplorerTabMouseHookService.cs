@@ -36,7 +36,6 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     private readonly int _doubleClickTimeMs;
     private readonly int _doubleClickWidth;
     private readonly int _doubleClickHeight;
-    private readonly int _tabHeaderFallbackHeight;
 
     private IntPtr _hookHandle;
     private bool _enabled;
@@ -58,12 +57,6 @@ public sealed class ExplorerTabMouseHookService : IDisposable
 
         _doubleClickWidth = Math.Max(1, NativeMethods.GetSystemMetrics(NativeConstants.SM_CXDOUBLECLK));
         _doubleClickHeight = Math.Max(1, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYDOUBLECLK));
-        _tabHeaderFallbackHeight = Math.Max(
-            48,
-            Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYCAPTION)) +
-            Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYFRAME)) +
-            40);
-
         if (settings.CloseTabOnDoubleClick && !SetEnabled(true))
             settings.CloseTabOnDoubleClick = false;
     }
@@ -175,7 +168,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
             if (_disposed || !_enabled)
                 return;
 
-            if (!IsPointInTabTitleArea(info.pt, topLevelHandle))
+            if (!IsPointInTabTitleArea(info.pt))
             {
                 ResetClickState();
                 return;
@@ -219,24 +212,34 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         if (topLevelHandle == IntPtr.Zero || !WindowClassEquals(topLevelHandle, ExplorerWindowClass))
             return false;
 
-        tabHandle = NativeMethods.FindWindowEx(topLevelHandle, IntPtr.Zero, ExplorerTabClass, null);
+        tabHandle = TryFindAncestorWindowByClass(pointWindow, ExplorerTabClass, stopAt: topLevelHandle);
         return tabHandle != IntPtr.Zero && NativeMethods.IsWindow(tabHandle);
     }
 
-    private bool IsPointInTabTitleArea(NativeStructs.POINT point, IntPtr topLevelHandle)
+    private static bool IsPointInTabTitleArea(NativeStructs.POINT point)
     {
         AccessiblePointKind pointKind = GetAccessiblePointKind(point);
         if (pointKind == AccessiblePointKind.Tab)
             return true;
 
-        if (pointKind == AccessiblePointKind.NavigationControl)
-            return false;
+        return false;
+    }
 
-        if (!NativeMethods.GetWindowRect(topLevelHandle, out NativeStructs.RECT topLevelRect))
-            return false;
+    private static IntPtr TryFindAncestorWindowByClass(IntPtr hwnd, string expectedClass, IntPtr stopAt)
+    {
+        IntPtr current = hwnd;
+        for (int depth = 0; depth < 24 && current != IntPtr.Zero; depth++)
+        {
+            if (WindowClassEquals(current, expectedClass))
+                return current;
 
-        int maxHeaderY = topLevelRect.Top + _tabHeaderFallbackHeight;
-        return point.Y >= topLevelRect.Top && point.Y <= maxHeaderY;
+            if (current == stopAt)
+                break;
+
+            current = NativeMethods.GetParent(current);
+        }
+
+        return IntPtr.Zero;
     }
 
     private static AccessiblePointKind GetAccessiblePointKind(NativeStructs.POINT point)

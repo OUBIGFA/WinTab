@@ -52,6 +52,16 @@
                                    Command="{Binding OpenAppDirectoryCommand}"
                                    Margin="8,0,0,0" />
                     </StackPanel>
+
+                    <StackPanel Margin="0,12,0,0">
+                        <CheckBox Content="{DynamicResource Uninstall_RemoveUserData}"
+                                  IsChecked="{Binding RemoveUserDataOnUninstall, Mode=TwoWay}"
+                                  IsEnabled="{Binding IsRemoveUserDataOptionEnabled}" />
+                        <TextBlock Text="{DynamicResource Uninstall_RemoveUserData_Desc}"
+                                   Margin="0,4,0,0"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
                 </StackPanel>
             </ui:CardControl>
 
