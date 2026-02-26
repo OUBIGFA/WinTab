@@ -9,67 +9,72 @@
       mc:Ignorable="d"
       Title="UninstallPage">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
-        <StackPanel Margin="0,0,24,24" MaxWidth="800">
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="600" Margin="24,48,24,24">
+                
+                <ui:SymbolIcon Symbol="Delete24" FontSize="48" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,16"/>
+                <TextBlock Text="{DynamicResource Uninstall_Title}"
+                           FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center"
+                           Margin="0,0,0,32" />
 
-            <TextBlock Text="{DynamicResource Uninstall_Title}"
-                       FontSize="20" FontWeight="SemiBold"
-                       Margin="0,0,0,16" />
+                <ui:CardControl Margin="0,0,0,16">
+                    <StackPanel>
+                        <!-- Environment Info -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            
+                            <TextBlock Text="{DynamicResource Uninstall_ModeLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Grid.Row="0" Grid.Column="0" Margin="0,0,12,8"/>
+                            <TextBlock Text="{Binding ModeText}" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" FontWeight="Medium"/>
+                            
+                            <TextBlock Text="{DynamicResource Uninstall_PathLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Grid.Row="1" Grid.Column="0" Margin="0,0,12,0"/>
+                            <TextBlock Text="{Binding UninstallerPathText}" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </Grid>
 
-            <ui:CardControl Margin="0,0,0,8">
-                <ui:CardControl.Header>
-                    <TextBlock Text="{DynamicResource Uninstall_Description}"
-                               TextWrapping="Wrap"
-                               MaxWidth="620" />
-                </ui:CardControl.Header>
+                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,0,0,16"/>
 
-                <StackPanel>
-                    <StackPanel Margin="0,0,0,8">
-                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                            <Run Text="{DynamicResource Uninstall_ModeLabel}" />
-                            <Run Text=": " />
-                            <Run Text="{Binding ModeText}" />
-                        </TextBlock>
+                        <!-- Options -->
+                        <StackPanel Margin="0,0,0,24">
+                            <CheckBox Content="{DynamicResource Uninstall_RemoveUserData}"
+                                      IsChecked="{Binding RemoveUserDataOnUninstall, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsRemoveUserDataOptionEnabled}" />
+                            <TextBlock Text="{DynamicResource Uninstall_RemoveUserData_Desc}"
+                                       Margin="28,4,0,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" FontSize="12" />
+                        </StackPanel>
 
-                        <TextBlock Margin="0,8,0,0"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}">
-                            <Run Text="{DynamicResource Uninstall_PathLabel}" />
-                            <Run Text=": " />
-                            <Run Text="{Binding UninstallerPathText}" />
-                        </TextBlock>
+                        <!-- Actions -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <ui:Button Content="{DynamicResource Uninstall_Button}"
+                                       Icon="{ui:SymbolIcon Delete24}"
+                                       Appearance="Danger"
+                                       Command="{Binding StartUninstallCommand}" />
+                            <ui:Button Content="{DynamicResource Uninstall_OpenSystem}"
+                                       Icon="{ui:SymbolIcon WindowWrench24}"
+                                       Command="{Binding OpenSystemUninstallCommand}"
+                                       Margin="8,0,0,0" />
+                            <ui:Button Content="{DynamicResource Uninstall_OpenFolder}"
+                                       Icon="{ui:SymbolIcon Folder24}"
+                                       Command="{Binding OpenAppDirectoryCommand}"
+                                       Margin="8,0,0,0" />
+                        </StackPanel>
                     </StackPanel>
+                </ui:CardControl>
 
-                    <StackPanel Orientation="Horizontal">
-                        <ui:Button Content="{DynamicResource Uninstall_Button}"
-                                   Icon="{ui:SymbolIcon Delete24}"
-                                   Command="{Binding StartUninstallCommand}" />
-                        <ui:Button Content="{DynamicResource Uninstall_OpenSystem}"
-                                   Icon="{ui:SymbolIcon WindowWrench24}"
-                                   Command="{Binding OpenSystemUninstallCommand}"
-                                   Margin="8,0,0,0" />
-                        <ui:Button Content="{DynamicResource Uninstall_OpenFolder}"
-                                   Icon="{ui:SymbolIcon Folder24}"
-                                   Command="{Binding OpenAppDirectoryCommand}"
-                                   Margin="8,0,0,0" />
-                    </StackPanel>
+                <TextBlock Text="{DynamicResource Uninstall_DefaultBehavior}"
+                           HorizontalAlignment="Center" TextAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           FontSize="12" TextWrapping="Wrap" MaxWidth="500" />
 
-                    <StackPanel Margin="0,12,0,0">
-                        <CheckBox Content="{DynamicResource Uninstall_RemoveUserData}"
-                                  IsChecked="{Binding RemoveUserDataOnUninstall, Mode=TwoWay}"
-                                  IsEnabled="{Binding IsRemoveUserDataOptionEnabled}" />
-                        <TextBlock Text="{DynamicResource Uninstall_RemoveUserData_Desc}"
-                                   Margin="0,4,0,0"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </StackPanel>
-            </ui:CardControl>
-
-            <TextBlock Text="{DynamicResource Uninstall_DefaultBehavior}"
-                       Margin="0,12,0,0"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       TextWrapping="Wrap" />
-
-        </StackPanel>
-    </ScrollViewer>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
 </Page>

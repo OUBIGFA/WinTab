@@ -28,7 +28,6 @@ public sealed class SettingsStoreTests
             settings.OpenChildFolderInNewTabFromActiveTab.Should().BeFalse();
             settings.CloseTabOnDoubleClick.Should().BeFalse();
             settings.Theme.Should().Be(ThemeMode.Light);
-            settings.PersistExplorerOpenVerbInterceptionAcrossExit.Should().BeFalse();
             settings.SchemaVersion.Should().Be(2);
         }
         finally
@@ -58,7 +57,6 @@ public sealed class SettingsStoreTests
             AppSettings settings = store.Load();
 
             settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
-            settings.PersistExplorerOpenVerbInterceptionAcrossExit.Should().BeFalse();
             settings.SchemaVersion.Should().Be(2);
         }
         finally
@@ -81,13 +79,13 @@ public sealed class SettingsStoreTests
             {
                 RunAtStartup = true,
                 StartMinimized = true,
+                ShowTrayIcon = false,
                 EnableExplorerOpenVerbInterception = false,
                 OpenNewTabFromActiveTabPath = false,
                 OpenChildFolderInNewTabFromActiveTab = true,
                 CloseTabOnDoubleClick = true,
                 Theme = ThemeMode.Dark,
-                Language = Language.English,
-                PersistExplorerOpenVerbInterceptionAcrossExit = false
+                Language = Language.English
             };
 
             store.Save(source);
@@ -95,13 +93,13 @@ public sealed class SettingsStoreTests
 
             restored.RunAtStartup.Should().BeTrue();
             restored.StartMinimized.Should().BeTrue();
+            restored.ShowTrayIcon.Should().BeFalse();
             restored.EnableExplorerOpenVerbInterception.Should().BeFalse();
             restored.OpenNewTabFromActiveTabPath.Should().BeFalse();
             restored.OpenChildFolderInNewTabFromActiveTab.Should().BeTrue();
             restored.CloseTabOnDoubleClick.Should().BeTrue();
             restored.Theme.Should().Be(ThemeMode.Dark);
             restored.Language.Should().Be(Language.English);
-            restored.PersistExplorerOpenVerbInterceptionAcrossExit.Should().BeFalse();
             restored.SchemaVersion.Should().Be(2);
         }
         finally

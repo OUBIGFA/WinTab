@@ -12,10 +12,12 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
         <StackPanel Margin="0,0,24,24" MaxWidth="800">
 
-            <TextBlock Text="{DynamicResource Behavior_Status}"
-                       FontSize="20" FontWeight="SemiBold"
-                       Margin="0,0,0,16" />
-
+            <!-- Interception & Interaction (Merges to System Hook) -->
+            <TextBlock Text="{DynamicResource Behavior_Group_Interception}"
+                       FontSize="14" FontWeight="Medium"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,8" />
+                       
             <ui:CardControl Margin="0,0,0,8">
                 <ui:CardControl.Header>
                     <StackPanel>
@@ -27,20 +29,24 @@
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding EnableExplorerOpenVerbInterception, Mode=TwoWay}" />
             </ui:CardControl>
-
-            <ui:CardControl Margin="0,0,0,8">
+            
+            <ui:CardControl Margin="0,0,0,24">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource Behavior_PersistExplorerOpenVerbInterceptionAcrossExit}" FontWeight="Medium" />
-                        <TextBlock Text="{DynamicResource Behavior_PersistExplorerOpenVerbInterceptionAcrossExit_Desc}"
+                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick_Desc}"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                    FontSize="12" Margin="0,2,0,0" />
                     </StackPanel>
                 </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding PersistExplorerOpenVerbInterceptionAcrossExit, Mode=TwoWay}"
-                                 IsEnabled="{Binding EnableExplorerOpenVerbInterception}" />
+                <ui:ToggleSwitch IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}" />
             </ui:CardControl>
 
+            <!-- Rules -->
+            <TextBlock Text="{DynamicResource Behavior_Group_Tabs}"
+                       FontSize="14" FontWeight="Medium"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                       Margin="0,0,0,8" />
             <ui:CardControl Margin="0,0,0,8">
                 <ui:CardControl.Header>
                     <StackPanel>
@@ -64,18 +70,6 @@
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding OpenChildFolderInNewTabFromActiveTab, Mode=TwoWay}"
                                  IsEnabled="{Binding IsOpenChildFolderInNewTabOptionEnabled}" />
-            </ui:CardControl>
-
-            <ui:CardControl Margin="0,0,0,8">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick}" FontWeight="Medium" />
-                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}" />
             </ui:CardControl>
 
         </StackPanel>

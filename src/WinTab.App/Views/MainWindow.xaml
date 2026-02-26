@@ -15,6 +15,13 @@
                            IsPaneToggleVisible="True"
                            OpenPaneLength="200">
 
+            <ui:NavigationView.PaneHeader>
+                <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                    <Image Source="/Assets/wintab.ico" Width="20" Height="20" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <TextBlock Text="WinTab" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" Margin="12,0,0,0" />
+                </StackPanel>
+            </ui:NavigationView.PaneHeader>
+
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="{DynamicResource Nav_General}"
                                        TargetPageType="{x:Type pages:GeneralPage}"

@@ -1,122 +1,205 @@
+<div align="center">
+
+<img src="src/WinTab.App/Assets/wintab.ico" width="80" />
+
 # WinTab
 
-WinTab 是一款开源的 Windows 窗口标签工具，让资源管理器拥有类似浏览器的标签页体验。项目基于 .NET 9（WPF）实现，支持安装版与便携版两种分发方式。
+**为 Windows 资源管理器添加标签页的开源工具**
 
-## 功能概览
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11-lightgrey.svg)]()
+[![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4.svg)]()
 
-- 资源管理器目录打开请求转发到 WinTab 进程，尽量在已有窗口中以标签页方式打开。
-- 托盘运行：支持开机自启动、启动最小化到托盘、双击托盘图标恢复主界面。
-- 双语界面：简体中文 / English，可在设置页切换。
-- 主题切换：浅色 / 深色。
-- 可选行为开关：
-  - 接管资源管理器 `open` 行为（open-verb 拦截）。
-  - 在当前活动标签页目录下打开子目录时，改为新建标签页。
-  - 双击资源管理器标签页标题区域时关闭标签页（模拟鼠标中键单击，默认关闭）。
-- 稳定性与清理：
-  - 崩溃日志与运行日志。
-  - 退出或卸载时尽量恢复注册表覆盖，减少残留。
+[English](README.en.md) | 简体中文
+
+</div>
+
+---
+
+## 简介
+
+WinTab 是一款开源的 Windows 窗口标签管理工具。它通过拦截系统的文件夹打开事件，让你在一个窗口里以多个**标签页**的方式管理资源管理器——就像浏览器一样。
+
+得益于完全基于 Win32 事件推送的架构设计，**长期后台驻留时 CPU 占用趋近于 0%**，内存常驻开销仅 30–80 MB。
+
+---
+
+## 功能特性
+
+### 核心功能
+
+- **标签页接管**：拦截由系统或其他应用发出的文件夹打开请求，自动以新标签页的方式并入当前 WinTab 窗口，无需新弹窗口
+- **继承当前路径**：新建标签页时默认沿用当前目录，而非默认的"此电脑"
+- **在新标签页中打开子文件夹**：点击目录时自动弹出新标签页，保留当前视图不被覆盖
+- **双击标签页标题关闭**：不用瞄准小叉，对着标签头双击即可关闭，相当于鼠标中键
+
+### 系统集成
+
+- **托盘驻留**：开机自启动 + 启动时隐藏主窗口；支持随时从托盘恢复
+- **显示托盘图标**：可独立控制是否在系统通知区域展示图标
+- **主题**：支持浅色与深色两种界面主题
+- **双语界面**：简体中文 / English，可在设置页随时切换，即时生效
+
+### 稳定性
+
+- 崩溃日志与运行日志自动记录
+- 退出或卸载时自动还原注册表修改，不留残留
+- 内置注册表状态自检机制，防止环境被污染
+
+---
 
 ## 系统要求
 
-- Windows 10 / 11（x64）。
-- `.NET 9 Desktop Runtime`（安装包会检测并提示）。
-- 推荐 Windows 11 以获得完整的资源管理器标签页相关能力。
+| 项目 | 要求 |
+|---|---|
+| 操作系统 | Windows 10 / 11（仅 x64） |
+| 运行时 | [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0) |
+| 推荐系统 | Windows 11（标签页拦截功能完整支持） |
 
-> 说明：open-verb 拦截在代码中要求 Windows 11（`10.0.22000+`）。
+> **注意**：资源管理器的文件夹标签接管功能需要 Windows 11（`10.0.22000+`）。Windows 10 下可正常运行，但此功能不可用。
 
-## 安装与使用
+---
 
-### 1) 安装版（推荐普通用户）
+## 下载与安装
 
-从 Releases 下载：`WinTab_Setup_<version>.exe`。
+前往 [Releases](../../releases) 页面下载最新版本。
 
-- 安装向导支持自定义安装路径。
-- 默认语言会按系统语言自动检测（可在语言选择页手动改中/英）。
-- 可勾选开机自启动。
+### 安装版（推荐普通用户）
 
-#### 已安装后再次运行安装包
+下载 `WinTab_Setup_<version>.exe` 双击安装。
 
-若检测到已安装版本，安装页会提供两种模式：
+- 支持自定义安装路径
+- 安装向导会自动检测是否缺少 .NET 9 运行时并引导下载
+- 默认跟随系统语言（中/英）
+- 安装时可勾选**开机自启动**
 
-- `卸载完再安装（推荐）`：可额外勾选“删除用户数据”，默认不勾选。
-- `不卸载直接安装`：直接覆盖安装程序文件，保留用户数据。
+#### 覆盖安装
 
-静默安装可通过参数控制重装模式：
+再次运行安装包时，向导将提供两种模式：
 
-- `/REINSTALLMODE=CLEAN`：先卸载再安装。
-- `/REINSTALLMODE=DIRECT`：直接安装（静默模式默认）。
-- `/REMOVEUSERDATA=1`：仅在 `CLEAN` 模式下生效，用于删除 `%AppData%\Roaming\WinTab`。
+| 模式 | 说明 |
+|---|---|
+| **卸载完再安装（推荐）** | 先完整卸载旧版本，可选是否同时删除用户数据 |
+| **不卸载直接安装** | 直接覆盖程序文件，完整保留用户设置 |
 
-### 2) 便携版（免安装）
+静默安装参数：
 
-从 Releases 下载：`WinTab_<version>_portable.zip`，解压后直接运行 `WinTab.exe`。
+```
+WinTab_Setup_<version>.exe /SILENT /REINSTALLMODE=CLEAN /REMOVEUSERDATA=1
+```
 
-便携版包含 `portable.txt` 标记文件，程序会自动进入便携模式：
+| 参数 | 说明 |
+|---|---|
+| `/REINSTALLMODE=CLEAN` | 先卸载再安装 |
+| `/REINSTALLMODE=DIRECT` | 直接覆盖（静默模式默认值） |
+| `/REMOVEUSERDATA=1` | 仅 CLEAN 模式有效，删除 `%AppData%\Roaming\WinTab` |
 
-- 配置、日志写入程序目录下的 `data/`。
-- 不使用 `%AppData%\WinTab`。
-- 不想用时直接删除整个解压目录即可。
+---
 
-## 数据目录与配置文件
+### 便携版（免安装）
+
+下载 `WinTab_<version>_portable.zip`，解压后直接运行 `WinTab.exe`。
+
+解压包中包含 `portable.txt` 标记文件，程序会自动进入便携模式：
+
+- 配置与日志写入同级的 `data/` 目录，不使用 `%AppData%`
+- 不再使用时直接删除整个解压文件夹即可
+
+---
+
+## 数据目录
 
 ### 安装版
 
-- 配置：`%AppData%\WinTab\settings.json`
-- 日志：`%AppData%\WinTab\logs\wintab.log`
-- 崩溃日志：`%AppData%\WinTab\logs\crash.log`
+| 类型 | 路径 |
+|---|---|
+| 配置文件 | `%AppData%\WinTab\settings.json` |
+| 运行日志 | `%AppData%\WinTab\logs\wintab.log` |
+| 崩溃日志 | `%AppData%\WinTab\logs\crash.log` |
 
 ### 便携版
 
-- 配置：`<解压目录>\data\settings.json`
-- 日志：`<解压目录>\data\logs\wintab.log`
-- 崩溃日志：`<解压目录>\data\logs\crash.log`
+| 类型 | 路径 |
+|---|---|
+| 配置文件 | `<解压目录>\data\settings.json` |
+| 运行日志 | `<解压目录>\data\logs\wintab.log` |
+| 崩溃日志 | `<解压目录>\data\logs\crash.log` |
 
-### `settings.json` 示例
+### 配置文件示例
 
 ```json
 {
   "StartMinimized": false,
+  "ShowTrayIcon": true,
   "RunAtStartup": false,
   "Language": "Chinese",
   "Theme": "Light",
   "EnableExplorerOpenVerbInterception": true,
   "OpenChildFolderInNewTabFromActiveTab": false,
-  "CloseTabOnDoubleClick": false,
+  "CloseTabOnDoubleClick": true,
   "SchemaVersion": 1
 }
 ```
 
-## 卸载行为
+---
 
-卸载时默认策略：**保留用户配置与日志**。
+## 资源占用说明
 
-- 在应用内“卸载”页面可勾选“删除用户数据”来决定是否删除 `%AppData%\Roaming\WinTab`。
-- 复选框默认不勾选（保留数据）。
-- 勾选后执行彻底清理（含用户数据目录）。
+WinTab 专为长期后台驻留设计，所有监听机制均采用操作系统事件推送，**不进行主动轮询**。
 
-此外，卸载流程会尝试执行应用内清理命令以恢复 open-verb 相关注册表状态。
+| 资源 | 空闲时 | 活跃使用时 |
+|---|---|---|
+| CPU | ≈ 0% | 窗口事件处理时短暂唤醒 |
+| 内存 | 30–80 MB | 无显著增长 |
+| 磁盘 | 无后台读写 | 仅在产生日志或设置变更时写入 |
+| 网络 | 无 | 无 |
 
-## 工作机制（简版）
+**内部机制**：
 
-WinTab 主要由以下能力组成：
+- `SetWinEventHook`（Win32）——系统窗口事件推送，被动响应，CPU 友好
+- `NamedPipeServerStream.WaitForConnectionAsync`——异步 `await` 阻塞等待，管道无连接时线程不消耗 CPU
+- `EventWaitHandle.WaitOne()`——操作系统级阻塞，用于进程间单实例激活信号
+- `RegistryOpenVerbInterceptor`——仅启动时执行一次自检，后续无任何周期性注册表操作
 
-- Win32 窗口事件监听（`SetWinEventHook`）。
-- 资源管理器窗口/标签识别与切换（Win32 + COM 动态调用）。
-- 命名管道 IPC（`WinTab_ExplorerOpenRequest`）用于将二次打开请求转发给主实例。
-- 注册表拦截器：在 HKCU 下写入并恢复 `Folder/Directory/Drive` 的 `shell\\open\\command`。
+---
 
-> 高级开关：`WINTAB_AUTO_CONVERT_EXPLORER=1` 时会启用更积极的自动转换路径（默认关闭）。
+## 卸载
 
-## 内部命令行参数（调试/维护）
+在应用内进入**卸载**页面，可选择：
 
-- `--wintab-open-folder <path>`：资源管理器 open-verb 入口。
-- `--open-folder <path>`：历史兼容入口。
-- `--wintab-companion <pid>`：伴生进程模式（监测主进程并兜底恢复）。
-- `--wintab-cleanup`：卸载清理模式（用于恢复注册表/启动项）。
+- **保留用户数据**（默认）：仅删除程序文件，保留 `%AppData%\WinTab`
+- **彻底清理**：勾选"删除用户数据"，同时清除配置与日志
+
+卸载过程会自动还原注册表中的 `Folder/Directory/Drive` 打开命令至原始状态。
+
+---
+
+## 工作机制
+
+```
+系统/其他应用打开文件夹
+        │
+        ▼
+RegistryOpenVerbInterceptor 拦截 open-verb
+        │
+        ▼
+ExplorerOpenVerbHandler 进程启动（--wintab-open-folder）
+        │
+        ▼
+NamedPipe → ExplorerOpenRequestServer（主进程）
+        │
+        ▼
+WindowManager 查找/激活已有 Explorer 窗口
+        │
+        ▼
+标签页在现有窗口中打开，无需新建窗口
+```
+
+---
 
 ## 项目结构
 
-```text
+```
 src/
   WinTab.App/             WPF 主程序（DI、页面、服务、托盘、启动流程）
   WinTab.UI/              UI 资源与本地化（中/英）
@@ -124,13 +207,14 @@ src/
   WinTab.Platform.Win32/  Win32 互操作与窗口操作
   WinTab.Persistence/     配置与路径管理
   WinTab.Diagnostics/     日志与崩溃处理
-  WinTab.Tests/           单元测试（当前主要覆盖 SettingsStore）
+  WinTab.Tests/           单元测试
 installers/
-  WinTab.iss              Inno Setup 脚本
-  Languages/ChineseSimplified.isl
+  WinTab.iss              Inno Setup 安装包脚本
 .github/workflows/
-  build-release.yml       CI/CD（构建、测试、打包、发布）
+  build-release.yml       CI/CD（构建 → 测试 → 打包 → 发布）
 ```
+
+---
 
 ## 本地开发
 
@@ -138,9 +222,9 @@ installers/
 
 - .NET SDK 9.x
 - Windows（建议 PowerShell）
-- 可选：Inno Setup 6（需要打安装包时）
+- 可选：[Inno Setup 6](https://jrsoftware.org/isinfo.php)（打安装包时需要）
 
-### 运行与测试
+### 构建与测试
 
 ```powershell
 dotnet restore WinTab.slnx
@@ -149,36 +233,28 @@ dotnet test src/WinTab.Tests/WinTab.Tests.csproj -c Release
 dotnet run --project src/WinTab.App/WinTab.App.csproj
 ```
 
-### 本地打包（安装版 + 便携版）
+### 本地打包
 
 ```powershell
-# 1) 发布程序
-dotnet publish src/WinTab.App/WinTab.App.csproj -c Release -r win-x64 --self-contained false -o publish/win-x64
+# 1. 发布应用
+dotnet publish src/WinTab.App/WinTab.App.csproj `
+  -c Release -r win-x64 --self-contained false `
+  -o publish/win-x64
 
-# 2) 去掉调试符号（发布产物更干净）
-Get-ChildItem -Path publish/win-x64 -Filter *.pdb -Recurse | Remove-Item -Force
-
-# 3) 生成安装包（需已安装 Inno Setup 6）
+# 2. 生成安装包（需已安装 Inno Setup 6）
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=1.0.0 installers/WinTab.iss
 
-# 4) 生成便携版 ZIP（含 portable 模式标记）
-"WinTab Portable Mode - Data is stored in the 'data' folder next to this executable" |
-  Out-File -FilePath publish/win-x64/portable.txt -Encoding utf8
-Compress-Archive -Path publish/win-x64\* -DestinationPath publish/WinTab_1.0.0_portable.zip -Force
+# 3. 生成便携版 ZIP
+"WinTab Portable Mode" | Out-File publish/win-x64/portable.txt -Encoding utf8
+Compress-Archive publish/win-x64\* publish/WinTab_1.0.0_portable.zip -Force
 ```
 
-## GitHub Actions 自动打包 / 发布
+---
 
-工作流文件：`.github/workflows/build-release.yml`
+## 自动发布（GitHub Actions）
 
-- 推送到 `master`：自动构建、测试、打包并上传 Actions Artifacts。
-- 推送 tag（如 `1.0.0`）：在上面基础上自动创建 GitHub Release 并上传：
-  - `WinTab_Setup_<version>.exe`
-  - `WinTab_Setup_<version>.exe.sha256`
-  - `WinTab_<version>_portable.zip`
-  - `WinTab_<version>_portable.zip.sha256`
-
-发布建议流程：
+- **推送到 `master`**：自动构建、测试、打包并上传 Actions Artifacts
+- **推送 tag**（如 `1.0.0`）：自动创建 GitHub Release，上传安装包与便携版及对应的 SHA256 校验文件
 
 ```powershell
 git push origin master
@@ -186,32 +262,29 @@ git tag 1.0.0
 git push origin 1.0.0
 ```
 
-> 注意：触发 Release 的 tag 对应提交里必须已经包含工作流文件。
+---
 
 ## 常见问题
 
-### Q1: 为什么没有自动发布到 Releases？
+**Q：提示需要 .NET 9 运行时怎么办？**
+A：安装包会自动引导下载页面。也可手动前往 https://dotnet.microsoft.com/download/dotnet/9.0 下载"Desktop Runtime"。
 
-请依次检查：
+**Q：卸载后配置会保留吗？**
+A：默认保留，除非卸载时勾选"删除用户数据"选项。
 
-- 仓库 `Actions` 是否启用。
-- 是否推送了符合 `*.*.*` 规则的 tag（例如 `1.0.0`）。
-- tag 指向的提交是否已包含 `.github/workflows/build-release.yml`。
-- Workflow 是否有写入 Release 的权限（`contents: write`）。
+**Q：Windows 10 能用吗？**
+A：可以运行，但"接管外部文件夹打开请求"功能依赖 Windows 11 的资源管理器标签页接口，在 Windows 10 上无效。
 
-### Q2: 卸载后还会残留配置吗？
 
-默认会保留。卸载时选“是”可删除 `%AppData%\Roaming\WinTab`。
-
-### Q3: Windows 10 能用吗？
-
-可运行，但部分资源管理器标签页相关能力依赖 Windows 11。
+---
 
 ## 许可证
 
-本项目基于 `MIT` 许可证发布。详见 `LICENSE`。
+本项目基于 [MIT 许可证](LICENSE) 发布。
+
+---
 
 ## 致谢
 
-- Explorer tab 处理逻辑参考并移植自 `ExplorerTabUtility`（MIT）。
-- Inno Setup 简体中文语言文件来自其翻译生态（存放于 `installers/Languages/ChineseSimplified.isl`）。
+- Explorer 标签页处理逻辑参考并移植自 [ExplorerTabUtility](https://github.com/w4po/ExplorerTabUtility)（MIT）
+- Inno Setup 简体中文语言文件来自其翻译生态，存放于 `installers/Languages/ChineseSimplified.isl`

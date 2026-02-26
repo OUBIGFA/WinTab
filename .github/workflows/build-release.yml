@@ -95,7 +95,7 @@ jobs:
       - name: Generate checksums
         shell: pwsh
         run: |
-          $installer = "publish/installer/WinTab_Setup_${{ steps.meta.outputs.version }}.exe"
+          $installer = "publish/WinTab_Setup_${{ steps.meta.outputs.version }}.exe"
           $portable = "publish/WinTab_${{ steps.meta.outputs.version }}_portable.zip"
 
           (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLower() + " *" + [System.IO.Path]::GetFileName($installer) |
@@ -109,8 +109,8 @@ jobs:
         with:
           name: wintab-${{ steps.meta.outputs.version }}
           path: |
-            publish/installer/WinTab_Setup_${{ steps.meta.outputs.version }}.exe
-            publish/installer/WinTab_Setup_${{ steps.meta.outputs.version }}.exe.sha256
+            publish/WinTab_Setup_${{ steps.meta.outputs.version }}.exe
+            publish/WinTab_Setup_${{ steps.meta.outputs.version }}.exe.sha256
             publish/WinTab_${{ steps.meta.outputs.version }}_portable.zip
             publish/WinTab_${{ steps.meta.outputs.version }}_portable.zip.sha256
 
@@ -124,8 +124,8 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            publish/installer/WinTab_Setup_${{ steps.meta.outputs.version }}.exe
-            publish/installer/WinTab_Setup_${{ steps.meta.outputs.version }}.exe.sha256
+            publish/WinTab_Setup_${{ steps.meta.outputs.version }}.exe
+            publish/WinTab_Setup_${{ steps.meta.outputs.version }}.exe.sha256
             publish/WinTab_${{ steps.meta.outputs.version }}_portable.zip
             publish/WinTab_${{ steps.meta.outputs.version }}_portable.zip.sha256
         env:

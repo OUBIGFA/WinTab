@@ -23,14 +23,14 @@ DisableDirPage=no
 UsePreviousAppDir=yes
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
-OutputDir=..\publish\installer
+OutputDir=..\publish
 OutputBaseFilename=WinTab_Setup_{#AppVersion}
 SetupIconFile=..\src\WinTab.App\Assets\wintab.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
-UninstallDisplayName={#AppName}
+UninstallDisplayName=UninsWinTab
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ShowLanguageDialog=yes
@@ -81,7 +81,7 @@ Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesu
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
-Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
+Name: "{group}\UninsWinTab"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]

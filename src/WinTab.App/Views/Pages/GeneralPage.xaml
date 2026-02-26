@@ -41,6 +41,18 @@
                 <ui:ToggleSwitch IsChecked="{Binding StartMinimized, Mode=TwoWay}" />
             </ui:CardControl>
 
+            <ui:CardControl Margin="0,0,0,8">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource General_ShowTrayIcon}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource General_ShowTrayIcon_Desc}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   FontSize="12" Margin="0,2,0,0" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding ShowTrayIcon, Mode=TwoWay}" />
+            </ui:CardControl>
+
             <!-- Language Section -->
             <TextBlock Text="{DynamicResource General_Language}"
                        FontSize="20" FontWeight="SemiBold"
@@ -67,7 +79,7 @@
                        FontSize="20" FontWeight="SemiBold"
                        Margin="0,32,0,16" />
 
-            <ui:CardControl Margin="0,0,0,8">
+            <ui:CardControl Margin="0,0,0,24">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource Appearance_Theme}" FontWeight="Medium" />
@@ -82,7 +94,8 @@
                                  GroupName="Theme" />
                     <RadioButton Content="{DynamicResource Appearance_ThemeDark}"
                                  IsChecked="{Binding IsThemeDark, Mode=TwoWay}"
-                                 GroupName="Theme" />
+                                 GroupName="Theme"
+                                 Margin="16,0,0,0" />
                 </StackPanel>
             </ui:CardControl>
 

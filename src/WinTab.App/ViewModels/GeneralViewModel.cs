@@ -25,6 +25,9 @@ public partial class GeneralViewModel : ObservableObject
     private bool _startMinimized;
 
     [ObservableProperty]
+    private bool _showTrayIcon;
+
+    [ObservableProperty]
     private int _selectedLanguageIndex;
 
     [ObservableProperty]
@@ -47,6 +50,7 @@ public partial class GeneralViewModel : ObservableObject
         // Load current values from settings
         _runAtStartup = startupRegistrar.IsEnabled();
         _startMinimized = settings.StartMinimized;
+        _showTrayIcon = settings.ShowTrayIcon;
         _selectedLanguageIndex = settings.Language == Language.Chinese ? 0 : 1;
 
         if (settings.Theme == ThemeMode.System)
@@ -67,6 +71,18 @@ public partial class GeneralViewModel : ObservableObject
     {
         _settings.StartMinimized = value;
         SaveSettings();
+    }
+
+    partial void OnShowTrayIconChanged(bool value)
+    {
+        _settings.ShowTrayIcon = value;
+        SaveSettings();
+        
+        // Notify App to dynamically toggle tray icon visibility
+        if (System.Windows.Application.Current is App app)
+        {
+            app.SetTrayIconVisibility(value);
+        }
     }
 
     partial void OnSelectedLanguageIndexChanged(int value)

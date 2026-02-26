@@ -27,9 +27,6 @@ public partial class BehaviorViewModel : ObservableObject
     private bool _enableExplorerOpenVerbInterception;
 
     [ObservableProperty]
-    private bool _persistExplorerOpenVerbInterceptionAcrossExit;
-
-    [ObservableProperty]
     private bool _closeTabOnDoubleClick;
 
     public bool IsOpenChildFolderInNewTabOptionEnabled => EnableExplorerOpenVerbInterception;
@@ -50,7 +47,6 @@ public partial class BehaviorViewModel : ObservableObject
         _openNewTabFromActiveTabPath = settings.OpenNewTabFromActiveTabPath;
         _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
         _enableExplorerOpenVerbInterception = settings.EnableExplorerOpenVerbInterception;
-        _persistExplorerOpenVerbInterceptionAcrossExit = settings.PersistExplorerOpenVerbInterceptionAcrossExit;
         _closeTabOnDoubleClick = settings.CloseTabOnDoubleClick;
     }
 
@@ -92,11 +88,6 @@ public partial class BehaviorViewModel : ObservableObject
         }
     }
 
-    partial void OnPersistExplorerOpenVerbInterceptionAcrossExitChanged(bool value)
-    {
-        _settings.PersistExplorerOpenVerbInterceptionAcrossExit = value;
-        SaveSettings();
-    }
 
     partial void OnCloseTabOnDoubleClickChanged(bool value)
     {

@@ -167,9 +167,13 @@ public sealed partial class UninstallViewModel : ObservableObject
 
     private static string? ResolveUninstallerPath(string appDirectory)
     {
-        string preferred = Path.Combine(appDirectory, "unins000.exe");
-        if (File.Exists(preferred))
-            return preferred;
+        string newStyle = Path.Combine(appDirectory, "UninsWinTab.exe");
+        if (File.Exists(newStyle))
+            return newStyle;
+
+        string legacyPreferred = Path.Combine(appDirectory, "unins000.exe");
+        if (File.Exists(legacyPreferred))
+            return legacyPreferred;
 
         try
         {

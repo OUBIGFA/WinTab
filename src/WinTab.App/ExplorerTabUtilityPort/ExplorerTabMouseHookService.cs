@@ -234,7 +234,6 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         IntPtr pointWindow = NativeMethods.WindowFromPoint(point);
         string wfpClass = GetWindowClass(pointWindow);
 
-        _logger.Debug($"HitTest pt=({point.X},{point.Y}) wfpClass={wfpClass}");
 
         // If the cursor is over the title-bar scaffolding (empty draggable space), reject
         // immediately so the OS can handle native double-click (maximize / restore).
@@ -264,7 +263,6 @@ public sealed class ExplorerTabMouseHookService : IDisposable
             stripBottom = stripTop + maxTabStripHeight;
 
         bool inStrip = point.Y >= stripTop && point.Y < stripBottom;
-        _logger.Debug($"HitTest geo: stripTop={stripTop} stripBottom={stripBottom} inStrip={inStrip}");
         return inStrip;
     }
 

@@ -8,29 +8,31 @@
 
     <!-- Navigation -->
     <system:String x:Key="Nav_General">常规</system:String>
-    <system:String x:Key="Nav_Behavior">行为</system:String>
+    <system:String x:Key="Nav_Behavior">交互</system:String>
     <system:String x:Key="Nav_Uninstall">卸载</system:String>
     <system:String x:Key="Nav_About">关于</system:String>
 
     <!-- General Page -->
     <system:String x:Key="General_Startup">启动</system:String>
     <system:String x:Key="General_RunAtStartup">开机自启动</system:String>
-    <system:String x:Key="General_StartMinimized">启动时最小化到系统托盘</system:String>
+    <system:String x:Key="General_StartMinimized">启动时隐藏主窗口</system:String>
+    <system:String x:Key="General_StartMinimized_Desc">应用启动后将自动隐藏主界面，仅驻留在系统托盘。（需开启“显示托盘图标”）</system:String>
+    <system:String x:Key="General_ShowTrayIcon">显示托盘图标</system:String>
+    <system:String x:Key="General_ShowTrayIcon_Desc">在系统任务栏的通知区域显示本应用的图标。</system:String>
     <system:String x:Key="General_Language">语言</system:String>
     <system:String x:Key="General_LanguageLabel">界面语言</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
     <system:String x:Key="General_English">English</system:String>
-    <system:String x:Key="Behavior_Status">状态</system:String>
-    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">接管资源管理器打开文件夹（多 Verb 拦截）</system:String>
-    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">拦截 open/explore/opennewwindow 动作，并尽量在已有资源管理器窗口中以标签页方式打开。</system:String>
-    <system:String x:Key="Behavior_PersistExplorerOpenVerbInterceptionAcrossExit">退出 WinTab 后保持接管状态</system:String>
-    <system:String x:Key="Behavior_PersistExplorerOpenVerbInterceptionAcrossExit_Desc">开启后不会在退出时恢复默认关联；关闭后退出时会恢复为系统默认行为。</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">添加新标签时默认沿用当前活动标签页路径</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">开启：新标签页默认打开当前活动标签页所在路径；关闭：新标签页默认打开“此电脑”。</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab">在当前活动标签页目录内打开文件夹时新建标签页</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">开启后，当前标签页下的子目录会在新标签页打开，而不是覆盖当前标签页。</system:String>
-    <system:String x:Key="Behavior_CloseTabOnDoubleClick">双击标签页标题区域关闭（模拟中键单击）</system:String>
-    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">仅在标签页标题区域触发，避免误触资源管理器工具栏按钮。</system:String>
+    <system:String x:Key="Behavior_Group_Interception">系统集成</system:String>
+    <system:String x:Key="Behavior_Group_Tabs">标签页规则</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">接管外部文件夹打开请求</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">拦截由系统或其他应用发出的文件夹打开请求，并作为新标签页加入到当前的 WinTab 窗口。</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">继承当前标签页路径</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">新建标签页时，默认打开当前活动标签页所在的目录，而非系统默认的“此电脑”。</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab">在新标签页中打开子文件夹</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">点击文件夹时，自动创建并跳转至新的标签页，当前视图将不被覆盖。</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick">双击标签页标题关闭</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">双击标签页的标题区域即可快速将其关闭。</system:String>
 
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">主题</system:String>
@@ -49,7 +51,6 @@
 
     <!-- Uninstall Page -->
     <system:String x:Key="Uninstall_Title">卸载 WinTab</system:String>
-    <system:String x:Key="Uninstall_Description">在此启动卸载程序。安装版默认保留用户配置，可按需勾选删除用户数据。</system:String>
     <system:String x:Key="Uninstall_DefaultBehavior">提示：默认仅卸载程序文件；若勾选“删除用户数据”，会同时删除配置与日志目录。</system:String>
     <system:String x:Key="Uninstall_ModeLabel">运行模式</system:String>
     <system:String x:Key="Uninstall_ModeInstalled">安装版</system:String>

@@ -8,29 +8,31 @@
 
     <!-- Navigation -->
     <system:String x:Key="Nav_General">General</system:String>
-    <system:String x:Key="Nav_Behavior">Behavior</system:String>
+    <system:String x:Key="Nav_Behavior">Interaction</system:String>
     <system:String x:Key="Nav_Uninstall">Uninstall</system:String>
     <system:String x:Key="Nav_About">About</system:String>
 
     <!-- General Page -->
     <system:String x:Key="General_Startup">Startup</system:String>
     <system:String x:Key="General_RunAtStartup">Run at Windows startup</system:String>
-    <system:String x:Key="General_StartMinimized">Start minimized to system tray</system:String>
+    <system:String x:Key="General_StartMinimized">Start hidden in tray</system:String>
+    <system:String x:Key="General_StartMinimized_Desc">Don't pop up the main window at launch. (Requires Tray Icon)</system:String>
+    <system:String x:Key="General_ShowTrayIcon">Tray icon</system:String>
+    <system:String x:Key="General_ShowTrayIcon_Desc">Keep the WinTab app running in the bottom-right taskbar corner.</system:String>
     <system:String x:Key="General_Language">Language</system:String>
-    <system:String x:Key="General_LanguageLabel">Interface language</system:String>
+    <system:String x:Key="General_LanguageLabel">Language</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
     <system:String x:Key="General_English">English</system:String>
-    <system:String x:Key="Behavior_Status">Status</system:String>
-    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">Intercept Explorer folder open (multi-verb)</system:String>
-    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">Intercept open/explore/opennewwindow actions and route them to existing Explorer windows as tabs when possible.</system:String>
-    <system:String x:Key="Behavior_PersistExplorerOpenVerbInterceptionAcrossExit">Keep interception after exiting WinTab</system:String>
-    <system:String x:Key="Behavior_PersistExplorerOpenVerbInterceptionAcrossExit_Desc">When enabled, WinTab does not restore default associations on exit. When disabled, associations are restored on exit.</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">Open new tabs from the current active tab path</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">On: new tabs open at the current active tab location. Off: new tabs open at This PC.</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab">Open child folders from the current tab in a new tab</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">When enabled, child folders open in a new tab instead of replacing the current tab.</system:String>
-    <system:String x:Key="Behavior_CloseTabOnDoubleClick">Double-click tab title area to close (simulate middle click)</system:String>
-    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">Only triggers on tab title regions to avoid accidental closes from Explorer toolbar buttons.</system:String>
+    <system:String x:Key="Behavior_Group_Interception">System Hook</system:String>
+    <system:String x:Key="Behavior_Group_Tabs">Rules</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">Catch external folders</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">Force folders opened from other apps to join existing WinTab windows as tabs.</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">Clone current path</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">New tabs inherit the current location instead of defaulting to 'This PC'.</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab">Open subfolders in new tabs</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">Entering a subfolder won't overwrite the current view; it spawns a fresh tab alongside it.</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick">Double-click title to close</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">Skip the little 'x'—just double-click the tab block itself to kill it.</system:String>
 
     <!-- Appearance Page -->
     <system:String x:Key="Appearance_Theme">Theme</system:String>
@@ -49,7 +51,6 @@
 
     <!-- Uninstall Page -->
     <system:String x:Key="Uninstall_Title">Uninstall WinTab</system:String>
-    <system:String x:Key="Uninstall_Description">Start the uninstaller here. Installed mode keeps user data by default, and you can choose full cleanup with the checkbox.</system:String>
     <system:String x:Key="Uninstall_DefaultBehavior">Tip: by default only app files are removed; enable "Remove user data" to also delete settings and logs.</system:String>
     <system:String x:Key="Uninstall_ModeLabel">Run mode</system:String>
     <system:String x:Key="Uninstall_ModeInstalled">Installed</system:String>

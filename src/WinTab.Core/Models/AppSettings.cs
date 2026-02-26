@@ -6,6 +6,8 @@ public sealed class AppSettings
 {
     // Startup
     public bool StartMinimized { get; set; } = false;
+
+    public bool ShowTrayIcon { get; set; } = true;
     public bool RunAtStartup { get; set; }
 
     // Language

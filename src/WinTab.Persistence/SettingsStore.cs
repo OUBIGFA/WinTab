@@ -219,7 +219,7 @@ public sealed class SettingsStore : IDisposable
 
         if (settings.SchemaVersion < 2)
         {
-            settings.PersistExplorerOpenVerbInterceptionAcrossExit = false;
+
             settings.SchemaVersion = 2;
             _logger?.Info("Migrated settings from v1 to v2.");
             changed = true;

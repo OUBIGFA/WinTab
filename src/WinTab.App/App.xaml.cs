@@ -23,20 +23,16 @@ namespace WinTab.App;
 
 public partial class App : Application
 {
-    private static Mutex? _singleInstanceMutex;
-    private static bool _ownsSingleInstanceMutex;
     private static bool _explicitShutdownRequested;
-    private const string ActivationEventName = "WinTab_ActivateMainWindow";
     private const string CleanupArgument = "--wintab-cleanup";
     private IServiceProvider? _serviceProvider;
     private TrayIconController? _trayIconController;
     private Logger? _logger;
+    private SingleInstanceService? _singleInstanceService;
     private AppLifecycleService? _lifecycleService;
     private ExplorerTabHookService? _explorerTabHook;
     private ExplorerTabMouseHookService? _explorerTabMouseHook;
     private ExplorerOpenRequestServer? _openRequestServer;
-    private EventWaitHandle? _activationEvent;
-    private CancellationTokenSource? _activationListenerCts;
 
     public static IServiceProvider Services { get; private set; } = null!;
     internal static bool IsExplicitShutdownRequested => _explicitShutdownRequested;
@@ -52,7 +48,7 @@ public partial class App : Application
         // Handle command modes before single-instance gate and before main logger lock.
         if (e.Args.Length >= 1 && string.Equals(e.Args[0], CleanupArgument, StringComparison.OrdinalIgnoreCase))
         {
-            int code = RunUninstallCleanup();
+            int code = UninstallCleanupHandler.RunUninstallCleanup(AppEnvironment.ResolveLaunchExecutablePath());
             Shutdown(code);
             return;
         }
@@ -65,25 +61,23 @@ public partial class App : Application
 
         // When invoked via Explorer open-verb, forward the request to an existing instance.
         // If forwarding is unavailable, fallback to native Explorer open.
-        if (TryHandleOpenFolderInvocation(e.Args, logger: null))
+        if (ExplorerOpenVerbHandler.TryHandleOpenFolderInvocation(e.Args, logger: null))
         {
             Shutdown();
             return;
         }
 
         // -- 3. Single instance check -------------------------------------
-        _singleInstanceMutex = new Mutex(true, "WinTab_SingleInstance", out bool isNewInstance);
-        _ownsSingleInstanceMutex = isNewInstance;
-        if (!isNewInstance)
+        _singleInstanceService = new SingleInstanceService();
+        if (!_singleInstanceService.InitializeAsFirstInstance())
         {
-            SignalExistingInstanceActivation();
-            ActivateExistingInstance();
+            _singleInstanceService.SignalExistingInstanceActivation();
+            _singleInstanceService.BringExistingInstanceToForeground();
             Shutdown();
             return;
         }
 
-        _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ActivationEventName);
-        StartActivationListener();
+        _singleInstanceService.StartActivationListener();
 
         // -- 4. Create logger ---------------------------------------------
         _logger = new Logger(AppPaths.LogPath);
@@ -155,13 +149,13 @@ public partial class App : Application
                 if (!handled)
                 {
                     _logger?.Warn($"Open-folder request was not completed by tab hook; fallback open: {path}");
-                    TryOpenFolderFallback(path, _logger);
+                    AppEnvironment.TryOpenFolderFallback(path, _logger);
                 }
             }
             catch (Exception ex)
             {
                 _logger?.Error("Failed to handle open-folder request.", ex);
-                TryOpenFolderFallback(path, _logger);
+                AppEnvironment.TryOpenFolderFallback(path, _logger);
             }
         });
 
@@ -171,8 +165,8 @@ public partial class App : Application
             var interceptor = _serviceProvider.GetRequiredService<RegistryOpenVerbInterceptor>();
 
             bool isWin11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
-            string openVerbHandlerPath = ResolveLaunchExecutablePath();
-            bool hasStableOpenVerbHandlerPath = IsStableOpenVerbHandlerPath(openVerbHandlerPath);
+            string openVerbHandlerPath = AppEnvironment.ResolveLaunchExecutablePath();
+            bool hasStableOpenVerbHandlerPath = ExplorerOpenVerbHandler.IsStableOpenVerbHandlerPath(openVerbHandlerPath);
             bool enableExplorerOpenVerbInterception =
                 settings.EnableExplorerOpenVerbInterception &&
                 hasStableOpenVerbHandlerPath;
@@ -205,7 +199,7 @@ public partial class App : Application
         }
 
         // -- 11. Initialize tray icon -------------------------------------
-        SetTrayIconVisibilityCore(true);
+        SetTrayIconVisibility(settings.ShowTrayIcon);
 
         _logger?.Info("WinTab started successfully.");
     }
@@ -219,16 +213,12 @@ public partial class App : Application
             _lifecycleService?.Stop();
             _trayIconController?.Dispose();
             _openRequestServer?.Dispose();
-            _activationListenerCts?.Cancel();
-            _activationListenerCts?.Dispose();
-            _activationEvent?.Dispose();
 
             try
             {
                 AppSettings? settings = _serviceProvider?.GetService<AppSettings>();
                 if (settings is not null &&
-                    settings.EnableExplorerOpenVerbInterception &&
-                    !settings.PersistExplorerOpenVerbInterceptionAcrossExit)
+                    settings.EnableExplorerOpenVerbInterception)
                 {
                     var interceptor = _serviceProvider?.GetService<RegistryOpenVerbInterceptor>();
                     interceptor?.DisableAndRestore();
@@ -251,14 +241,7 @@ public partial class App : Application
         }
         finally
         {
-            // Release only if we successfully acquired initial ownership.
-            if (_ownsSingleInstanceMutex)
-            {
-                try { _singleInstanceMutex?.ReleaseMutex(); }
-                catch { /* ignore */ }
-            }
-
-            _singleInstanceMutex?.Dispose();
+            _singleInstanceService?.Dispose();
         }
 
         base.OnExit(e);
@@ -274,7 +257,7 @@ public partial class App : Application
         services.AddSingleton(settingsStore);
         services.AddSingleton(settings);
 
-        string exePath = ResolveLaunchExecutablePath();
+        string exePath = AppEnvironment.ResolveLaunchExecutablePath();
         var startupRegistrar = new StartupRegistrar("WinTab", exePath);
         services.AddSingleton(startupRegistrar);
 
@@ -325,206 +308,7 @@ public partial class App : Application
         services.AddTransient<AboutPage>();
     }
 
-    private static void ActivateExistingInstance()
-    {
-        try
-        {
-            using var current = System.Diagnostics.Process.GetCurrentProcess();
-            var existing = System.Diagnostics.Process.GetProcessesByName(current.ProcessName)
-                .Where(p => p.Id != current.Id)
-                .OrderBy(p => p.StartTime)
-                .FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
 
-            if (existing is null)
-                return;
-
-            IntPtr hWnd = existing.MainWindowHandle;
-            if (hWnd == IntPtr.Zero)
-                return;
-
-            NativeMethods.ShowWindow(hWnd, NativeConstants.SW_RESTORE);
-            NativeMethods.SetForegroundWindow(hWnd);
-        }
-        catch
-        {
-            // Best effort only.
-        }
-    }
-
-    private static void SignalExistingInstanceActivation()
-    {
-        try
-        {
-            using var activationEvent = EventWaitHandle.OpenExisting(ActivationEventName);
-            activationEvent.Set();
-        }
-        catch
-        {
-        }
-    }
-
-    private void StartActivationListener()
-    {
-        if (_activationEvent is null)
-            return;
-
-        _activationListenerCts = new CancellationTokenSource();
-        var token = _activationListenerCts.Token;
-        var activationEvent = _activationEvent;
-
-        Task.Run(() =>
-        {
-            while (!token.IsCancellationRequested)
-            {
-                activationEvent.WaitOne();
-                if (token.IsCancellationRequested)
-                    break;
-
-                try
-                {
-                    Dispatcher.Invoke(() =>
-                    {
-                        if (Current.MainWindow is not Window window)
-                            return;
-
-                        if (!window.IsVisible)
-                            window.Show();
-
-                        window.ShowInTaskbar = true;
-                        window.WindowState = WindowState.Normal;
-                        window.Activate();
-                    });
-                }
-                catch
-                {
-                }
-            }
-        }, token);
-    }
-
-    private static bool TryHandleOpenFolderInvocation(string[] args, Logger? logger)
-    {
-        using Logger? tempLogger = logger is null ? TryCreateCompanionLogger() : null;
-        Logger? effectiveLogger = logger ?? tempLogger;
-
-        // Registry handler: "WinTab.exe --wintab-open-folder \"%1\""
-        if (args.Length < 2)
-            return false;
-
-        if (!string.Equals(args[0], RegistryOpenVerbInterceptor.HandlerArgument, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(args[0], "--open-folder", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        string path = args[1].Trim().Trim('"');
-        if (string.IsNullOrWhiteSpace(path))
-            return true;
-
-        // Capture foreground BEFORE granting foreground rights — this is the accurate snapshot
-        // of what was foreground at the moment the user initiated the open action.
-        nint clickTimeForeground = (nint)NativeMethods.GetForegroundWindow();
-
-        try
-        {
-            // The handler process is launched by a user-initiated shell action,
-            // so grant foreground rights to improve focus handoff to the existing instance.
-            NativeMethods.AllowSetForegroundWindow(NativeConstants.ASFW_ANY);
-        }
-        catch
-        {
-            // best effort
-        }
-
-        bool sent = ExplorerOpenRequestClient.TrySendOpenFolderEx(path, clickTimeForeground);
-        if (sent)
-        {
-            effectiveLogger?.Info($"Forwarded open-folder request to existing instance: {path}");
-            return true;
-        }
-
-        effectiveLogger?.Warn($"No existing instance pipe; restoring shell defaults and falling back to Explorer open: {path}");
-        TryRestoreExplorerOpenVerbDefaults(effectiveLogger);
-        TryOpenFolderFallback(path, effectiveLogger);
-
-        return true;
-    }
-
-    private static void TryRestoreExplorerOpenVerbDefaults(Logger? logger)
-    {
-        try
-        {
-            using RegistryKey? classesRoot = Registry.CurrentUser.OpenSubKey(@"Software\Classes", writable: true);
-            if (classesRoot is not null)
-            {
-                string[] classes = new[] { "Folder", "Directory", "Drive" };
-                string[] verbs = new[] { "open", "explore", "opennewwindow" };
-
-                foreach (string cls in classes)
-                {
-                    foreach (string verb in verbs)
-                    {
-                        classesRoot.DeleteSubKeyTree($@"{cls}\shell\{verb}\command", throwOnMissingSubKey: false);
-                    }
-                }
-            }
-
-            using RegistryKey? folderShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Folder\shell", writable: true);
-            using RegistryKey? directoryShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Directory\shell", writable: true);
-            using RegistryKey? driveShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Drive\shell", writable: true);
-
-            folderShell?.SetValue(string.Empty, "open", RegistryValueKind.String);
-            directoryShell?.SetValue(string.Empty, "none", RegistryValueKind.String);
-            driveShell?.SetValue(string.Empty, "none", RegistryValueKind.String);
-
-            logger?.Info("Restored Explorer open-verb defaults for standalone handler invocation.");
-        }
-        catch (Exception ex)
-        {
-            logger?.Error("Failed to restore Explorer open-verb defaults.", ex);
-        }
-    }
-
-    private static void TryDeleteExplorerOpenVerbBackupRegistryCache()
-    {
-        try
-        {
-            using RegistryKey? softwareRoot = Registry.CurrentUser.OpenSubKey(@"Software", writable: true);
-            softwareRoot?.DeleteSubKeyTree(@"WinTab\Backups\ExplorerOpenVerb", throwOnMissingSubKey: false);
-        }
-        catch
-        {
-        }
-    }
-
-    private static void TryOpenFolderFallback(string path, Logger? logger)
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"\"{path}\"",
-                UseShellExecute = true,
-            });
-        }
-        catch (Exception ex)
-        {
-            logger?.Error($"Failed to fallback open-folder launch for path: {path}", ex);
-        }
-    }
-
-    private static Logger? TryCreateCompanionLogger()
-    {
-        try
-        {
-            return new Logger(System.IO.Path.Combine(AppPaths.LogsDirectory, "wintab-companion.log"));
-        }
-        catch
-        {
-            return null;
-        }
-    }
 
     internal static void RequestExplicitShutdown()
     {
@@ -533,6 +317,11 @@ public partial class App : Application
 
         _explicitShutdownRequested = true;
         Current.Shutdown();
+    }
+
+    public void SetTrayIconVisibility(bool visible)
+    {
+        SetTrayIconVisibilityCore(visible);
     }
 
     private void SetTrayIconVisibilityCore(bool visible)
@@ -554,103 +343,7 @@ public partial class App : Application
         }
     }
 
-    private static string ResolveLaunchExecutablePath()
-    {
-        string? processPath = Environment.ProcessPath;
-        if (!string.IsNullOrWhiteSpace(processPath) && !IsDotNetHost(processPath))
-            return processPath;
 
-        string assemblyPath = Assembly.GetExecutingAssembly().Location;
-        if (!string.IsNullOrWhiteSpace(assemblyPath))
-        {
-            string appHostPath = Path.ChangeExtension(assemblyPath, ".exe");
-            if (File.Exists(appHostPath))
-                return appHostPath;
-        }
 
-        return processPath ?? assemblyPath;
-    }
 
-    private static bool IsDotNetHost(string path)
-    {
-        string fileName = Path.GetFileName(path);
-        return string.Equals(fileName, "dotnet", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(fileName, "dotnet.exe", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsStableOpenVerbHandlerPath(string exePath)
-    {
-        if (string.IsNullOrWhiteSpace(exePath))
-            return false;
-
-        try
-        {
-            string fullPath = Path.GetFullPath(exePath).Replace('/', '\\');
-            if (!File.Exists(fullPath))
-                return false;
-
-            if (fullPath.Contains("\\tasks\\build_tmp\\", StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            if (fullPath.Contains("\\obj\\", StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static int RunUninstallCleanup()
-    {
-        string exePath = ResolveLaunchExecutablePath();
-        Logger? cleanupLogger = null;
-        int failureCount = 0;
-
-        try
-        {
-            try
-            {
-                var startupRegistrar = new StartupRegistrar("WinTab", exePath);
-                startupRegistrar.SetEnabled(false);
-
-                if (startupRegistrar.IsEnabled())
-                    failureCount++;
-            }
-            catch
-            {
-                failureCount++;
-            }
-
-            try
-            {
-                cleanupLogger = TryCreateCompanionLogger();
-                if (cleanupLogger is null)
-                {
-                    string tempLogPath = Path.Combine(Path.GetTempPath(), "WinTab", "wintab-cleanup.log");
-                    cleanupLogger = new Logger(tempLogPath);
-                }
-
-                var interceptor = new RegistryOpenVerbInterceptor(exePath, cleanupLogger);
-                interceptor.DisableAndRestore();
-            }
-            catch (Exception ex)
-            {
-                failureCount++;
-                cleanupLogger?.Error("Uninstall cleanup failed to restore Explorer open-verb state.", ex);
-                TryRestoreExplorerOpenVerbDefaults(cleanupLogger);
-            }
-
-            TryDeleteExplorerOpenVerbBackupRegistryCache();
-
-            cleanupLogger?.Info("Uninstall cleanup completed.");
-            return failureCount == 0 ? 0 : 1;
-        }
-        finally
-        {
-            cleanupLogger?.Dispose();
-        }
-    }
 }
