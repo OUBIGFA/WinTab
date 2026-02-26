@@ -35,3 +35,9 @@ publish/
 
 # Misc
 *.cache
+
+# Local tool/cache directories
+.agent/
+.claude/
+.ruff_cache/
+tasks/
