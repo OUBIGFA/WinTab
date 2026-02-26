@@ -13,22 +13,15 @@ public sealed class ExplorerTabMouseHookService : IDisposable
 {
     private const string ExplorerWindowClass = "CabinetWClass";
     private const string ExplorerTabClass = "ShellTabWindowClass";
-    private const int RoleSystemPageTab = 0x25;
-    private const int RoleSystemPageTabList = 0x3C;
-    private const int RoleSystemToolBar = 0x16;
-    private const int RoleSystemPushButton = 0x2B;
-    private const int RoleSystemSplitButton = 0x3E;
-    private const int RoleSystemButtonDropDown = 0x38;
-    private const int RoleSystemButtonMenu = 0x39;
-    private const int RoleSystemButtonDropDownGrid = 0x3A;
 
-    private enum AccessiblePointKind
-    {
-        Unknown,
-        Tab,
-        NavigationControl,
-        Other
-    }
+    // The WinUI 3 bridge window that hosts actual tab items in Windows 11 Explorer.
+    // Clicks on this class are over real UI content (tab titles, buttons, etc.).
+    private const string WinUiBridgeClass = "Microsoft.UI.Content.DesktopChildSiteBridge";
+
+    // The scaffolding window that covers the empty/draggable part of the title bar.
+    // Clicks on this class land on blank space and should preserve native double-click
+    // behaviour (maximize / restore).
+    private const string TitleBarScaffoldingClass = "TITLE_BAR_SCAFFOLDING_WINDOW_CLASS";
 
     private readonly object _sync = new();
     private readonly Logger _logger;
@@ -158,11 +151,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         var info = Marshal.PtrToStructure<NativeStructs.MSLLHOOKSTRUCT>(lParam);
         if (!TryResolveExplorerTabByPoint(info.pt, out IntPtr topLevelHandle, out IntPtr tabHandle))
         {
-            lock (_sync)
-            {
-                ResetClickState();
-            }
-
+            lock (_sync) { ResetClickState(); }
             return false;
         }
 
@@ -171,7 +160,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
             if (_disposed || !_enabled)
                 return false;
 
-            if (!IsPointInTabTitleArea(info.pt, topLevelHandle, tabHandle))
+            if (!IsPointInTabTitleArea(info.pt, topLevelHandle))
             {
                 ResetClickState();
                 return false;
@@ -225,43 +214,66 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     }
 
     /// <summary>
-    /// Geometric check: the click point is in the tab title strip if its Y coordinate
-    /// is above the top edge of the ShellTabWindowClass (the content area) but still
-    /// within the CabinetWClass (the Explorer window). This is far more reliable than
-    /// the Accessibility API for the Windows 11 Explorer tab bar, which lives in the
-    /// custom title bar area and does not consistently report PageTab roles.
+    /// Returns true only when the click is on an actual tab title, not on empty caption space.
+    ///
+    /// In Windows 11 Explorer the tab-bar area is split between two child window classes:
+    ///
+    ///   • Microsoft.UI.Content.DesktopChildSiteBridge — hosts the WinUI 3 tab items and
+    ///     buttons.  A click here is always on a real UI element (tab title, close button,
+    ///     new-tab button, etc.).
+    ///
+    ///   • TITLE_BAR_SCAFFOLDING_WINDOW_CLASS — covers the empty/draggable portion of the
+    ///     title bar to the right of the last tab.  A double-click here should trigger the
+    ///     native maximize/restore, not close a tab.
+    ///
+    /// We accept clicks that land on the WinUI bridge window and are geometrically within
+    /// the vertical tab-strip band (above the ShellTabWindowClass content area).
     /// </summary>
-    private static bool IsPointInTabTitleArea(NativeStructs.POINT point, IntPtr topLevelHandle, IntPtr tabHandle)
+    private bool IsPointInTabTitleArea(NativeStructs.POINT point, IntPtr topLevelHandle)
     {
-        AccessiblePointKind pointKind = GetAccessiblePointKind(point);
-        if (pointKind == AccessiblePointKind.Tab)
-            return true;
+        IntPtr pointWindow = NativeMethods.WindowFromPoint(point);
+        string wfpClass = GetWindowClass(pointWindow);
 
-        if (pointKind == AccessiblePointKind.NavigationControl)
+        _logger.Debug($"HitTest pt=({point.X},{point.Y}) wfpClass={wfpClass}");
+
+        // If the cursor is over the title-bar scaffolding (empty draggable space), reject
+        // immediately so the OS can handle native double-click (maximize / restore).
+        if (string.Equals(wfpClass, TitleBarScaffoldingClass, StringComparison.OrdinalIgnoreCase))
             return false;
 
+        // Accept only clicks on the WinUI bridge that hosts the tab items.
+        // Reject anything else (top-level frame, address bar, toolbar, etc.).
+        if (!string.Equals(wfpClass, WinUiBridgeClass, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Also verify the point is within the vertical tab-strip band (above ShellTabWindowClass).
         if (!NativeMethods.GetWindowRect(topLevelHandle, out NativeStructs.RECT explorerRect))
             return false;
 
-        // Click must be within the Explorer window horizontally.
-        if (point.X < explorerRect.Left || point.X > explorerRect.Right)
-            return false;
-
-        if (!NativeMethods.GetWindowRect(tabHandle, out NativeStructs.RECT tabRect))
+        IntPtr tabHandle = NativeMethods.FindWindowEx(topLevelHandle, IntPtr.Zero, ExplorerTabClass, null);
+        if (tabHandle == IntPtr.Zero || !NativeMethods.GetWindowRect(tabHandle, out NativeStructs.RECT tabRect))
             return false;
 
         int captionHeight = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYCAPTION));
-        int frameHeight = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYFRAME));
+        int frameHeight   = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYFRAME));
         int maxTabStripHeight = Math.Clamp(captionHeight + frameHeight + 8, 30, 56);
 
-        int headerTop = explorerRect.Top;
-        int headerBottomExclusive = Math.Min(tabRect.Top, headerTop + maxTabStripHeight);
+        int stripTop    = explorerRect.Top;
+        int stripBottom = Math.Min(tabRect.Top, stripTop + maxTabStripHeight);
+        if (stripBottom <= stripTop)
+            stripBottom = stripTop + maxTabStripHeight;
 
-        if (headerBottomExclusive <= headerTop)
-            headerBottomExclusive = headerTop + maxTabStripHeight;
+        bool inStrip = point.Y >= stripTop && point.Y < stripBottom;
+        _logger.Debug($"HitTest geo: stripTop={stripTop} stripBottom={stripBottom} inStrip={inStrip}");
+        return inStrip;
+    }
 
-        // The tab title strip sits above the ShellTabWindowClass content area.
-        return point.Y >= headerTop && point.Y < headerBottomExclusive;
+    private static string GetWindowClass(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return string.Empty;
+        var sb = new StringBuilder(128);
+        NativeMethods.GetClassName(hwnd, sb, sb.Capacity);
+        return sb.ToString();
     }
 
     private static IntPtr TryFindAncestorWindowByClass(IntPtr hwnd, string expectedClass, IntPtr stopAt)
@@ -279,146 +291,6 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         }
 
         return IntPtr.Zero;
-    }
-
-    private static AccessiblePointKind GetAccessiblePointKind(NativeStructs.POINT point)
-    {
-        if (NativeMethods.AccessibleObjectFromPoint(point, out Accessibility.IAccessible accObj, out object childId) != 0)
-            return AccessiblePointKind.Unknown;
-
-        if (accObj is null)
-            return AccessiblePointKind.Unknown;
-
-        try
-        {
-            int? roleFromChild = TryGetAccessibleRole(accObj, childId);
-            int? roleFromSelf = TryGetAccessibleRole(accObj, 0);
-
-            bool isTabLike =
-                IsTabRole(roleFromChild) ||
-                IsTabRole(roleFromSelf) ||
-                (HasTabLikeAccessibleAncestor(accObj) &&
-                 (IsTabButtonRole(roleFromChild) || IsTabButtonRole(roleFromSelf)));
-
-            if (isTabLike)
-                return AccessiblePointKind.Tab;
-
-            bool isNavigationLike = IsNavigationLikeRole(roleFromChild) || IsNavigationLikeRole(roleFromSelf);
-            return isNavigationLike ? AccessiblePointKind.NavigationControl : AccessiblePointKind.Other;
-        }
-        catch
-        {
-            return AccessiblePointKind.Unknown;
-        }
-        finally
-        {
-            try
-            {
-                Marshal.FinalReleaseComObject(accObj);
-            }
-            catch
-            {
-                // ignore release failures
-            }
-        }
-    }
-
-    private static int? TryGetAccessibleRole(Accessibility.IAccessible accessible, object childId)
-    {
-        try
-        {
-            object roleValue = accessible.get_accRole(childId);
-            return roleValue is null ? null : RoleToInt(roleValue);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static bool HasTabLikeAccessibleAncestor(Accessibility.IAccessible accessible)
-    {
-        object? parentObj;
-        try
-        {
-            parentObj = accessible.accParent;
-        }
-        catch
-        {
-            return false;
-        }
-
-        for (int depth = 0; depth < 8 && parentObj is not null; depth++)
-        {
-            if (parentObj is not Accessibility.IAccessible parentAccessible)
-                return false;
-
-            object? nextParent = null;
-
-            try
-            {
-                int? parentRole = TryGetAccessibleRole(parentAccessible, 0);
-                if (IsTabRole(parentRole))
-                    return true;
-
-                nextParent = parentAccessible.accParent;
-            }
-            catch
-            {
-                return false;
-            }
-            finally
-            {
-                try
-                {
-                    Marshal.FinalReleaseComObject(parentAccessible);
-                }
-                catch
-                {
-                }
-            }
-
-            parentObj = nextParent;
-        }
-
-        return false;
-    }
-
-    private static bool IsTabRole(int? role)
-    {
-        return role is RoleSystemPageTab or RoleSystemPageTabList;
-    }
-
-    private static bool IsTabButtonRole(int? role)
-    {
-        return role is
-            RoleSystemPushButton or
-            RoleSystemSplitButton or
-            RoleSystemButtonDropDown or
-            RoleSystemButtonMenu or
-            RoleSystemButtonDropDownGrid;
-    }
-
-    private static bool IsNavigationLikeRole(int? role)
-    {
-        return role is
-            RoleSystemToolBar or
-            RoleSystemPushButton or
-            RoleSystemSplitButton or
-            RoleSystemButtonDropDown or
-            RoleSystemButtonMenu or
-            RoleSystemButtonDropDownGrid;
-    }
-
-    private static int RoleToInt(object roleValue)
-    {
-        return roleValue switch
-        {
-            int value => value,
-            short value => value,
-            byte value => value,
-            _ => Convert.ToInt32(roleValue)
-        };
     }
 
     private static bool WindowClassEquals(IntPtr hwnd, string expectedClass)
