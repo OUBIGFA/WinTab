@@ -100,11 +100,11 @@ public sealed class ExplorerTabHookService : IDisposable
         if (activeTab == IntPtr.Zero || !NativeMethods.IsWindow(activeTab))
             return false;
 
-        bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: 600);
+        bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: 600, ct: _cts.Token);
         if (!navigated)
             return false;
 
-        bool confirmed = await WaitUntilTabLocationMatches(activeTab, location, timeoutMs: 600, pollMs: 40);
+        bool confirmed = await WaitUntilTabLocationMatches(activeTab, location, timeoutMs: 600, pollMs: 60);
         if (!confirmed)
             return false;
 
@@ -123,6 +123,7 @@ public sealed class ExplorerTabHookService : IDisposable
     private static readonly object ShellWindowsInitLock = new();
     private static object? _shellWindows;
     private static int _shellWindowsThreadId;
+    private static bool _clipboardOperationInProgress;
 
     private readonly IWindowEventSource _windowEvents;
     private readonly IWindowManager _windowManager;
@@ -143,7 +144,11 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly ConcurrentDictionary<IntPtr, byte> _knownExplorerTopLevels = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _earlyHiddenExplorer = new();
     private readonly ConcurrentDictionary<IntPtr, ConcurrentDictionary<IntPtr, int>> _tabIndexCache = new();
+    private readonly ConcurrentDictionary<IntPtr, byte> _newTabDefaultInFlight = new();
+    private readonly CancellationTokenSource _cts = new();
+    private readonly ConcurrentDictionary<uint, bool> _explorerPidCache = new();
     private readonly object _sendLock = new();
+    private System.Windows.Threading.DispatcherTimer? _cleanupTimer;
 
     private IntPtr _lastExplorerForeground;
 
@@ -155,7 +160,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _windowManager = windowManager;
         _settings = settings;
         _logger = logger;
-        _windowRegisteredHandler = OnShellWindowRegistered;
+        _windowRegisteredHandler = cookie => OnShellWindowRegisteredSafe(cookie);
         _createEventCallback = OnExplorerObjectCreate;
 
         _autoConvertEnabled = settings.EnableAutoConvertExplorerWindows;
@@ -208,6 +213,18 @@ public sealed class ExplorerTabHookService : IDisposable
         }
 
         _logger.Info("ExplorerTabHookService started (ETU-style, no COMReference).");
+
+        // Periodic cleanup of stale dictionary entries (every 5 minutes).
+        var dispatcher = TryGetUiDispatcher();
+        if (dispatcher is not null)
+        {
+            _cleanupTimer = new System.Windows.Threading.DispatcherTimer(
+                TimeSpan.FromMinutes(5),
+                System.Windows.Threading.DispatcherPriority.Background,
+                (_, _) => CleanupStaleDictionaryEntries(),
+                dispatcher);
+            _cleanupTimer.Start();
+        }
     }
 
     private readonly record struct RegisteredCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string? Location, bool IsKnownTopLevel);
@@ -399,7 +416,7 @@ public sealed class ExplorerTabHookService : IDisposable
         if (!TrySelectTabByIndex(explorerTopLevel, index))
             return false;
 
-        return await WaitForActiveTabHandle(explorerTopLevel, tabHandle, timeoutMs: timeoutMs);
+        return await WaitForActiveTabHandle(explorerTopLevel, tabHandle, timeoutMs: timeoutMs, ct: _cts.Token);
     }
 
     private async Task<int> ProbeTabIndexForHandle(IntPtr explorerTopLevel, IntPtr tabHandle, List<IntPtr> tabs, int skipPrimary, int skipSecondary)
@@ -412,7 +429,7 @@ public sealed class ExplorerTabHookService : IDisposable
             if (!TrySelectTabByIndex(explorerTopLevel, i))
                 continue;
 
-            if (await WaitForActiveTabHandle(explorerTopLevel, tabHandle, timeoutMs: 120))
+            if (await WaitForActiveTabHandle(explorerTopLevel, tabHandle, timeoutMs: 120, ct: _cts.Token))
                 return i;
         }
 
@@ -441,13 +458,16 @@ public sealed class ExplorerTabHookService : IDisposable
 
         try
         {
-            NativeMethods.SendMessage(
+            IntPtr sent = NativeMethods.SendMessageTimeout(
                 explorerTopLevel,
                 (uint)NativeConstants.WM_SETREDRAW,
                 IntPtr.Zero,
-                IntPtr.Zero);
+                IntPtr.Zero,
+                NativeConstants.SMTO_ABORTIFHUNG,
+                200,
+                out _);
 
-            redrawLocked = true;
+            redrawLocked = sent != IntPtr.Zero;
         }
         catch
         {
@@ -476,11 +496,14 @@ public sealed class ExplorerTabHookService : IDisposable
 
         try
         {
-            NativeMethods.SendMessage(
+            NativeMethods.SendMessageTimeout(
                 explorerTopLevel,
                 (uint)NativeConstants.WM_SETREDRAW,
                 new IntPtr(1),
-                IntPtr.Zero);
+                IntPtr.Zero,
+                NativeConstants.SMTO_ABORTIFHUNG,
+                200,
+                out _);
 
             uint flags = NativeConstants.RDW_INVALIDATE |
                          NativeConstants.RDW_ERASE |
@@ -546,7 +569,7 @@ public sealed class ExplorerTabHookService : IDisposable
         return true;
     }
 
-    private static async Task<bool> WaitForActiveTabHandle(IntPtr explorerTopLevel, IntPtr expectedTabHandle, int timeoutMs)
+    private static async Task<bool> WaitForActiveTabHandle(IntPtr explorerTopLevel, IntPtr expectedTabHandle, int timeoutMs, CancellationToken ct = default)
     {
         int start = Environment.TickCount;
         while (Environment.TickCount - start < timeoutMs)
@@ -554,7 +577,7 @@ public sealed class ExplorerTabHookService : IDisposable
             if (GetActiveTabHandle(explorerTopLevel) == expectedTabHandle)
                 return true;
 
-            await Task.Delay(25);
+            await Task.Delay(25, ct);
         }
 
         return GetActiveTabHandle(explorerTopLevel) == expectedTabHandle;
@@ -597,7 +620,23 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
-    private async void OnShellWindowRegistered(int cookie)
+    private void OnShellWindowRegisteredSafe(int cookie)
+    {
+        // COM callback must never throw — wrap in Task.Run with full exception isolation.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await OnShellWindowRegisteredCore(cookie);
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug($"ShellWindowRegistered handler failed: {ex.Message}");
+            }
+        });
+    }
+
+    private async Task OnShellWindowRegisteredCore(int cookie)
     {
         if (_disposed)
             return;
@@ -665,9 +704,9 @@ public sealed class ExplorerTabHookService : IDisposable
                 }
             });
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore and keep fallback path alive
+            _logger.Debug($"ShellWindowRegistered handler error: {ex.Message}");
         }
     }
 
@@ -682,7 +721,7 @@ public sealed class ExplorerTabHookService : IDisposable
         if (IsNewTabDefaultSuppressed(topLevel))
             return;
 
-        await Task.Delay(80);
+        await Task.Delay(80, _cts.Token);
 
         IntPtr newTabHandle = GetActiveTabHandle(topLevel);
         if (newTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(newTabHandle))
@@ -699,7 +738,7 @@ public sealed class ExplorerTabHookService : IDisposable
         // switches active tab; retry once before deciding no action is needed.
         if (IsRealFileSystemLocation(newTabLocation))
         {
-            await Task.Delay(120);
+            await Task.Delay(120, _cts.Token);
 
             IntPtr refreshedActiveTab = GetActiveTabHandle(topLevel);
             if (refreshedActiveTab != IntPtr.Zero && NativeMethods.IsWindow(refreshedActiveTab))
@@ -715,11 +754,11 @@ public sealed class ExplorerTabHookService : IDisposable
         if (!IsRealFileSystemLocation(sourceLocation))
             return;
 
-        bool navigated = await NavigateTabByHandleWithRetry(newTabHandle, sourceLocation!, timeoutMs: 420);
+        bool navigated = await NavigateTabByHandleWithRetry(newTabHandle, sourceLocation!, timeoutMs: 420, ct: _cts.Token);
         if (!navigated)
             return;
 
-        _ = await WaitUntilTabLocationMatches(newTabHandle, sourceLocation!, timeoutMs: 420, pollMs: 40);
+        _ = await WaitUntilTabLocationMatches(newTabHandle, sourceLocation!, timeoutMs: 420, pollMs: 60);
         _logger.Info($"Aligned new Explorer tab to active tab location: {sourceLocation}");
     }
 
@@ -802,6 +841,10 @@ public sealed class ExplorerTabHookService : IDisposable
             if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel))
                 return;
 
+            // Throttle: skip if already processing a new-tab-default for this window.
+            if (!_newTabDefaultInFlight.TryAdd(topLevel, 0))
+                return;
+
             _ = Task.Run(async () =>
             {
                 try
@@ -811,6 +854,10 @@ public sealed class ExplorerTabHookService : IDisposable
                 catch (Exception ex)
                 {
                     _logger.Debug($"Failed to handle tab-create event: {ex.Message}");
+                }
+                finally
+                {
+                    _newTabDefaultInFlight.TryRemove(topLevel, out _);
                 }
             });
 
@@ -849,7 +896,7 @@ public sealed class ExplorerTabHookService : IDisposable
             if (candidate is not null)
                 return candidate;
 
-            await Task.Delay(25);
+            await Task.Delay(25, _cts.Token);
         }
 
         return null;
@@ -980,6 +1027,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _knownExplorerTopLevels.TryRemove(hwnd, out _);
         _earlyHiddenExplorer.TryRemove(hwnd, out _);
         _pending.TryRemove(hwnd, out _);
+        _newTabDefaultInFlight.TryRemove(hwnd, out _);
         _suppressNewTabDefaultUntil.TryRemove(hwnd, out _);
         _tabIndexCache.TryRemove(hwnd, out _);
     }
@@ -1034,15 +1082,39 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private bool IsExplorerTopLevelWindow(IntPtr hwnd)
     {
-        // Ensure it's an Explorer process and a CabinetWClass top-level window.
-        var info = _windowManager.GetWindowInfo(hwnd);
-        if (info is null)
+        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
             return false;
 
-        if (!string.Equals(NormalizeExeName(info.ProcessName), "explorer", StringComparison.OrdinalIgnoreCase))
+        // Fast class name check first (cheap, no cross-process call for process info).
+        var classBuilder = new StringBuilder(64);
+        NativeMethods.GetClassName(hwnd, classBuilder, classBuilder.Capacity);
+        if (!string.Equals(classBuilder.ToString(), ExplorerWindowClass, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        return string.Equals(info.ClassName, ExplorerWindowClass, StringComparison.OrdinalIgnoreCase);
+        // Check PID against cached explorer PIDs.
+        NativeMethods.GetWindowThreadProcessId(hwnd, out uint pid);
+        if (pid == 0)
+            return false;
+
+        if (_explorerPidCache.TryGetValue(pid, out bool isExplorer))
+            return isExplorer;
+
+        // Cap cache size to prevent unbounded growth.
+        if (_explorerPidCache.Count > 50)
+            _explorerPidCache.Clear();
+
+        // Cache miss: do the expensive check once per PID.
+        isExplorer = false;
+        try
+        {
+            using var process = Process.GetProcessById((int)pid);
+            isExplorer = string.Equals(process.ProcessName, "explorer", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (ArgumentException) { }
+        catch (InvalidOperationException) { }
+
+        _explorerPidCache[pid] = isExplorer;
+        return isExplorer;
     }
 
     private async Task ConvertWindowToTab(
@@ -1065,7 +1137,7 @@ public sealed class ExplorerTabHookService : IDisposable
             if (!hasReadyLocation && (sourceTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(sourceTabHandle)))
             {
                 // Explorer may fire SHOW very early; wait briefly for tab child window(s).
-                List<IntPtr> initialTabs = await WaitForTabHandles(sourceTopLevel, timeoutMs: 250);
+                List<IntPtr> initialTabs = await WaitForTabHandles(sourceTopLevel, timeoutMs: 250, ct: _cts.Token);
                 if (initialTabs.Count == 0)
                 {
                     _logger.Info($"Skip convert: cannot find tab child for 0x{sourceTopLevel.ToInt64():X}");
@@ -1103,7 +1175,7 @@ public sealed class ExplorerTabHookService : IDisposable
 
             if (!hasReadyLocation)
             {
-                location = await WaitForRealLocationByTabHandle(sourceTabHandle, sourceTopLevel, timeoutMs: 500);
+                location = await WaitForRealLocationByTabHandle(sourceTabHandle, sourceTopLevel, timeoutMs: 500, ct: _cts.Token);
                 hasReadyLocation = IsRealFileSystemLocation(location);
             }
 
@@ -1152,7 +1224,7 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
-    private static async Task<List<IntPtr>> WaitForTabHandles(IntPtr explorerTopLevel, int timeoutMs)
+    private static async Task<List<IntPtr>> WaitForTabHandles(IntPtr explorerTopLevel, int timeoutMs, CancellationToken ct = default)
     {
         int start = Environment.TickCount;
         while (Environment.TickCount - start < timeoutMs)
@@ -1160,7 +1232,7 @@ public sealed class ExplorerTabHookService : IDisposable
             List<IntPtr> tabs = GetAllTabHandles(explorerTopLevel);
             if (tabs.Count > 0)
                 return tabs;
-            await Task.Delay(20);
+            await Task.Delay(20, ct);
         }
 
         return [];
@@ -1287,9 +1359,9 @@ public sealed class ExplorerTabHookService : IDisposable
             new IntPtr(NativeConstants.EXPLORER_CMD_OPEN_NEW_TAB),
             IntPtr.Zero);
 
-        IntPtr newTabHandle = await WaitForActiveTabChange(targetTopLevel, oldActiveTab, timeoutMs: 240);
+        IntPtr newTabHandle = await WaitForActiveTabChange(targetTopLevel, oldActiveTab, timeoutMs: 240, ct: _cts.Token);
         if (newTabHandle == IntPtr.Zero)
-            newTabHandle = await WaitForNewTabHandle(targetTopLevel, before, timeoutMs: 240);
+            newTabHandle = await WaitForNewTabHandle(targetTopLevel, before, timeoutMs: 240, ct: _cts.Token);
 
         if (newTabHandle == IntPtr.Zero)
         {
@@ -1298,7 +1370,7 @@ public sealed class ExplorerTabHookService : IDisposable
         }
 
         // Prefer COM navigation (doesn't rely on focus / SendKeys).
-        bool navigated = await NavigateTabByHandleWithRetry(newTabHandle, location, timeoutMs: 420);
+        bool navigated = await NavigateTabByHandleWithRetry(newTabHandle, location, timeoutMs: 420, ct: _cts.Token);
         if (!navigated)
         {
             bool sendKeysOk = await NavigateViaAddressBar(location);
@@ -1360,7 +1432,7 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
-    private static async Task<string?> WaitForRealLocationByTabHandle(IntPtr tabHandle, IntPtr topLevelHwnd, int timeoutMs)
+    private static async Task<string?> WaitForRealLocationByTabHandle(IntPtr tabHandle, IntPtr topLevelHwnd, int timeoutMs, CancellationToken ct = default)
     {
         int start = Environment.TickCount;
 
@@ -1372,7 +1444,7 @@ public sealed class ExplorerTabHookService : IDisposable
             if (IsRealFileSystemLocation(location))
                 return location;
 
-            await Task.Delay(40);
+            await Task.Delay(60, ct);
         }
 
         return null;
@@ -1428,7 +1500,7 @@ public sealed class ExplorerTabHookService : IDisposable
         return null;
     }
 
-    private static async Task<bool> NavigateTabByHandleWithRetry(IntPtr tabHandle, string location, int timeoutMs)
+    private static async Task<bool> NavigateTabByHandleWithRetry(IntPtr tabHandle, string location, int timeoutMs, CancellationToken ct = default)
     {
         int start = Environment.TickCount;
         while (Environment.TickCount - start < timeoutMs)
@@ -1436,7 +1508,7 @@ public sealed class ExplorerTabHookService : IDisposable
             bool ok = await UiAsync(() => TryNavigateTabByHandleUi(tabHandle, location));
             if (ok)
                 return true;
-            await Task.Delay(80);
+            await Task.Delay(120, ct);
         }
         return false;
     }
@@ -1478,7 +1550,7 @@ public sealed class ExplorerTabHookService : IDisposable
         return false;
     }
 
-    private static async Task<IntPtr> WaitForActiveTabChange(IntPtr explorerTopLevel, IntPtr oldActiveTab, int timeoutMs)
+    private static async Task<IntPtr> WaitForActiveTabChange(IntPtr explorerTopLevel, IntPtr oldActiveTab, int timeoutMs, CancellationToken ct = default)
     {
         int start = Environment.TickCount;
         while (Environment.TickCount - start < timeoutMs)
@@ -1487,38 +1559,60 @@ public sealed class ExplorerTabHookService : IDisposable
             if (current != IntPtr.Zero && current != oldActiveTab)
                 return current;
 
-            await Task.Delay(30);
+            await Task.Delay(30, ct);
         }
 
         return IntPtr.Zero;
     }
 
-    private static Task<bool> NavigateViaAddressBar(string location)
+    private static async Task<bool> NavigateViaAddressBar(string location)
     {
         // Clipboard + Ctrl+L is the most reliable without COM tab object binding.
-        return System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-        {
-            try
-            {
-                string original = ClipboardManager.GetClipboardText();
-                ClipboardManager.SetClipboardText(location);
+        // Use async delays instead of Thread.Sleep to avoid blocking the UI thread.
+        var dispatcher = System.Windows.Application.Current.Dispatcher;
+        if (dispatcher is null)
+            return false;
 
+        // Re-entrancy guard: prevent concurrent clipboard manipulation.
+        if (_clipboardOperationInProgress)
+            return false;
+
+        _clipboardOperationInProgress = true;
+        try
+        {
+            string original = await dispatcher.InvokeAsync(() =>
+            {
+                string orig = ClipboardManager.GetClipboardText();
+                ClipboardManager.SetClipboardText(location);
                 SendKeys.SendWait("^{l}");
-                Thread.Sleep(40);
+                return orig;
+            }).Task;
+
+            await Task.Delay(40);
+
+            await dispatcher.InvokeAsync(() =>
+            {
                 SendKeys.SendWait("^{v}");
                 SendKeys.SendWait("{ENTER}");
+            }).Task;
 
-                // Best-effort restore.
-                Thread.Sleep(20);
-                ClipboardManager.SetClipboardText(original);
+            await Task.Delay(20);
 
-                return true;
-            }
-            catch
+            await dispatcher.InvokeAsync(() =>
             {
-                return false;
-            }
-        }).Task;
+                ClipboardManager.SetClipboardText(original);
+            }).Task;
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+        finally
+        {
+            _clipboardOperationInProgress = false;
+        }
     }
 
     private static List<IntPtr> GetAllTabHandles(IntPtr explorerTopLevel)
@@ -1535,7 +1629,7 @@ public sealed class ExplorerTabHookService : IDisposable
         return result;
     }
 
-    private static async Task<IntPtr> WaitForNewTabHandle(IntPtr explorerTopLevel, List<IntPtr> before, int timeoutMs)
+    private static async Task<IntPtr> WaitForNewTabHandle(IntPtr explorerTopLevel, List<IntPtr> before, int timeoutMs, CancellationToken ct = default)
     {
         int start = Environment.TickCount;
         while (Environment.TickCount - start < timeoutMs)
@@ -1545,7 +1639,7 @@ public sealed class ExplorerTabHookService : IDisposable
                 if (!before.Contains(tab))
                     return tab;
             }
-            await Task.Delay(35);
+            await Task.Delay(35, ct);
         }
         return IntPtr.Zero;
     }
@@ -1647,12 +1741,25 @@ public sealed class ExplorerTabHookService : IDisposable
             {
                 int tid = Environment.CurrentManagedThreadId;
                 if (_shellWindows is not null && _shellWindowsThreadId == tid)
-                    return _shellWindows;
+                {
+                    // Validate the cached object is still alive (Explorer may have restarted).
+                    try
+                    {
+                        _ = ((dynamic)_shellWindows).Count;
+                        return _shellWindows;
+                    }
+                    catch (Exception ex) when (IsComOrRpcException(ex))
+                    {
+                        // Stale COM object — discard and recreate below.
+                        try { Marshal.FinalReleaseComObject(_shellWindows); } catch { }
+                        _shellWindows = null;
+                    }
+                }
 
                 // If called on a different thread, recreate to match COM apartment.
                 if (_shellWindows is not null)
                 {
-                    Marshal.FinalReleaseComObject(_shellWindows);
+                    try { Marshal.FinalReleaseComObject(_shellWindows); } catch { }
                     _shellWindows = null;
                 }
 
@@ -1703,7 +1810,7 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
-    private static async Task<string?> WaitForRealLocation(object comTab, int timeoutMs)
+    private static async Task<string?> WaitForRealLocation(object comTab, int timeoutMs, CancellationToken ct = default)
     {
         int start = Environment.TickCount;
         string? last = null;
@@ -1726,7 +1833,7 @@ public sealed class ExplorerTabHookService : IDisposable
                     return location;
             }
 
-            await Task.Delay(70);
+            await Task.Delay(70, ct);
         }
 
         return null;
@@ -1742,85 +1849,9 @@ public sealed class ExplorerTabHookService : IDisposable
             return !string.IsNullOrWhiteSpace(location);
         }
 
-        // Fallback: re-enumerate and match by tab handle.
-        try
-        {
-            Type? shellType = Type.GetTypeFromProgID("Shell.Application");
-            if (shellType is null)
-                return false;
-
-            dynamic shell = Activator.CreateInstance(shellType)!;
-            object? windows = null;
-            try
-            {
-                windows = shell.Windows();
-                int count = 0;
-                
-                try
-                {
-                    count = (int)((dynamic)windows).Count;
-                }
-                catch (Exception ex) when (IsComOrRpcException(ex))
-                {
-                    return false;
-                }
-
-                for (int i = 0; i < count; i++)
-                {
-                    object? item = null;
-                    try
-                    {
-                        item = ((dynamic)windows).Item(i);
-                        if (item is null)
-                            continue;
-
-                        string fullName = (string?)((dynamic)item).FullName ?? string.Empty;
-                        if (!fullName.EndsWith(ExplorerExe, StringComparison.OrdinalIgnoreCase))
-                        {
-                            Marshal.FinalReleaseComObject(item);
-                            continue;
-                        }
-
-                        if (GetTabHandle(item) != tabHandle)
-                        {
-                            Marshal.FinalReleaseComObject(item);
-                            continue;
-                        }
-
-                        location = TryGetComLocation(item);
-                        Marshal.FinalReleaseComObject(item);
-                        return !string.IsNullOrWhiteSpace(location);
-                    }
-                    catch (Exception ex) when (IsComOrRpcException(ex))
-                    {
-                        if (item is not null)
-                            Marshal.FinalReleaseComObject(item);
-                    }
-                    catch
-                    {
-                        if (item is not null)
-                            Marshal.FinalReleaseComObject(item);
-                    }
-                }
-            }
-            finally
-            {
-                if (windows is not null)
-                    Marshal.FinalReleaseComObject(windows);
-                if (shell is not null)
-                    Marshal.FinalReleaseComObject(shell);
-            }
-        }
-        catch (Exception ex) when (IsComOrRpcException(ex))
-        {
-            return false;
-        }
-        catch
-        {
-            return false;
-        }
-
-        return false;
+        // Fallback: use the shared ShellWindows snapshot instead of creating a new Shell.Application.
+        location = TryGetLocationByTabHandleUi(tabHandle);
+        return !string.IsNullOrWhiteSpace(location);
     }
 
     private static string? TryGetComLocation(object comTab)
@@ -2069,12 +2100,54 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
+    private void CleanupStaleDictionaryEntries()
+    {
+        foreach (IntPtr hwnd in _knownExplorerTopLevels.Keys)
+        {
+            if (!NativeMethods.IsWindow(hwnd))
+                _knownExplorerTopLevels.TryRemove(hwnd, out _);
+        }
+
+        foreach (IntPtr hwnd in _earlyHiddenExplorer.Keys)
+        {
+            if (!NativeMethods.IsWindow(hwnd))
+                _earlyHiddenExplorer.TryRemove(hwnd, out _);
+        }
+
+        foreach (IntPtr hwnd in _tabIndexCache.Keys)
+        {
+            if (!NativeMethods.IsWindow(hwnd))
+                _tabIndexCache.TryRemove(hwnd, out _);
+        }
+
+        foreach (IntPtr hwnd in _newTabDefaultInFlight.Keys)
+        {
+            if (!NativeMethods.IsWindow(hwnd))
+                _newTabDefaultInFlight.TryRemove(hwnd, out _);
+        }
+
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddSeconds(-30);
+        foreach (var kvp in _pending)
+        {
+            if (kvp.Value < cutoff)
+                _pending.TryRemove(kvp.Key, out _);
+        }
+
+        foreach (var kvp in _suppressNewTabDefaultUntil)
+        {
+            if (kvp.Value <= DateTimeOffset.UtcNow)
+                _suppressNewTabDefaultUntil.TryRemove(kvp.Key, out _);
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed)
             return;
 
         _disposed = true;
+        _cts.Cancel();
+        _cleanupTimer?.Stop();
 
         if (_createEventHook != IntPtr.Zero)
             NativeMethods.UnhookWinEvent(_createEventHook);
@@ -2103,5 +2176,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _windowEvents.WindowShown -= OnWindowShown;
         _windowEvents.WindowDestroyed -= OnWindowDestroyed;
         _windowEvents.WindowForegroundChanged -= OnWindowForegroundChanged;
+
+        _cts.Dispose();
     }
 }

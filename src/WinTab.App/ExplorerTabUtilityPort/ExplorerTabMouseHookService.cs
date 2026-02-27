@@ -29,6 +29,8 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     private readonly int _doubleClickTimeMs;
     private readonly int _doubleClickWidth;
     private readonly int _doubleClickHeight;
+    private readonly int _captionHeight;
+    private readonly int _frameHeight;
 
     private IntPtr _hookHandle;
     private bool _enabled;
@@ -49,6 +51,8 @@ public sealed class ExplorerTabMouseHookService : IDisposable
 
         _doubleClickWidth = Math.Max(1, NativeMethods.GetSystemMetrics(NativeConstants.SM_CXDOUBLECLK));
         _doubleClickHeight = Math.Max(1, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYDOUBLECLK));
+        _captionHeight = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYCAPTION));
+        _frameHeight = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYFRAME));
         if (settings.CloseTabOnDoubleClick && !SetEnabled(true))
             settings.CloseTabOnDoubleClick = false;
     }
@@ -149,7 +153,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     private bool HandleLeftButtonDown(IntPtr lParam)
     {
         var info = Marshal.PtrToStructure<NativeStructs.MSLLHOOKSTRUCT>(lParam);
-        if (!TryResolveExplorerTabByPoint(info.pt, out IntPtr topLevelHandle, out IntPtr tabHandle))
+        if (!TryResolveExplorerTabByPoint(info.pt, out IntPtr topLevelHandle, out IntPtr tabHandle, out IntPtr pointWindow))
         {
             lock (_sync) { ResetClickState(); }
             return false;
@@ -160,7 +164,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
             if (_disposed || !_enabled)
                 return false;
 
-            if (!IsPointInTabTitleArea(info.pt, topLevelHandle))
+            if (!IsPointInTabTitleArea(info.pt, topLevelHandle, pointWindow))
             {
                 ResetClickState();
                 return false;
@@ -191,12 +195,14 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     private static bool TryResolveExplorerTabByPoint(
         NativeStructs.POINT point,
         out IntPtr topLevelHandle,
-        out IntPtr tabHandle)
+        out IntPtr tabHandle,
+        out IntPtr pointWindow)
     {
         topLevelHandle = IntPtr.Zero;
         tabHandle = IntPtr.Zero;
+        pointWindow = IntPtr.Zero;
 
-        IntPtr pointWindow = NativeMethods.WindowFromPoint(point);
+        pointWindow = NativeMethods.WindowFromPoint(point);
         if (pointWindow == IntPtr.Zero)
             return false;
 
@@ -229,11 +235,9 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     /// We accept clicks that land on the WinUI bridge window and are geometrically within
     /// the vertical tab-strip band (above the ShellTabWindowClass content area).
     /// </summary>
-    private bool IsPointInTabTitleArea(NativeStructs.POINT point, IntPtr topLevelHandle)
+    private bool IsPointInTabTitleArea(NativeStructs.POINT point, IntPtr topLevelHandle, IntPtr pointWindow)
     {
-        IntPtr pointWindow = NativeMethods.WindowFromPoint(point);
         string wfpClass = GetWindowClass(pointWindow);
-
 
         // If the cursor is over the title-bar scaffolding (empty draggable space), reject
         // immediately so the OS can handle native double-click (maximize / restore).
@@ -253,9 +257,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
         if (tabHandle == IntPtr.Zero || !NativeMethods.GetWindowRect(tabHandle, out NativeStructs.RECT tabRect))
             return false;
 
-        int captionHeight = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYCAPTION));
-        int frameHeight   = Math.Max(0, NativeMethods.GetSystemMetrics(NativeConstants.SM_CYFRAME));
-        int maxTabStripHeight = Math.Clamp(captionHeight + frameHeight + 8, 30, 56);
+        int maxTabStripHeight = Math.Clamp(_captionHeight + _frameHeight + 8, 30, 56);
 
         int stripTop    = explorerRect.Top;
         int stripBottom = Math.Min(tabRect.Top, stripTop + maxTabStripHeight);
@@ -277,7 +279,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
     private static IntPtr TryFindAncestorWindowByClass(IntPtr hwnd, string expectedClass, IntPtr stopAt)
     {
         IntPtr current = hwnd;
-        for (int depth = 0; depth < 24 && current != IntPtr.Zero; depth++)
+        for (int depth = 0; depth < 8 && current != IntPtr.Zero; depth++)
         {
             if (WindowClassEquals(current, expectedClass))
                 return current;

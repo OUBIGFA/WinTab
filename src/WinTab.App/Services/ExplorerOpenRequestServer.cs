@@ -40,7 +40,7 @@ public sealed class ExplorerOpenRequestServer : IDisposable
                     await using var server = new NamedPipeServerStream(
                         PipeName,
                         PipeDirection.In,
-                        maxNumberOfServerInstances: 1,
+                        maxNumberOfServerInstances: 4,
                         PipeTransmissionMode.Byte,
                         PipeOptions.Asynchronous);
 
@@ -61,7 +61,7 @@ public sealed class ExplorerOpenRequestServer : IDisposable
                         {
                             string path = remainder[(spaceIdx + 1)..].Trim();
                             _logger.Info($"Pipe: open-ex request (fg=0x{hwndLong:X}): {path}");
-                            await onOpenFolder(path, new IntPtr(hwndLong));
+                            _ = SafeInvokeCallback(onOpenFolder, path, new IntPtr(hwndLong));
                             continue;
                         }
                     }
@@ -71,7 +71,7 @@ public sealed class ExplorerOpenRequestServer : IDisposable
                     {
                         string path = line[5..].Trim();
                         _logger.Info($"Pipe: open request: {path}");
-                        await onOpenFolder(path, IntPtr.Zero);
+                        _ = SafeInvokeCallback(onOpenFolder, path, IntPtr.Zero);
                     }
                 }
                 catch (OperationCanceledException)
@@ -85,6 +85,18 @@ public sealed class ExplorerOpenRequestServer : IDisposable
                 }
             }
         });
+    }
+
+    private async Task SafeInvokeCallback(Func<string, IntPtr, Task> callback, string path, IntPtr foreground)
+    {
+        try
+        {
+            await callback(path, foreground);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Pipe callback error for '{path}'.", ex);
+        }
     }
 
     public void Dispose()

@@ -143,6 +143,9 @@ public static class NativeConstants
     public const uint SEE_MASK_FLAG_NO_UI   = 0x00000400;
     public const uint SEE_MASK_ASYNCOK      = 0x00100000;
 
+    // ─── SendMessageTimeout Flags ───────────────────────────────────────────
+    public const uint SMTO_ABORTIFHUNG = 0x0002;
+
     // ─── DWM Window Attributes ──────────────────────────────────────────────
 
     public const int DWMWA_CLOAK = 13;
