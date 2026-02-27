@@ -3,8 +3,10 @@ using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using WinTab.App.Services;
 using WinTab.Diagnostics;
 using WinTab.Persistence;
+using WinTab.Platform.Win32;
 using WinTab.UI.Localization;
 
 namespace WinTab.App.ViewModels;
@@ -15,6 +17,8 @@ public sealed partial class UninstallViewModel : ObservableObject
     private readonly string _appDirectory;
     private readonly string? _uninstallerPath;
     private readonly bool _isPortable;
+    private readonly RegistryOpenVerbInterceptor _openVerbInterceptor;
+    private readonly StartupRegistrar _startupRegistrar;
 
     private const string RemoveUserDataArgument = "/REMOVEUSERDATA=1";
 
@@ -27,11 +31,15 @@ public sealed partial class UninstallViewModel : ObservableObject
     [ObservableProperty]
     private bool _removeUserDataOnUninstall;
 
+    public bool IsPortable => _isPortable;
+    public bool IsInstalled => !_isPortable;
     public bool IsRemoveUserDataOptionEnabled => !_isPortable;
 
-    public UninstallViewModel(Logger logger)
+    public UninstallViewModel(Logger logger, RegistryOpenVerbInterceptor openVerbInterceptor, StartupRegistrar startupRegistrar)
     {
         _logger = logger;
+        _openVerbInterceptor = openVerbInterceptor;
+        _startupRegistrar = startupRegistrar;
 
         _appDirectory = Path.GetDirectoryName(Environment.ProcessPath)
             ?? AppContext.BaseDirectory;
@@ -47,6 +55,59 @@ public sealed partial class UninstallViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void RestoreSystemConfig()
+    {
+        string confirmTitle = LocalizationManager.GetString("Uninstall_ConfirmTitle");
+        string confirmMessage = LocalizationManager.GetString("Uninstall_RestoreSystemConfig_Confirm");
+
+        MessageBoxResult result = System.Windows.MessageBox.Show(
+            confirmMessage,
+            confirmTitle,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        int failureCount = 0;
+
+        try
+        {
+            _startupRegistrar.SetEnabled(false);
+        }
+        catch (Exception ex)
+        {
+            failureCount++;
+            _logger.Error("Failed to remove startup entry during portable cleanup.", ex);
+        }
+
+        try
+        {
+            _openVerbInterceptor.DisableAndRestore();
+        }
+        catch (Exception ex)
+        {
+            failureCount++;
+            _logger.Error("Failed to restore Explorer open-verb state during portable cleanup.", ex);
+            UninstallCleanupHandler.TryRestoreExplorerOpenVerbDefaults(_logger);
+        }
+
+        // Clean up the WinTab registry tree (backup cache and any other entries under HKCU\Software\WinTab).
+        UninstallCleanupHandler.TryDeleteWinTabRegistryTree();
+
+        string resultKey = failureCount == 0
+            ? "Uninstall_RestoreSystemConfig_Success"
+            : "Uninstall_RestoreSystemConfig_Partial";
+
+        System.Windows.MessageBox.Show(
+            LocalizationManager.GetString(resultKey),
+            LocalizationManager.GetString("Uninstall_ConfirmTitle"),
+            MessageBoxButton.OK,
+            failureCount == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
+    [RelayCommand]
     private void StartUninstall()
     {
         if (_isPortable)
@@ -56,8 +117,8 @@ public sealed partial class UninstallViewModel : ObservableObject
             System.Windows.MessageBox.Show(
                 message,
                 title,
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Information);
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             OpenAppDirectory();
             return;
         }
@@ -69,8 +130,8 @@ public sealed partial class UninstallViewModel : ObservableObject
             System.Windows.MessageBox.Show(
                 message,
                 title,
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Warning);
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
             OpenSystemUninstall();
             return;
         }
@@ -78,14 +139,14 @@ public sealed partial class UninstallViewModel : ObservableObject
         string confirmTitle = LocalizationManager.GetString("Uninstall_ConfirmTitle");
         string confirmMessage = LocalizationManager.GetString("Uninstall_Confirm");
 
-        System.Windows.MessageBoxResult result = System.Windows.MessageBox.Show(
+        MessageBoxResult result = System.Windows.MessageBox.Show(
             confirmMessage,
             confirmTitle,
-            System.Windows.MessageBoxButton.YesNo,
-            System.Windows.MessageBoxImage.Warning,
-            System.Windows.MessageBoxResult.No);
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
 
-        if (result != System.Windows.MessageBoxResult.Yes)
+        if (result != MessageBoxResult.Yes)
             return;
 
         try
@@ -110,8 +171,8 @@ public sealed partial class UninstallViewModel : ObservableObject
             System.Windows.MessageBox.Show(
                 message,
                 title,
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Error);
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 

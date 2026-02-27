@@ -22,6 +22,7 @@ public sealed class AppSettings
     public bool OpenNewTabFromActiveTabPath { get; set; } = true;
     public bool OpenChildFolderInNewTabFromActiveTab { get; set; } = false;
     public bool CloseTabOnDoubleClick { get; set; } = false;
+    public bool EnableAutoConvertExplorerWindows { get; set; } = true;
 
     // Schema version for migration
     public int SchemaVersion { get; set; } = 2;

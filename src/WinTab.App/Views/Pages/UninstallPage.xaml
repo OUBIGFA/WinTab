@@ -9,6 +9,10 @@
       mc:Ignorable="d"
       Title="UninstallPage">
 
+    <Page.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+    </Page.Resources>
+
     <Grid>
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="600" Margin="24,48,24,24">
@@ -34,14 +38,18 @@
                             <TextBlock Text="{DynamicResource Uninstall_ModeLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Grid.Row="0" Grid.Column="0" Margin="0,0,12,8"/>
                             <TextBlock Text="{Binding ModeText}" Grid.Row="0" Grid.Column="1" Margin="0,0,0,8" FontWeight="Medium"/>
                             
-                            <TextBlock Text="{DynamicResource Uninstall_PathLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Grid.Row="1" Grid.Column="0" Margin="0,0,12,0"/>
-                            <TextBlock Text="{Binding UninstallerPathText}" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            <!-- Uninstaller path row: installed mode only -->
+                            <TextBlock Text="{DynamicResource Uninstall_PathLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Grid.Row="1" Grid.Column="0" Margin="0,0,12,0"
+                                       Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            <TextBlock Text="{Binding UninstallerPathText}" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                         </Grid>
 
                         <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,0,0,16"/>
 
-                        <!-- Options -->
-                        <StackPanel Margin="0,0,0,24">
+                        <!-- Installed mode: Remove user data option -->
+                        <StackPanel Margin="0,0,0,24"
+                                    Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <CheckBox Content="{DynamicResource Uninstall_RemoveUserData}"
                                       IsChecked="{Binding RemoveUserDataOnUninstall, Mode=TwoWay}"
                                       IsEnabled="{Binding IsRemoveUserDataOptionEnabled}" />
@@ -51,8 +59,16 @@
                                        TextWrapping="Wrap" FontSize="12" />
                         </StackPanel>
 
-                        <!-- Actions -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <!-- Portable mode: system config restore hint -->
+                        <TextBlock Text="{DynamicResource Uninstall_RestoreSystemConfig_Desc}"
+                                   Margin="0,0,0,24"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" FontSize="12"
+                                   Visibility="{Binding IsPortable, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                        <!-- Actions: installed mode -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                    Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <ui:Button Content="{DynamicResource Uninstall_Button}"
                                        Icon="{ui:SymbolIcon Delete24}"
                                        Appearance="Danger"
@@ -66,13 +82,35 @@
                                        Command="{Binding OpenAppDirectoryCommand}"
                                        Margin="8,0,0,0" />
                         </StackPanel>
+
+                        <!-- Actions: portable mode -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                    Visibility="{Binding IsPortable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ui:Button Content="{DynamicResource Uninstall_RestoreSystemConfig}"
+                                       Icon="{ui:SymbolIcon ArrowCounterclockwise24}"
+                                       Appearance="Caution"
+                                       Command="{Binding RestoreSystemConfigCommand}" />
+                            <ui:Button Content="{DynamicResource Uninstall_OpenFolder}"
+                                       Icon="{ui:SymbolIcon Folder24}"
+                                       Command="{Binding OpenAppDirectoryCommand}"
+                                       Margin="8,0,0,0" />
+                        </StackPanel>
                     </StackPanel>
                 </ui:CardControl>
 
+                <!-- Bottom hint: installed mode -->
                 <TextBlock Text="{DynamicResource Uninstall_DefaultBehavior}"
                            HorizontalAlignment="Center" TextAlignment="Center"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                           FontSize="12" TextWrapping="Wrap" MaxWidth="500" />
+                           FontSize="12" TextWrapping="Wrap" MaxWidth="500"
+                           Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                <!-- Bottom hint: portable mode -->
+                <TextBlock Text="{DynamicResource Uninstall_PortableHint}"
+                           HorizontalAlignment="Center" TextAlignment="Center"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           FontSize="12" TextWrapping="Wrap" MaxWidth="500"
+                           Visibility="{Binding IsPortable, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
             </StackPanel>
         </ScrollViewer>

@@ -50,6 +50,7 @@ public static class UninstallCleanupHandler
             }
 
             TryDeleteExplorerOpenVerbBackupRegistryCache();
+            TryDeleteWinTabRegistryTree();
 
             cleanupLogger?.Info("Uninstall cleanup completed.");
             return failureCount == 0 ? 0 : 1;
@@ -101,6 +102,18 @@ public static class UninstallCleanupHandler
         {
             using RegistryKey? softwareRoot = Registry.CurrentUser.OpenSubKey(@"Software", writable: true);
             softwareRoot?.DeleteSubKeyTree(@"WinTab\Backups\ExplorerOpenVerb", throwOnMissingSubKey: false);
+        }
+        catch
+        {
+        }
+    }
+
+    public static void TryDeleteWinTabRegistryTree()
+    {
+        try
+        {
+            using RegistryKey? softwareRoot = Registry.CurrentUser.OpenSubKey(@"Software", writable: true);
+            softwareRoot?.DeleteSubKeyTree(@"WinTab", throwOnMissingSubKey: false);
         }
         catch
         {

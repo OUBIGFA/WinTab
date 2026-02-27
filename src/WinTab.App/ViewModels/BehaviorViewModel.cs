@@ -29,6 +29,9 @@ public partial class BehaviorViewModel : ObservableObject
     [ObservableProperty]
     private bool _closeTabOnDoubleClick;
 
+    [ObservableProperty]
+    private bool _enableAutoConvertExplorerWindows;
+
     public bool IsOpenChildFolderInNewTabOptionEnabled => EnableExplorerOpenVerbInterception;
 
     public BehaviorViewModel(
@@ -48,6 +51,7 @@ public partial class BehaviorViewModel : ObservableObject
         _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
         _enableExplorerOpenVerbInterception = settings.EnableExplorerOpenVerbInterception;
         _closeTabOnDoubleClick = settings.CloseTabOnDoubleClick;
+        _enableAutoConvertExplorerWindows = settings.EnableAutoConvertExplorerWindows;
     }
 
     partial void OnOpenNewTabFromActiveTabPathChanged(bool value)
@@ -102,6 +106,12 @@ public partial class BehaviorViewModel : ObservableObject
         }
 
         _settings.CloseTabOnDoubleClick = applied;
+        SaveSettings();
+    }
+
+    partial void OnEnableAutoConvertExplorerWindowsChanged(bool value)
+    {
+        _settings.EnableAutoConvertExplorerWindows = value;
         SaveSettings();
     }
 

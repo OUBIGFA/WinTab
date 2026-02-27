@@ -29,6 +29,18 @@
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding EnableExplorerOpenVerbInterception, Mode=TwoWay}" />
             </ui:CardControl>
+
+            <ui:CardControl Margin="0,0,0,8">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows_Desc}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   FontSize="12" Margin="0,2,0,0" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding EnableAutoConvertExplorerWindows, Mode=TwoWay}" />
+            </ui:CardControl>
             
             <ui:CardControl Margin="0,0,0,24">
                 <ui:CardControl.Header>

@@ -27,6 +27,8 @@
     <system:String x:Key="Behavior_Group_Tabs">标签页规则</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">接管外部文件夹打开请求</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">拦截由系统或其他应用发出的文件夹打开请求，并作为新标签页加入到当前的 WinTab 窗口。</system:String>
+    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows">拦截所有资源管理器窗口</system:String>
+    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows_Desc">自动将第三方应用或命令行启动的新资源管理器窗口转换为标签页（需重启生效）</system:String>
     <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">继承当前标签页路径</system:String>
     <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">新建标签页时，默认打开当前活动标签页所在的目录，而非系统默认的“此电脑”。</system:String>
     <system:String x:Key="Behavior_OpenChildFolderInNewTab">在新标签页中打开子文件夹</system:String>
@@ -66,6 +68,11 @@
     <system:String x:Key="Uninstall_Confirm">即将启动 WinTab 卸载程序，是否继续？</system:String>
     <system:String x:Key="Uninstall_LaunchFailed">无法启动卸载程序，请改用系统卸载设置。</system:String>
     <system:String x:Key="Uninstall_PortableHint">当前为便携版。关闭 WinTab 后删除程序目录即可完成卸载。</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig">还原系统配置</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Desc">清除 WinTab 在系统中留下的所有痕迹：开机自启动注册、资源管理器打开动作拦截，以及 HKCU\Software\WinTab 注册表项。</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Confirm">即将清除 WinTab 对系统的所有更改（开机自启动、注册表拦截、WinTab 注册表项），是否继续？</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Success">系统配置已成功还原。</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Partial">部分还原操作失败，请查看日志。建议手动检查注册表或重新运行。</system:String>
 
     <!-- Tray Icon -->
     <system:String x:Key="Tray_Open">显示主界面</system:String>

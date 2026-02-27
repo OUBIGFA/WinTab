@@ -7,6 +7,7 @@ using WinTab.Persistence;
 using WinTab.Platform.Win32;
 using WinTab.UI.Localization;
 using WinTab.UI.Themes;
+using WinTab.App.Services;
 
 namespace WinTab.App.ViewModels;
 
@@ -16,6 +17,7 @@ public partial class GeneralViewModel : ObservableObject
     private readonly SettingsStore _settingsStore;
     private readonly StartupRegistrar _startupRegistrar;
     private readonly Logger _logger;
+    private readonly TrayIconController _trayIconController;
     private bool _isSynchronizingThemeSelection;
 
     [ObservableProperty]
@@ -40,12 +42,14 @@ public partial class GeneralViewModel : ObservableObject
         AppSettings settings,
         SettingsStore settingsStore,
         StartupRegistrar startupRegistrar,
-        Logger logger)
+        Logger logger,
+        TrayIconController trayIconController)
     {
         _settings = settings;
         _settingsStore = settingsStore;
         _startupRegistrar = startupRegistrar;
         _logger = logger;
+        _trayIconController = trayIconController;
 
         // Load current values from settings
         _runAtStartup = startupRegistrar.IsEnabled();
@@ -78,11 +82,7 @@ public partial class GeneralViewModel : ObservableObject
         _settings.ShowTrayIcon = value;
         SaveSettings();
         
-        // Notify App to dynamically toggle tray icon visibility
-        if (System.Windows.Application.Current is App app)
-        {
-            app.SetTrayIconVisibility(value);
-        }
+        _trayIconController.SetVisible(value);
     }
 
     partial void OnSelectedLanguageIndexChanged(int value)

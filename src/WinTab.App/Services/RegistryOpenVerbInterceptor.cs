@@ -238,7 +238,7 @@ public sealed class RegistryOpenVerbInterceptor
     private void DeleteBackupFromRegistry()
     {
         using RegistryKey? root = Registry.CurrentUser.OpenSubKey(@"Software", writable: true);
-        root?.DeleteSubKeyTree(@"WinTab\\Backups\\ExplorerOpenVerb", throwOnMissingSubKey: false);
+        root?.DeleteSubKeyTree(@"WinTab\Backups\ExplorerOpenVerb", throwOnMissingSubKey: false);
     }
 
     private BackupFile LoadBackup()

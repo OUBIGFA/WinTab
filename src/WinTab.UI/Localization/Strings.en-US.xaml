@@ -27,6 +27,8 @@
     <system:String x:Key="Behavior_Group_Tabs">Rules</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">Catch external folders</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">Force folders opened from other apps to join existing WinTab windows as tabs.</system:String>
+    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows">Intercept all Explorer windows</system:String>
+    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows_Desc">Auto-convert new Explorer windows from third-party apps or command line into tabs (restart required)</system:String>
     <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">Clone current path</system:String>
     <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">New tabs inherit the current location instead of defaulting to 'This PC'.</system:String>
     <system:String x:Key="Behavior_OpenChildFolderInNewTab">Open subfolders in new tabs</system:String>
@@ -66,6 +68,11 @@
     <system:String x:Key="Uninstall_Confirm">WinTab uninstaller will be started. Continue?</system:String>
     <system:String x:Key="Uninstall_LaunchFailed">Unable to start uninstaller. Please use system uninstall settings.</system:String>
     <system:String x:Key="Uninstall_PortableHint">Portable mode detected. Close WinTab and delete the app directory to uninstall.</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig">Restore system config</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Desc">Remove all traces WinTab left on the system: startup registration, Explorer open-verb interception, and the HKCU\Software\WinTab registry tree.</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Confirm">This will remove all WinTab system changes (startup entry, registry interception, WinTab registry tree). Continue?</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Success">System configuration restored successfully.</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Partial">Some restore operations failed. Check the log for details.</system:String>
 
     <!-- Tray Icon -->
     <system:String x:Key="Tray_Open">Show Main Window</system:String>

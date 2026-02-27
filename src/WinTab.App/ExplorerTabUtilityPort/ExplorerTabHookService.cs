@@ -1,4 +1,4 @@
-// Adapted from ExplorerTabUtility (MIT License).
+﻿// Adapted from ExplorerTabUtility (MIT License).
 // Source: E:\_BIGFA Free\_code\ExplorerTabUtility
 
 using System.Collections.Concurrent;
@@ -158,10 +158,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _windowRegisteredHandler = OnShellWindowRegistered;
         _createEventCallback = OnExplorerObjectCreate;
 
-        _autoConvertEnabled = string.Equals(
-            Environment.GetEnvironmentVariable("WINTAB_AUTO_CONVERT_EXPLORER"),
-            "1",
-            StringComparison.Ordinal);
+        _autoConvertEnabled = settings.EnableAutoConvertExplorerWindows;
 
         _windowEvents.WindowForegroundChanged += OnWindowForegroundChanged;
         _windowEvents.WindowDestroyed += OnWindowDestroyed;
@@ -1575,8 +1572,18 @@ public sealed class ExplorerTabHookService : IDisposable
 
         try
         {
-            dynamic dynWindows = windows!;
-            int count = (int)dynWindows.Count;
+            dynamic dynWindows = windows;
+            int count = 0;
+            
+            try
+            {
+                count = (int)dynWindows.Count;
+            }
+            catch (Exception ex) when (IsComOrRpcException(ex))
+            {
+                // The ShellWindows collection itself became invalid (e.g. Explorer restarted)
+                return result;
+            }
 
             for (int i = 0; i < count; i++)
             {
@@ -1597,6 +1604,13 @@ public sealed class ExplorerTabHookService : IDisposable
 
                     result.Add(window);
                 }
+                catch (Exception ex) when (IsComOrRpcException(ex))
+                {
+                    // Usually 0x800706BA RPC Server Unavailable.
+                    // The window died between enumeration and property access.
+                    if (window is not null)
+                        Marshal.FinalReleaseComObject(window);
+                }
                 catch
                 {
                     if (window is not null)
@@ -1604,12 +1618,24 @@ public sealed class ExplorerTabHookService : IDisposable
                 }
             }
         }
+        catch
+        {
+            // Catch anything else related to the dynamic binder or COM wrapper
+        }
         finally
         {
             // Intentionally keep the cached ShellWindows collection alive.
         }
 
         return result;
+    }
+
+    private static bool IsComOrRpcException(Exception ex)
+    {
+        if (ex is COMException) return true;
+        if (ex.InnerException is COMException) return true;
+        if (ex.GetType().Name == "RuntimeBinderException") return true;
+        return false;
     }
 
     private static object? GetShellWindowsCollectionUi()
@@ -1724,40 +1750,70 @@ public sealed class ExplorerTabHookService : IDisposable
                 return false;
 
             dynamic shell = Activator.CreateInstance(shellType)!;
-            dynamic windows = shell.Windows();
-            int count = (int)windows.Count;
-            for (int i = 0; i < count; i++)
+            object? windows = null;
+            try
             {
-                object? item = null;
+                windows = shell.Windows();
+                int count = 0;
+                
                 try
                 {
-                    item = windows.Item(i);
-                    if (item is null)
-                        continue;
-
-                    string fullName = (string?)((dynamic)item).FullName ?? string.Empty;
-                    if (!fullName.EndsWith(ExplorerExe, StringComparison.OrdinalIgnoreCase))
-                    {
-                        Marshal.FinalReleaseComObject(item);
-                        continue;
-                    }
-
-                    if (GetTabHandle(item) != tabHandle)
-                    {
-                        Marshal.FinalReleaseComObject(item);
-                        continue;
-                    }
-
-                    location = TryGetComLocation(item);
-                    Marshal.FinalReleaseComObject(item);
-                    return !string.IsNullOrWhiteSpace(location);
+                    count = (int)((dynamic)windows).Count;
                 }
-                catch
+                catch (Exception ex) when (IsComOrRpcException(ex))
                 {
-                    if (item is not null)
+                    return false;
+                }
+
+                for (int i = 0; i < count; i++)
+                {
+                    object? item = null;
+                    try
+                    {
+                        item = ((dynamic)windows).Item(i);
+                        if (item is null)
+                            continue;
+
+                        string fullName = (string?)((dynamic)item).FullName ?? string.Empty;
+                        if (!fullName.EndsWith(ExplorerExe, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Marshal.FinalReleaseComObject(item);
+                            continue;
+                        }
+
+                        if (GetTabHandle(item) != tabHandle)
+                        {
+                            Marshal.FinalReleaseComObject(item);
+                            continue;
+                        }
+
+                        location = TryGetComLocation(item);
                         Marshal.FinalReleaseComObject(item);
+                        return !string.IsNullOrWhiteSpace(location);
+                    }
+                    catch (Exception ex) when (IsComOrRpcException(ex))
+                    {
+                        if (item is not null)
+                            Marshal.FinalReleaseComObject(item);
+                    }
+                    catch
+                    {
+                        if (item is not null)
+                            Marshal.FinalReleaseComObject(item);
+                    }
                 }
             }
+            finally
+            {
+                if (windows is not null)
+                    Marshal.FinalReleaseComObject(windows);
+                if (shell is not null)
+                    Marshal.FinalReleaseComObject(shell);
+            }
+        }
+        catch (Exception ex) when (IsComOrRpcException(ex))
+        {
+            return false;
         }
         catch
         {
@@ -1776,21 +1832,51 @@ public sealed class ExplorerTabHookService : IDisposable
             if (!string.IsNullOrWhiteSpace(url) && Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) && uri.IsFile)
                 return Uri.UnescapeDataString(uri.LocalPath);
         }
+        catch (Exception ex) when (IsComOrRpcException(ex))
+        {
+            // Ignore RPC disconnected
+        }
         catch
         {
             // ignore
         }
 
+        object? document = null;
+        object? folder = null;
+        object? self = null;
+
         try
         {
             dynamic win = comTab;
-            string path = (string?)win.Document?.Folder?.Self?.Path ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(path))
-                return path;
+            document = win.Document;
+            if (document is not null)
+            {
+                folder = ((dynamic)document).Folder;
+                if (folder is not null)
+                {
+                    self = ((dynamic)folder).Self;
+                    if (self is not null)
+                    {
+                        string path = (string?)((dynamic)self).Path ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(path))
+                            return path;
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (IsComOrRpcException(ex))
+        {
+            // Ignore RPC disconnected
         }
         catch
         {
             // ignore
+        }
+        finally
+        {
+            if (self is not null) Marshal.FinalReleaseComObject(self);
+            if (folder is not null) Marshal.FinalReleaseComObject(folder);
+            if (document is not null) Marshal.FinalReleaseComObject(document);
         }
 
         return null;
@@ -1808,26 +1894,44 @@ public sealed class ExplorerTabHookService : IDisposable
                 if (shellType is null)
                     return false;
 
-                dynamic shell = Activator.CreateInstance(shellType)!;
-                object? folder = null;
+                object? shell = null;
                 try
                 {
-                    folder = shell.NameSpace(location);
-                    if (folder is null)
+                    shell = Activator.CreateInstance(shellType);
+                    if (shell is null) return false;
+
+                    object? folder = null;
+                    try
+                    {
+                        folder = ((dynamic)shell).NameSpace(location);
+                        if (folder is null)
+                            return false;
+                        win.Navigate2(folder);
+                        return true;
+                    }
+                    catch (Exception ex) when (IsComOrRpcException(ex))
+                    {
                         return false;
-                    win.Navigate2(folder);
-                    return true;
+                    }
+                    finally
+                    {
+                        if (folder is not null)
+                            Marshal.FinalReleaseComObject(folder);
+                    }
                 }
                 finally
                 {
-                    if (folder is not null)
-                        Marshal.FinalReleaseComObject(folder);
-                    Marshal.FinalReleaseComObject(shell);
+                    if (shell is not null)
+                        Marshal.FinalReleaseComObject(shell);
                 }
             }
 
             win.Navigate2(location);
             return true;
+        }
+        catch (Exception ex) when (IsComOrRpcException(ex))
+        {
+            return false;
         }
         catch
         {
