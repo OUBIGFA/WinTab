@@ -50,16 +50,16 @@ public sealed class ShellComNavigator
         {
             if (_shellWindows is null)
             {
-                Type? shellType = Type.GetTypeFromProgID("Shell.Application");
-                if (shellType is not null)
+                Type? shellWindowsType = Type.GetTypeFromCLSID(ShellWindowsClsid);
+                if (shellWindowsType is not null)
                 {
                     try
                     {
-                        _shellWindows = Activator.CreateInstance(shellType);
+                        _shellWindows = Activator.CreateInstance(shellWindowsType);
                     }
                     catch (Exception ex)
                     {
-                        _logger.Error("ShellComNavigator: Failed to initialize Shell.Application", ex);
+                        _logger.Error("ShellComNavigator: Failed to initialize ShellWindows", ex);
                     }
                 }
             }

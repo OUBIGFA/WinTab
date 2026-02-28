@@ -387,12 +387,24 @@ public sealed class ExplorerTabHookService : IDisposable
                     continue;
 
                 IntPtr tabHandle = GetTabHandle(tab);
-                if (tabHandle == IntPtr.Zero || !NativeMethods.IsWindow(tabHandle))
-                    continue;
+                IntPtr topLevel = IntPtr.Zero;
 
-                IntPtr topLevel = NativeMethods.GetAncestor(tabHandle, NativeConstants.GA_ROOT);
-                if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel))
-                    continue;
+                if (tabHandle == IntPtr.Zero)
+                {
+                    dynamic win = tab;
+                    topLevel = new IntPtr((int)win.HWND);
+                    if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel))
+                        continue;
+                    tabHandle = topLevel;
+                }
+                else
+                {
+                    if (!NativeMethods.IsWindow(tabHandle))
+                        continue;
+                    topLevel = NativeMethods.GetAncestor(tabHandle, NativeConstants.GA_ROOT);
+                    if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel))
+                        continue;
+                }
 
                 if (excludeTopLevel != IntPtr.Zero && topLevel == excludeTopLevel)
                     continue;
@@ -1700,7 +1712,14 @@ public sealed class ExplorerTabHookService : IDisposable
         {
             try
             {
-                if (GetTabHandle(tab) != tabHandle)
+                IntPtr th = GetTabHandle(tab);
+                if (th == IntPtr.Zero)
+                {
+                    dynamic win = tab;
+                    th = new IntPtr((int)win.HWND);
+                }
+
+                if (th != tabHandle)
                     continue;
 
                 return _shellComNavigator.TryGetComLocation(tab);
@@ -1737,7 +1756,14 @@ public sealed class ExplorerTabHookService : IDisposable
         {
             try
             {
-                if (GetTabHandle(tab) != tabHandle)
+                IntPtr th = GetTabHandle(tab);
+                if (th == IntPtr.Zero)
+                {
+                    dynamic win = tab;
+                    th = new IntPtr((int)win.HWND);
+                }
+
+                if (th != tabHandle)
                     continue;
 
                 return _shellComNavigator.TryNavigateComTab(tab, location);
