@@ -145,17 +145,15 @@ public partial class App : Application
             try
             {
                 var hook = _serviceProvider.GetRequiredService<ExplorerTabHookService>();
-                bool handled = await hook.OpenLocationAsTabAsync(path, clickTimeForeground);
+                bool handled = await hook.OpenInterceptedLocationAsTabAsync(path, clickTimeForeground);
                 if (!handled)
                 {
-                    _logger?.Warn($"Open-folder request was not completed by tab hook; fallback open: {path}");
-                    AppEnvironment.TryOpenFolderFallback(path, _logger);
+                    _logger?.Warn($"[Intercept] Open-folder request handling failed: {path}");
                 }
             }
             catch (Exception ex)
             {
                 _logger?.Error("Failed to handle open-folder request.", ex);
-                AppEnvironment.TryOpenFolderFallback(path, _logger);
             }
         });
 

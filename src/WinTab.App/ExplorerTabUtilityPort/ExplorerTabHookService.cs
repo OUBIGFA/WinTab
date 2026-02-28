@@ -1,4 +1,4 @@
-﻿// Adapted from ExplorerTabUtility (MIT License).
+// Adapted from ExplorerTabUtility (MIT License).
 // Source: E:\_BIGFA Free\_code\ExplorerTabUtility
 
 using System.Collections.Concurrent;
@@ -30,28 +30,140 @@ public sealed class ExplorerTabHookService : IDisposable
 
         location = location.Trim();
 
-        if (await TryNavigateCurrentActiveTabLikeExplorer(location, clickTimeForeground))
+        bool handledInExistingWindow = await TryOpenLocationInExistingExplorerContextAsync(location, clickTimeForeground);
+        if (handledInExistingWindow)
             return true;
 
+        _logger.Warn($"[AutoConvert] OpenLocationAsTabAsync: in-window open failed, fallback to normal explorer open for '{location}'.");
+        return TryLaunchExplorerWindow(location);
+    }
+
+    public async Task<bool> OpenInterceptedLocationAsTabAsync(string location, IntPtr clickTimeForeground = default)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+            return false;
+
+        location = location.Trim();
+
+        try
+        {
+            await _interceptOpenGate.WaitAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+
+        try
+        {
+            bool handled = await TryOpenLocationInActiveExplorerWindowOnlyAsync(location, clickTimeForeground);
+            if (!handled)
+            {
+                _logger.Warn($"[Intercept] Open request cannot be handled in current active Explorer window: '{location}'.");
+            }
+
+            return handled;
+        }
+        finally
+        {
+            _interceptOpenGate.Release();
+        }
+    }
+
+    private async Task<bool> TryOpenLocationInActiveExplorerWindowOnlyAsync(string location, IntPtr clickTimeForeground)
+    {
+        // Match native Explorer behavior first: when opening from inside Explorer,
+        // navigate current active tab unless user explicitly enabled child-folder-in-new-tab.
+        bool navigatedCurrent = await TryNavigateCurrentActiveTabLikeExplorer(location, clickTimeForeground);
+        if (navigatedCurrent)
+            return true;
+
+        IntPtr targetTopLevel = PickInterceptTargetExplorerWindow(clickTimeForeground);
+        if (targetTopLevel == IntPtr.Zero)
+        {
+            _logger.Info($"[Intercept] No active Explorer window available; fallback to standalone Explorer launch: {location}");
+            bool launched = TryLaunchExplorerWindow(location);
+            if (!launched)
+            {
+                _logger.Warn($"[Intercept] Fallback Explorer launch failed: {location}");
+            }
+
+            return launched;
+        }
+
+        // Strict policy for intercepted requests:
+        // - only operate in the CURRENT active Explorer window
+        // - never activate another Explorer window just because it already has the same path
+        if (await TryActivateExistingTabByLocation(location, requiredTopLevel: targetTopLevel))
+            return true;
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            bool opened = await OpenLocationInNewTab(targetTopLevel, location);
+            if (opened)
+            {
+                TryBringToForeground(targetTopLevel);
+                _logger.Info($"[Intercept] Opened location in current active Explorer window tab: {location}");
+                return true;
+            }
+
+            try
+            {
+                await Task.Delay(80, _cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+
+            IntPtr refreshed = PickInterceptTargetExplorerWindow(clickTimeForeground);
+            if (refreshed == IntPtr.Zero)
+                break;
+
+            targetTopLevel = refreshed;
+        }
+
+        return false;
+    }
+
+    private async Task<bool> TryOpenLocationInExistingExplorerContextAsync(string location, IntPtr clickTimeForeground)
+    {
+        // Keep tab reuse behavior: if same location already exists, activate it instead of creating a duplicate tab.
         if (await TryActivateExistingTabByLocation(location))
             return true;
 
-        // If no Explorer window is available, fall back to normal explorer.exe open.
-        IntPtr targetTopLevel = PickTargetExplorerWindow(exclude: IntPtr.Zero);
+        IntPtr targetTopLevel = PickInterceptTargetExplorerWindow(clickTimeForeground);
         if (targetTopLevel == IntPtr.Zero)
+            return false;
+
+        // Intercepted requests should open directly as a NEW TAB in the active Explorer context.
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            return TryLaunchExplorerWindow(location);
+            bool opened = await OpenLocationInNewTab(targetTopLevel, location);
+            if (opened)
+            {
+                TryBringToForeground(targetTopLevel);
+                _logger.Info($"[Intercept] Opened location in active Explorer new tab: {location}");
+                return true;
+            }
+
+            try
+            {
+                await Task.Delay(80, _cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+
+            IntPtr refreshed = PickInterceptTargetExplorerWindow(clickTimeForeground);
+            if (refreshed == IntPtr.Zero)
+                break;
+
+            targetTopLevel = refreshed;
         }
 
-        bool opened = await OpenLocationInNewTab(targetTopLevel, location);
-        if (!opened)
-        {
-            _logger.Warn($"OpenLocationAsTabAsync: tab-open failed, fallback to normal explorer open for '{location}'.");
-            return TryLaunchExplorerWindow(location);
-        }
-
-        TryBringToForeground(targetTopLevel);
-        return true;
+        return false;
     }
 
     private bool TryLaunchExplorerWindow(string location)
@@ -148,6 +260,7 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<uint, bool> _explorerPidCache = new();
     private readonly object _sendLock = new();
+    private readonly SemaphoreSlim _interceptOpenGate = new(1, 1);
     private System.Windows.Threading.DispatcherTimer? _cleanupTimer;
 
     private IntPtr _lastExplorerForeground;
@@ -230,9 +343,9 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly record struct RegisteredCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string? Location, bool IsKnownTopLevel);
     private readonly record struct ExistingTabCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string Location);
 
-    private async Task<bool> TryActivateExistingTabByLocation(string location, IntPtr excludeTopLevel = default)
+    private async Task<bool> TryActivateExistingTabByLocation(string location, IntPtr excludeTopLevel = default, IntPtr requiredTopLevel = default)
     {
-        ExistingTabCandidate? candidate = await UiAsync(() => TryFindExistingTabByLocationUi(location, excludeTopLevel));
+        ExistingTabCandidate? candidate = await UiAsync(() => TryFindExistingTabByLocationUi(location, excludeTopLevel, requiredTopLevel));
         if (candidate is null)
             return false;
 
@@ -249,7 +362,7 @@ public sealed class ExplorerTabHookService : IDisposable
         return true;
     }
 
-    private ExistingTabCandidate? TryFindExistingTabByLocationUi(string location, IntPtr excludeTopLevel)
+    private ExistingTabCandidate? TryFindExistingTabByLocationUi(string location, IntPtr excludeTopLevel, IntPtr requiredTopLevel)
     {
         if (!IsRealFileSystemLocation(location))
             return null;
@@ -279,6 +392,9 @@ public sealed class ExplorerTabHookService : IDisposable
                     continue;
 
                 if (excludeTopLevel != IntPtr.Zero && topLevel == excludeTopLevel)
+                    continue;
+
+                if (requiredTopLevel != IntPtr.Zero && topLevel != requiredTopLevel)
                     continue;
 
                 if (!IsExplorerTopLevelWindow(topLevel))
@@ -682,7 +798,7 @@ public sealed class ExplorerTabHookService : IDisposable
 
             bool hiddenImmediately = _earlyHiddenExplorer.TryRemove(hwnd, out _);
             if (!hiddenImmediately)
-                hiddenImmediately = _windowManager.Hide(hwnd);
+                hiddenImmediately = await TryHideExplorerWindowAggressively(hwnd, timeoutMs: 180);
 
             _ = Task.Run(async () =>
             {
@@ -1067,7 +1183,8 @@ public sealed class ExplorerTabHookService : IDisposable
         {
             try
             {
-                await ConvertWindowToTab(hwnd);
+                bool hiddenImmediately = await TryHideExplorerWindowAggressively(hwnd, timeoutMs: 180);
+                await ConvertWindowToTab(hwnd, sourceHiddenAlready: hiddenImmediately);
             }
             catch (Exception ex)
             {
@@ -1078,6 +1195,33 @@ public sealed class ExplorerTabHookService : IDisposable
                 _pending.TryRemove(hwnd, out _);
             }
         });
+    }
+
+    private async Task<bool> TryHideExplorerWindowAggressively(IntPtr hwnd, int timeoutMs)
+    {
+        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+            return false;
+
+        int start = Environment.TickCount;
+        while (Environment.TickCount - start < timeoutMs)
+        {
+            if (_windowManager.Hide(hwnd) && !NativeMethods.IsWindowVisible(hwnd))
+                return true;
+
+            try
+            {
+                await Task.Delay(15, _cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+
+            if (!NativeMethods.IsWindow(hwnd))
+                return false;
+        }
+
+        return _windowManager.Hide(hwnd);
     }
 
     private bool IsExplorerTopLevelWindow(IntPtr hwnd)
@@ -1236,6 +1380,35 @@ public sealed class ExplorerTabHookService : IDisposable
         }
 
         return [];
+    }
+
+    private IntPtr PickInterceptTargetExplorerWindow(IntPtr clickTimeForeground)
+    {
+        // Intercepted-open policy:
+        // Prefer active-context Explorer first, but keep robust fallback to an existing Explorer window
+        // so requests do not fail when click-time foreground handle is stale or non-Explorer.
+        if (clickTimeForeground != IntPtr.Zero)
+        {
+            IntPtr clickRoot = NativeMethods.GetAncestor(clickTimeForeground, NativeConstants.GA_ROOT);
+            if (clickRoot != IntPtr.Zero && IsUsableTargetExplorerWindow(clickRoot))
+                return clickRoot;
+        }
+
+        IntPtr currentForeground = NativeMethods.GetForegroundWindow();
+        if (currentForeground != IntPtr.Zero)
+        {
+            IntPtr currentRoot = NativeMethods.GetAncestor(currentForeground, NativeConstants.GA_ROOT);
+            if (currentRoot != IntPtr.Zero && IsUsableTargetExplorerWindow(currentRoot))
+                return currentRoot;
+
+            if (IsUsableTargetExplorerWindow(currentForeground))
+                return currentForeground;
+        }
+
+        if (_lastExplorerForeground != IntPtr.Zero && IsUsableTargetExplorerWindow(_lastExplorerForeground))
+            return _lastExplorerForeground;
+
+        return PickTargetExplorerWindow(exclude: IntPtr.Zero);
     }
 
     private IntPtr PickTargetExplorerWindow(IntPtr exclude)
@@ -1975,8 +2148,11 @@ public sealed class ExplorerTabHookService : IDisposable
         if (string.IsNullOrWhiteSpace(location))
             return false;
 
-        if (location.StartsWith("shell::", StringComparison.OrdinalIgnoreCase) ||
-            location.StartsWith("::", StringComparison.OrdinalIgnoreCase))
+        if (location.StartsWith("::", StringComparison.OrdinalIgnoreCase) ||
+            location.StartsWith("shell:::", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (location.StartsWith("shell::", StringComparison.OrdinalIgnoreCase))
             return false;
 
         if (location.StartsWith("\\\\", StringComparison.OrdinalIgnoreCase))
@@ -2177,6 +2353,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _windowEvents.WindowDestroyed -= OnWindowDestroyed;
         _windowEvents.WindowForegroundChanged -= OnWindowForegroundChanged;
 
+        _interceptOpenGate.Dispose();
         _cts.Dispose();
     }
 }

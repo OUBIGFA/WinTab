@@ -48,8 +48,7 @@ public static class ExplorerOpenVerbHandler
             return true;
         }
 
-        effectiveLogger?.Warn($"No existing instance pipe; restoring shell defaults and falling back to Explorer open: {path}");
-        UninstallCleanupHandler.TryRestoreExplorerOpenVerbDefaults(effectiveLogger);
+        effectiveLogger?.Warn($"No existing instance pipe; falling back to Explorer open without changing interception state: {path}");
         AppEnvironment.TryOpenFolderFallback(path, effectiveLogger);
 
         return true;
