@@ -261,6 +261,7 @@ public partial class App : Application
 
         services.AddSingleton<IWindowManager, WindowManager>();
         services.AddSingleton<IWindowEventSource, WindowEventWatcher>();
+        services.AddSingleton<ShellLocationIdentityService>();
 
         services.AddSingleton<AppLifecycleService>();
 

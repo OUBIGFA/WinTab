@@ -231,6 +231,18 @@ public static class NativeMethods
         string szFileName, int nIconIndex,
         IntPtr[]? phiconLarge, IntPtr[]? phiconSmall, uint nIcons);
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
+    public static extern int SHParseDisplayName(
+        string pszName,
+        IntPtr pbc,
+        out IntPtr ppidl,
+        uint sfgaoIn,
+        out uint psfgaoOut);
+
+    [DllImport("shell32.dll", PreserveSig = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ILIsEqual(IntPtr pidl1, IntPtr pidl2);
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DestroyIcon(IntPtr hIcon);

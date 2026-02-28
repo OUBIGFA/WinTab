@@ -239,6 +239,7 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private readonly IWindowEventSource _windowEvents;
     private readonly IWindowManager _windowManager;
+    private readonly ShellLocationIdentityService _locationIdentity;
     private readonly AppSettings _settings;
     private readonly Logger _logger;
     private readonly bool _autoConvertEnabled;
@@ -264,13 +265,20 @@ public sealed class ExplorerTabHookService : IDisposable
     private System.Windows.Threading.DispatcherTimer? _cleanupTimer;
 
     private IntPtr _lastExplorerForeground;
+    private IntPtr _mainExplorerTopLevel;
 
     private bool _disposed;
 
-    public ExplorerTabHookService(IWindowEventSource windowEvents, IWindowManager windowManager, AppSettings settings, Logger logger)
+    public ExplorerTabHookService(
+        IWindowEventSource windowEvents,
+        IWindowManager windowManager,
+        ShellLocationIdentityService locationIdentity,
+        AppSettings settings,
+        Logger logger)
     {
         _windowEvents = windowEvents;
         _windowManager = windowManager;
+        _locationIdentity = locationIdentity;
         _settings = settings;
         _logger = logger;
         _windowRegisteredHandler = cookie => OnShellWindowRegisteredSafe(cookie);
@@ -292,6 +300,8 @@ public sealed class ExplorerTabHookService : IDisposable
         // "show" events (navigation, layout changes) as new windows.
         foreach (IntPtr h in EnumerateExplorerTopLevelWindows(includeInvisible: true))
             _knownExplorerTopLevels.TryAdd(h, 0);
+
+        _mainExplorerTopLevel = PickEtuTargetExplorerWindow(exclude: IntPtr.Zero);
 
         _shellWindowRegisteredHooked = TryHookShellWindowRegistered();
         if (_shellWindowRegisteredHooked)
@@ -380,7 +390,7 @@ public sealed class ExplorerTabHookService : IDisposable
                 string? tabLocation = TryGetComLocation(tab);
                 if (tabLocation is null ||
                     !IsRealFileSystemLocation(tabLocation) ||
-                    !PathsEquivalent(tabLocation, location))
+                    !_locationIdentity.AreEquivalent(tabLocation, location))
                     continue;
 
                 IntPtr tabHandle = GetTabHandle(tab);
@@ -1108,7 +1118,10 @@ public sealed class ExplorerTabHookService : IDisposable
             return;
 
         if (IsExplorerTopLevelWindow(hwnd))
+        {
             _lastExplorerForeground = hwnd;
+            _mainExplorerTopLevel = hwnd;
+        }
     }
 
     private static Dispatcher? TryGetUiDispatcher()
@@ -1139,6 +1152,9 @@ public sealed class ExplorerTabHookService : IDisposable
     {
         if (_disposed || hwnd == IntPtr.Zero)
             return;
+
+        if (_mainExplorerTopLevel == hwnd)
+            _mainExplorerTopLevel = IntPtr.Zero;
 
         _knownExplorerTopLevels.TryRemove(hwnd, out _);
         _earlyHiddenExplorer.TryRemove(hwnd, out _);
@@ -1304,7 +1320,7 @@ public sealed class ExplorerTabHookService : IDisposable
                 return;
             }
 
-            IntPtr targetTopLevel = PickTargetExplorerWindow(sourceTopLevel);
+            IntPtr targetTopLevel = PickEtuTargetExplorerWindow(sourceTopLevel);
             if (targetTopLevel == IntPtr.Zero)
             {
                 _logger.Info($"Skip convert: no target explorer window found for 0x{sourceTopLevel.ToInt64():X}");
@@ -1435,6 +1451,42 @@ public sealed class ExplorerTabHookService : IDisposable
         return candidates
             .OrderByDescending(CountTabs)
             .FirstOrDefault();
+    }
+
+    private IntPtr PickEtuTargetExplorerWindow(IntPtr exclude)
+    {
+        // ETU-style third-party takeover: keep a stable "main" Explorer window
+        // and fold newly opened standalone windows into that window's tabs.
+        IntPtr main = _mainExplorerTopLevel;
+        if (main != IntPtr.Zero && main != exclude && IsUsableTargetExplorerWindow(main))
+            return main;
+
+        List<IntPtr> candidates = EnumerateExplorerTopLevelWindows(includeInvisible: false)
+            .Where(h => h != exclude && IsUsableTargetExplorerWindow(h))
+            .ToList();
+
+        if (candidates.Count == 0)
+            return IntPtr.Zero;
+
+        // Match ETU selection tendency: reversed enumeration order, then most tabs.
+        int bestTabCount = -1;
+        IntPtr picked = IntPtr.Zero;
+        for (int i = candidates.Count - 1; i >= 0; i--)
+        {
+            IntPtr candidate = candidates[i];
+            int tabCount = CountTabs(candidate);
+            if (tabCount > bestTabCount)
+            {
+                bestTabCount = tabCount;
+                picked = candidate;
+            }
+        }
+
+        if (picked == IntPtr.Zero)
+            picked = candidates[0];
+
+        _mainExplorerTopLevel = picked;
+        return picked;
     }
 
     private bool IsUsableTargetExplorerWindow(IntPtr hwnd)
@@ -1710,13 +1762,13 @@ public sealed class ExplorerTabHookService : IDisposable
         return false;
     }
 
-    private static async Task<bool> WaitUntilTabLocationMatches(IntPtr tabHandle, string location, int timeoutMs, int pollMs)
+    private async Task<bool> WaitUntilTabLocationMatches(IntPtr tabHandle, string location, int timeoutMs, int pollMs)
     {
         int start = Environment.TickCount;
         while (Environment.TickCount - start < timeoutMs)
         {
             string? current = await UiAsync(() => TryGetLocationByTabHandleUi(tabHandle));
-            if (!string.IsNullOrWhiteSpace(current) && PathsEquivalent(current, location))
+            if (!string.IsNullOrWhiteSpace(current) && _locationIdentity.AreEquivalent(current, location))
                 return true;
             await Task.Delay(pollMs);
         }
@@ -2162,23 +2214,6 @@ public sealed class ExplorerTabHookService : IDisposable
             return true;
 
         return false;
-    }
-
-    private static bool PathsEquivalent(string a, string b)
-    {
-        try
-        {
-            string left = NormalizePathForCompare(Path.GetFullPath(a));
-            string right = NormalizePathForCompare(Path.GetFullPath(b));
-            return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return string.Equals(
-                NormalizePathForCompare(a),
-                NormalizePathForCompare(b),
-                StringComparison.OrdinalIgnoreCase);
-        }
     }
 
     private static bool IsChildPathOf(string parentPath, string childPath)
