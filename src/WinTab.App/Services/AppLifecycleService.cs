@@ -1,3 +1,4 @@
+using System.IO;
 using WinTab.Core.Interfaces;
 using WinTab.Core.Models;
 using WinTab.Diagnostics;
@@ -59,7 +60,7 @@ public sealed class AppLifecycleService
         {
             _settingsStore.Save(_settings);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
             _logger.Error("Failed to save settings during shutdown.", ex);
         }

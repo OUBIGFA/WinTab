@@ -70,7 +70,7 @@ public sealed class SingleInstanceService : IDisposable
                         window.Activate();
                     });
                 }
-                catch (Exception ex)
+                catch (InvalidOperationException ex)
                 {
                     _logger?.Error("Failed to activate main window from another instance signal.", ex);
                 }
@@ -88,9 +88,13 @@ public sealed class SingleInstanceService : IDisposable
             using var activationEvent = EventWaitHandle.OpenExisting(ActivationEventName);
             activationEvent.Set();
         }
-        catch (Exception ex)
+        catch (WaitHandleCannotBeOpenedException ex)
         {
             _logger?.Warn($"Could not signal existing instance (it might not be listening yet). {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger?.Warn($"Could not signal existing instance (Access denied). {ex.Message}");
         }
     }
 
@@ -117,7 +121,7 @@ public sealed class SingleInstanceService : IDisposable
             NativeMethods.ShowWindow(hWnd, NativeConstants.SW_RESTORE);
             NativeMethods.SetForegroundWindow(hWnd);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             _logger?.Warn($"Failed to bring existing instance to foreground. {ex.Message}");
         }

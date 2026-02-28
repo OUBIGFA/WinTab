@@ -41,7 +41,7 @@ public static class AppEnvironment
                 UseShellExecute = true,
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
             logger?.Error($"Failed to fallback open-folder launch for path: {path}", ex);
         }

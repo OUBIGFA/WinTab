@@ -167,7 +167,7 @@ public sealed class SettingsStore : IDisposable
                 {
                     Save(_pendingSave);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
                 {
                     _logger?.Error($"Failed to flush pending save during dispose: {ex.Message}");
                 }
@@ -202,7 +202,7 @@ public sealed class SettingsStore : IDisposable
             {
                 Save(snapshot);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
             {
                 _logger?.Error($"Debounced save failed: {ex.Message}");
             }

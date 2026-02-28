@@ -42,7 +42,7 @@ public static class UninstallCleanupHandler
                 var interceptor = new RegistryOpenVerbInterceptor(exePath, cleanupLogger);
                 interceptor.DisableAndRestore();
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
             {
                 failureCount++;
                 cleanupLogger?.Error("Uninstall cleanup failed to restore Explorer open-verb state.", ex);
@@ -90,7 +90,7 @@ public static class UninstallCleanupHandler
 
             logger?.Info("Restored Explorer open-verb defaults for standalone handler invocation.");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             logger?.Error("Failed to restore Explorer open-verb defaults.", ex);
         }

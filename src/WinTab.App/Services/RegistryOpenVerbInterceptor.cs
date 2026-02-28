@@ -156,7 +156,7 @@ public sealed class RegistryOpenVerbInterceptor
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             _logger.Error("Explorer open-verb self-check failed.", ex);
         }

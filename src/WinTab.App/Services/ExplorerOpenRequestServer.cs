@@ -78,7 +78,7 @@ public sealed class ExplorerOpenRequestServer : IDisposable
                 {
                     break;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
                 {
                     _logger.Error("Pipe server error.", ex);
                     await Task.Delay(250);

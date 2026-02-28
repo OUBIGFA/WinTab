@@ -76,7 +76,7 @@ public sealed partial class UninstallViewModel : ObservableObject
         {
             _startupRegistrar.SetEnabled(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             failureCount++;
             _logger.Error("Failed to remove startup entry during portable cleanup.", ex);
@@ -86,7 +86,7 @@ public sealed partial class UninstallViewModel : ObservableObject
         {
             _openVerbInterceptor.DisableAndRestore();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException or InvalidOperationException)
         {
             failureCount++;
             _logger.Error("Failed to restore Explorer open-verb state during portable cleanup.", ex);
@@ -162,7 +162,7 @@ public sealed partial class UninstallViewModel : ObservableObject
             _logger.Info($"Started uninstaller: {_uninstallerPath}");
             App.RequestExplicitShutdown();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
             _logger.Error("Failed to start uninstaller.", ex);
 
@@ -203,7 +203,7 @@ public sealed partial class UninstallViewModel : ObservableObject
                 UseShellExecute = true,
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
             _logger.Error("Failed to open system uninstall entry points.", ex);
         }
@@ -220,7 +220,7 @@ public sealed partial class UninstallViewModel : ObservableObject
                 UseShellExecute = true,
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
             _logger.Error("Failed to open app directory.", ex);
         }

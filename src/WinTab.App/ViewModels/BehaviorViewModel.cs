@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using WinTab.App.ExplorerTabUtilityPort;
 using WinTab.App.Services;
 using WinTab.Core.Models;
+using System.IO;
 using WinTab.Diagnostics;
 using WinTab.Persistence;
 
@@ -85,7 +86,7 @@ public partial class BehaviorViewModel : ObservableObject
 
             _logger.Info($"Explorer open-verb interception toggled to {(value ? "enabled" : "disabled")}.");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             _logger.Error("Failed to apply Explorer open-verb interception toggle.", ex);
             SetExplorerOpenVerbToggle(_settings.EnableExplorerOpenVerbInterception);

@@ -48,7 +48,7 @@ public partial class AboutViewModel : ObservableObject
                 _logger.Warn($"Log file not found: {LogPath}");
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
             _logger.Error("Failed to open log file.", ex);
         }
@@ -73,7 +73,7 @@ public partial class AboutViewModel : ObservableObject
                 _logger.Warn($"Log directory not found: {directory}");
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
             _logger.Error("Failed to open log folder.", ex);
         }
