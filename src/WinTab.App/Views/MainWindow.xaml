@@ -6,7 +6,9 @@
         Title="WinTab" Width="900" Height="600"
         WindowStyle="SingleBorderWindow"
         ResizeMode="CanResize"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}">
 
     <Grid>
         <ui:NavigationView x:Name="RootNavigation"

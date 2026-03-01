@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\WinTab.App\WinTab.App.csproj" />
     <ProjectReference Include="..\WinTab.Core\WinTab.Core.csproj" />
     <ProjectReference Include="..\WinTab.Diagnostics\WinTab.Diagnostics.csproj" />
     <ProjectReference Include="..\WinTab.Persistence\WinTab.Persistence.csproj" />

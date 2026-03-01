@@ -258,6 +258,7 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly ConcurrentDictionary<IntPtr, byte> _earlyHiddenExplorer = new();
     private readonly ConcurrentDictionary<IntPtr, ConcurrentDictionary<IntPtr, int>> _tabIndexCache = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _newTabDefaultInFlight = new();
+    private readonly ConcurrentDictionary<int, byte> _windowRegisteredInFlight = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<uint, bool> _explorerPidCache = new();
     private readonly object _sendLock = new();
@@ -320,7 +321,7 @@ public sealed class ExplorerTabHookService : IDisposable
         // Install EVENT_OBJECT_CREATE hook via dedicated manager:
         // - auto-convert mode: reduce flash by early hiding new Explorer windows
         // - on-demand mode: observe newly created tab windows for default new-tab behavior
-        _winEventHookManager.Start(_autoConvertEnabled);
+        _winEventHookManager.Start();
 
         if (!_autoConvertEnabled)
         {
@@ -753,18 +754,34 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private void OnShellWindowRegisteredSafe(int cookie)
     {
+        if (_disposed)
+            return;
+
+        if (!_windowRegisteredInFlight.TryAdd(cookie, 0))
+        {
+            _logger.Debug($"ShellWindowRegistered: duplicate cookie skipped ({cookie}).");
+            return;
+        }
+
         // COM callback must never throw — wrap in Task.Run with full exception isolation.
         _ = Task.Run(async () =>
         {
             try
             {
+                if (_disposed)
+                    return;
+
                 await OnShellWindowRegisteredCore(cookie);
             }
             catch (Exception ex)
             {
-                _logger.Debug($"ShellWindowRegistered handler failed: {ex.Message}");
+                _logger.Debug($"ShellWindowRegistered handler failed (cookie={cookie}): {ex.Message}");
             }
-        });
+            finally
+            {
+                _windowRegisteredInFlight.TryRemove(cookie, out _);
+            }
+        }, _cts.Token);
     }
 
     private async Task OnShellWindowRegisteredCore(int cookie)
@@ -786,20 +803,30 @@ public sealed class ExplorerTabHookService : IDisposable
 
             if (shouldHandleNewTabDefault && candidate.Value.IsKnownTopLevel)
             {
+                if (_cts.IsCancellationRequested)
+                    return;
+
                 _ = Task.Run(async () =>
                 {
                     try
                     {
+                        if (_disposed)
+                            return;
+
                         await TryApplyNewTabDefaultLocation(
                             candidate.Value.TopLevelHwnd,
                             candidate.Value.TabHandle,
                             candidate.Value.Location);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        // ignore
+                    }
                     catch (Exception ex)
                     {
-                        _logger.Debug($"Failed to apply new-tab default location: {ex.Message}");
+                        _logger.Debug($"Failed to apply new-tab default location (cookie={cookie}, hwnd=0x{candidate.Value.TopLevelHwnd.ToInt64():X}): {ex.Message}");
                     }
-                });
+                }, _cts.Token);
             }
 
             if (!_autoConvertEnabled || candidate.Value.IsKnownTopLevel)
@@ -815,25 +842,38 @@ public sealed class ExplorerTabHookService : IDisposable
             if (!hiddenImmediately)
                 hiddenImmediately = await TryHideExplorerWindowAggressively(hwnd, timeoutMs: 180);
 
+            if (_cts.IsCancellationRequested)
+            {
+                _pending.TryRemove(hwnd, out _);
+                return;
+            }
+
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    if (_disposed)
+                        return;
+
                     await ConvertWindowToTab(
                         hwnd,
                         candidate.Value.TabHandle,
                         candidate.Value.Location,
                         sourceHiddenAlready: hiddenImmediately);
                 }
+                catch (OperationCanceledException)
+                {
+                    // ignore
+                }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Explorer tab hook failed for {hwnd}.", ex);
+                    _logger.Error($"Explorer tab hook failed for 0x{hwnd.ToInt64():X} (cookie={cookie}).", ex);
                 }
                 finally
                 {
                     _pending.TryRemove(hwnd, out _);
                 }
-            });
+            }, _cts.Token);
         }
         catch (Exception ex)
         {
@@ -976,21 +1016,34 @@ public sealed class ExplorerTabHookService : IDisposable
             if (!_newTabDefaultInFlight.TryAdd(topLevel, 0))
                 return;
 
+            if (_cts.IsCancellationRequested)
+            {
+                _newTabDefaultInFlight.TryRemove(topLevel, out _);
+                return;
+            }
+
             _ = Task.Run(async () =>
             {
                 try
                 {
+                    if (_disposed)
+                        return;
+
                     await TryApplyNewTabDefaultLocation(topLevel, hwnd, suggestedLocation: null);
+                }
+                catch (OperationCanceledException)
+                {
+                    // ignore
                 }
                 catch (Exception ex)
                 {
-                    _logger.Debug($"Failed to handle tab-create event: {ex.Message}");
+                    _logger.Debug($"Failed to handle tab-create event (top=0x{topLevel.ToInt64():X}, tab=0x{hwnd.ToInt64():X}): {ex.Message}");
                 }
                 finally
                 {
                     _newTabDefaultInFlight.TryRemove(topLevel, out _);
                 }
-            });
+            }, _cts.Token);
 
             return;
         }
@@ -1200,22 +1253,35 @@ public sealed class ExplorerTabHookService : IDisposable
         if (!_pending.TryAdd(hwnd, DateTimeOffset.UtcNow))
             return;
 
+        if (_cts.IsCancellationRequested)
+        {
+            _pending.TryRemove(hwnd, out _);
+            return;
+        }
+
         _ = Task.Run(async () =>
         {
             try
             {
+                if (_disposed)
+                    return;
+
                 bool hiddenImmediately = await TryHideExplorerWindowAggressively(hwnd, timeoutMs: 180);
                 await ConvertWindowToTab(hwnd, sourceHiddenAlready: hiddenImmediately);
             }
+            catch (OperationCanceledException)
+            {
+                // ignore
+            }
             catch (Exception ex)
             {
-                _logger.Error($"Explorer tab hook failed for {hwnd}.", ex);
+                _logger.Error($"Explorer tab hook failed for 0x{hwnd.ToInt64():X} (source=WindowShown).", ex);
             }
             finally
             {
                 _pending.TryRemove(hwnd, out _);
             }
-        });
+        }, _cts.Token);
     }
 
     private async Task<bool> TryHideExplorerWindowAggressively(IntPtr hwnd, int timeoutMs)
@@ -1811,6 +1877,10 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private static async Task<bool> NavigateViaAddressBar(string location)
     {
+        // Safe-guard against extremely long paths crashing the UI automation (SendKeys).
+        if (string.IsNullOrEmpty(location) || location.Length > 2048)
+            return false;
+
         // Clipboard + Ctrl+L is the most reliable without COM tab object binding.
         // Use async delays instead of Thread.Sleep to avoid blocking the UI thread.
         var dispatcher = System.Windows.Application.Current.Dispatcher;
@@ -2081,18 +2151,6 @@ public sealed class ExplorerTabHookService : IDisposable
         }
 
         return null;
-    }
-
-    private bool TryGetComTabLocation(object? newTabObj, IntPtr tabHandle, out string? location)
-    {
-        location = null;
-
-        if (newTabObj is not null)
-        {
-            // Note: Since _shellComNavigator is instance-level, this static method will need refactoring or we use it where we have access.
-            // But we actually only use TryGetComTabLocation in one spot which we deleted. Wait, I deleted TryGetComTabLocation completely above. Let's just restore the Helpers.
-        }
-        return false;
     }
 
     private static bool IsRealFileSystemLocation(string? location)

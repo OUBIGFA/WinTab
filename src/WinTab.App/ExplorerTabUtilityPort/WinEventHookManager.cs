@@ -22,7 +22,7 @@ public sealed class WinEventHookManager : IDisposable
         _createEventCallback = createEventCallback ?? throw new ArgumentNullException(nameof(createEventCallback));
     }
 
-    public void Start(bool isAutoConvertEnabled)
+    public void Start()
     {
         if (_disposed) throw new ObjectDisposedException(nameof(WinEventHookManager));
 

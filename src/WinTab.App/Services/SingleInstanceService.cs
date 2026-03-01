@@ -17,7 +17,8 @@ public sealed class SingleInstanceService : IDisposable
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _activationEvent;
     private CancellationTokenSource? _activationListenerCts;
-    
+    private Task? _activationListenerTask;
+
     public bool OwnsMutex { get; private set; }
 
     public SingleInstanceService(string mutexName = "WinTab_SingleInstance", Logger? logger = null)
@@ -47,13 +48,16 @@ public sealed class SingleInstanceService : IDisposable
         var token = _activationListenerCts.Token;
         var activationEvent = _activationEvent;
 
-        Task.Run(() =>
+        _activationListenerTask = Task.Run(() =>
         {
             while (!token.IsCancellationRequested)
             {
-                activationEvent.WaitOne();
+                bool signaled = activationEvent.WaitOne(millisecondsTimeout: 200);
                 if (token.IsCancellationRequested)
                     break;
+
+                if (!signaled)
+                    continue;
 
                 try
                 {
@@ -132,6 +136,30 @@ public sealed class SingleInstanceService : IDisposable
         if (_activationListenerCts is not null)
         {
             _activationListenerCts.Cancel();
+        }
+
+        if (_activationListenerTask is not null)
+        {
+            try
+            {
+                _activationListenerTask.Wait(500);
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is TaskCanceledException or OperationCanceledException))
+            {
+                // ignore
+            }
+            catch (OperationCanceledException)
+            {
+                // ignore
+            }
+            finally
+            {
+                _activationListenerTask = null;
+            }
+        }
+
+        if (_activationListenerCts is not null)
+        {
             _activationListenerCts.Dispose();
             _activationListenerCts = null;
         }

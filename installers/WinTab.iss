@@ -1,4 +1,4 @@
-; WinTab Inno Setup Installer Script
+﻿; WinTab Inno Setup Installer Script
 ; Supports: custom install path, .NET 9 runtime detection, bilingual (Chinese/English)
 
 #define AppName "WinTab"
@@ -77,7 +77,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startup"; Description: "{cm:LaunchAtStartup}"; Flags: unchecked
 
 [Files]
-Source: "..\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\publish\win-x64\*"; Excludes: "portable.txt"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
