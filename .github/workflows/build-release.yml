@@ -67,7 +67,7 @@ jobs:
           $isccPath = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
 
           if (-not $isccPath) {
-            choco install innosetup --no-progress -y
+            choco install innosetup --version=6.4.2 --no-progress -y
             $isccPath = $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
           }
 

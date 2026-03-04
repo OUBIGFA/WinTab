@@ -10,14 +10,14 @@
       Title="GeneralPage">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
-        <StackPanel Margin="0,0,24,24" MaxWidth="800">
+        <StackPanel Margin="0,0,24,24" MaxWidth="840">
 
             <!-- Startup Section -->
             <TextBlock Text="{DynamicResource General_Startup}"
-                       FontSize="20" FontWeight="SemiBold"
-                       Margin="0,0,0,16" />
+                       FontSize="21" FontWeight="SemiBold"
+                       Margin="0,0,0,14" />
 
-            <ui:CardControl Margin="0,0,0,8">
+            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource General_RunAtStartup}" FontWeight="Medium" />
@@ -29,7 +29,7 @@
                 <ui:ToggleSwitch IsChecked="{Binding RunAtStartup, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <ui:CardControl Margin="0,0,0,8">
+            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource General_StartMinimized}" FontWeight="Medium" />
@@ -41,7 +41,7 @@
                 <ui:ToggleSwitch IsChecked="{Binding StartMinimized, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <ui:CardControl Margin="0,0,0,8">
+            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource General_ShowTrayIcon}" FontWeight="Medium" />
@@ -54,11 +54,14 @@
             </ui:CardControl>
 
             <!-- Language Section -->
+            <Border BorderThickness="0,0,0,1"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    Margin="0,8,0,18" />
             <TextBlock Text="{DynamicResource General_Language}"
-                       FontSize="20" FontWeight="SemiBold"
-                       Margin="0,32,0,16" />
+                       FontSize="21" FontWeight="SemiBold"
+                       Margin="0,0,0,14" />
 
-            <ui:CardControl Margin="0,0,0,8">
+            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource General_LanguageLabel}" FontWeight="Medium" />
@@ -75,11 +78,14 @@
             </ui:CardControl>
 
             <!-- Theme Section -->
+            <Border BorderThickness="0,0,0,1"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    Margin="0,10,0,18" />
             <TextBlock Text="{DynamicResource Appearance_Theme}"
-                       FontSize="20" FontWeight="SemiBold"
-                       Margin="0,32,0,16" />
+                       FontSize="21" FontWeight="SemiBold"
+                       Margin="0,0,0,14" />
 
-            <ui:CardControl Margin="0,0,0,24">
+            <ui:CardControl Margin="0,0,0,26" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource Appearance_Theme}" FontWeight="Medium" />
@@ -95,7 +101,7 @@
                     <RadioButton Content="{DynamicResource Appearance_ThemeDark}"
                                  IsChecked="{Binding IsThemeDark, Mode=TwoWay}"
                                  GroupName="Theme"
-                                 Margin="16,0,0,0" />
+                                 Margin="20,0,0,0" />
                 </StackPanel>
             </ui:CardControl>
 

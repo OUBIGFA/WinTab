@@ -6,6 +6,8 @@ namespace WinTab.App.Services;
 
 public static class AppEnvironment
 {
+    private const int MaxOpenPathLength = 2048;
+
     public static string ResolveLaunchExecutablePath()
     {
         string? processPath = Environment.ProcessPath;
@@ -32,18 +34,96 @@ public static class AppEnvironment
 
     public static void TryOpenFolderFallback(string path, WinTab.Diagnostics.Logger? logger)
     {
+        if (!TryNormalizeExistingDirectoryPath(path, out string normalizedPath, out string reason))
+        {
+            logger?.Warn($"Skipped Explorer fallback launch: invalid path ({reason}). Raw='{path}'");
+            return;
+        }
+
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "explorer.exe",
-                Arguments = $"\"{path}\"",
+                Arguments = $"\"{normalizedPath}\"",
                 UseShellExecute = true,
             });
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
-            logger?.Error($"Failed to fallback open-folder launch for path: {path}", ex);
+            logger?.Error($"Failed to fallback open-folder launch for path: {normalizedPath}", ex);
         }
+    }
+
+    public static bool TryNormalizeExistingDirectoryPath(string? candidatePath, out string normalizedPath, out string failureReason)
+    {
+        normalizedPath = string.Empty;
+        failureReason = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(candidatePath))
+        {
+            failureReason = "empty path";
+            return false;
+        }
+
+        string trimmedPath = candidatePath.Trim().Trim('"');
+        if (trimmedPath.Length == 0)
+        {
+            failureReason = "empty path";
+            return false;
+        }
+
+        if (trimmedPath.Length > MaxOpenPathLength)
+        {
+            failureReason = "path too long";
+            return false;
+        }
+
+        if (trimmedPath.Contains("://", StringComparison.Ordinal))
+        {
+            failureReason = "unsupported URI scheme";
+            return false;
+        }
+
+        foreach (char character in trimmedPath)
+        {
+            if (char.IsControl(character))
+            {
+                failureReason = "contains control characters";
+                return false;
+            }
+        }
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(trimmedPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            failureReason = $"invalid path format ({ex.GetType().Name})";
+            return false;
+        }
+
+        if (!Path.IsPathRooted(fullPath))
+        {
+            failureReason = "path is not rooted";
+            return false;
+        }
+
+        if (fullPath.StartsWith("\\\\", StringComparison.Ordinal))
+        {
+            failureReason = "network path is not allowed";
+            return false;
+        }
+
+        if (!Directory.Exists(fullPath))
+        {
+            failureReason = "directory does not exist";
+            return false;
+        }
+
+        normalizedPath = fullPath;
+        return true;
     }
 }

@@ -81,7 +81,7 @@ public static class ThemeManager
         }
         catch
         {
-            return Colors.CornflowerBlue;
+            return Color.FromRgb(47, 110, 92);
         }
     }
 }

@@ -7,7 +7,7 @@ using WinTab.App.Views.Pages;
 
 namespace WinTab.App.Views;
 
-public partial class MainWindow : System.Windows.Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     public MainWindow(IServiceProvider serviceProvider)
     {

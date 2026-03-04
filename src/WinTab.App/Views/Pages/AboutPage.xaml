@@ -19,20 +19,34 @@
             <StackPanel MaxWidth="800">
                 
                 <!-- App Identity & Description (Centered) -->
-                <StackPanel HorizontalAlignment="Center" Margin="0,16,0,48">
-                    <Image Source="/Assets/wintab.ico"
-                           Width="96" Height="96"
-                           RenderOptions.BitmapScalingMode="HighQuality" 
-                           HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                    
+                <StackPanel HorizontalAlignment="Center" Margin="0,16,0,42">
+                    <Border Width="96" Height="96"
+                            CornerRadius="12"
+                            HorizontalAlignment="Center"
+                            Margin="0,0,0,16"
+                            ClipToBounds="True"
+                            Background="{DynamicResource AppSurfaceSubtleBrush}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.08" Direction="270"/>
+                        </Border.Effect>
+                        <Image Source="pack://siteoforigin:,,,/Assets/logo.png"
+                               Width="80" Height="80"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Border>
+
                     <TextBlock Text="{DynamicResource App_Name}"
-                               FontSize="48" FontWeight="Bold" 
-                               HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                               
+                               FontSize="42" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,14"/>
+
                     <TextBlock Text="{DynamicResource About_Description}"
-                               TextWrapping="Wrap" TextAlignment="Center"
+                               TextWrapping="NoWrap"
+                               TextAlignment="Center"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               FontSize="14" MaxWidth="500" HorizontalAlignment="Center"/>
+                               FontSize="14"
+                               HorizontalAlignment="Center"/>
                 </StackPanel>
 
                 <!-- Log File Location (Unchanged) -->

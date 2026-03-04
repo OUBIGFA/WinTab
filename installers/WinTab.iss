@@ -453,22 +453,65 @@ begin
   RemoveUserDataOnUninstall := ShouldRemoveUserData;
 end;
 
-function IsDotNet9DesktopInstalled: Boolean;
+function StartsWithIgnoreCase(const Source, Prefix: String): Boolean;
+begin
+  Result := CompareText(Copy(Source, 1, Length(Prefix)), Prefix) = 0;
+end;
+
+function DotNetListContainsDesktop9Runtime: Boolean;
 var
   ResultCode: Integer;
 begin
   Result := False;
-  // Check via dotnet --list-runtimes for Microsoft.WindowsDesktop.App 9.x
-  if Exec('dotnet', '--list-runtimes', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+
+  if not Exec(
+    ExpandConstant('{cmd}'),
+    '/C dotnet --list-runtimes | findstr /R /C:"^Microsoft.WindowsDesktop.App 9\." >nul',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
   begin
-    Result := (ResultCode = 0);
+    exit;
+  end;
+
+  Result := (ResultCode = 0);
+end;
+
+function HasDotNet9DesktopRuntimeInRegistry(const RuntimeKeyPath: String): Boolean;
+var
+  Versions: TArrayOfString;
+  Index: Integer;
+begin
+  Result := False;
+  if not RegGetSubkeyNames(HKLM, RuntimeKeyPath, Versions) then
+    exit;
+
+  for Index := 0 to GetArrayLength(Versions) - 1 do
+  begin
+    if StartsWithIgnoreCase(Versions[Index], '9.') then
+    begin
+      Result := True;
+      exit;
+    end;
+  end;
+end;
+
+function IsDotNet9DesktopInstalled: Boolean;
+begin
+  Result := False;
+
+  // Check via dotnet --list-runtimes for Microsoft.WindowsDesktop.App 9.x
+  if DotNetListContainsDesktop9Runtime() then
+  begin
+    Result := True;
+    exit;
   end;
 
   // Alternative: check registry
-  if not Result then
-  begin
-    Result := RegKeyExists(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App');
-  end;
+  Result :=
+    HasDotNet9DesktopRuntimeInRegistry('SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App') or
+    HasDotNet9DesktopRuntimeInRegistry('SOFTWARE\dotnet\Setup\InstalledVersions\x86\sharedfx\Microsoft.WindowsDesktop.App');
 end;
 
 function InitializeSetup: Boolean;

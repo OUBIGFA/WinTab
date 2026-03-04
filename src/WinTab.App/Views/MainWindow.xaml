@@ -1,47 +1,61 @@
-<Window x:Class="WinTab.App.Views.MainWindow"
+<ui:FluentWindow x:Class="WinTab.App.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:pages="clr-namespace:WinTab.App.Views.Pages"
-        Title="WinTab" Width="900" Height="600"
-        WindowStyle="SingleBorderWindow"
-        ResizeMode="CanResize"
+        Title="WinTab" Width="960" Height="640"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource ApplicationBackgroundBrush}"
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="Mica"
+        WindowCornerPreference="Round"
+        Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
         Foreground="{DynamicResource TextFillColorPrimaryBrush}">
 
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar
+            Grid.Row="0"
+            Title="WinTab"
+            Icon="pack://application:,,,/Assets/wintab.ico" />
+
         <ui:NavigationView x:Name="RootNavigation"
+                           Grid.Row="1"
                            PaneDisplayMode="Left"
+                           IsPaneOpen="False"
                            IsBackButtonVisible="Collapsed"
                            IsPaneToggleVisible="True"
-                           OpenPaneLength="200">
+                           OpenPaneLength="216"
+                           Margin="10,6,10,10"
+                           Padding="6">
 
-            <ui:NavigationView.PaneHeader>
-                <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
-                    <Image Source="/Assets/wintab.ico" Width="20" Height="20" RenderOptions.BitmapScalingMode="HighQuality" />
-                    <TextBlock Text="WinTab" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" Margin="12,0,0,0" />
-                </StackPanel>
-            </ui:NavigationView.PaneHeader>
+
 
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="{DynamicResource Nav_General}"
                                        TargetPageType="{x:Type pages:GeneralPage}"
-                                       Icon="{ui:SymbolIcon Settings24}" />
+                                       Icon="{ui:SymbolIcon Settings48}" />
                 <ui:NavigationViewItem Content="{DynamicResource Nav_Behavior}"
                                        TargetPageType="{x:Type pages:BehaviorPage}"
-                                       Icon="{ui:SymbolIcon CursorClick24}" />
+                                       Icon="{ui:SymbolIcon CursorHover48}" />
             </ui:NavigationView.MenuItems>
 
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="{DynamicResource Nav_Uninstall}"
                                        TargetPageType="{x:Type pages:UninstallPage}"
-                                       Icon="{ui:SymbolIcon Delete24}" />
+                                       Icon="{ui:SymbolIcon Delete48}" />
                 <ui:NavigationViewItem Content="{DynamicResource Nav_About}"
                                        TargetPageType="{x:Type pages:AboutPage}"
-                                       Icon="{ui:SymbolIcon Info24}" />
+                                       >
+                    <ui:NavigationViewItem.Icon>
+                        <ui:ImageIcon Source="pack://siteoforigin:,,,/Assets/logo.png" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
             </ui:NavigationView.FooterMenuItems>
 
         </ui:NavigationView>
     </Grid>
-</Window>
+</ui:FluentWindow>

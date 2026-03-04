@@ -22,9 +22,12 @@ public static class ExplorerOpenVerbHandler
             return false;
         }
 
-        string path = args[1].Trim().Trim('"');
-        if (string.IsNullOrWhiteSpace(path))
+        string rawPath = args[1];
+        if (!AppEnvironment.TryNormalizeExistingDirectoryPath(rawPath, out string path, out string reason))
+        {
+            effectiveLogger?.Warn($"Rejected open-folder invocation due to invalid path ({reason}). Raw='{rawPath}'");
             return true;
+        }
 
         // Capture foreground BEFORE granting foreground rights — this is the accurate snapshot
         // of what was foreground at the moment the user initiated the open action.
@@ -48,7 +51,32 @@ public static class ExplorerOpenVerbHandler
             return true;
         }
 
-        effectiveLogger?.Warn($"No existing instance pipe; falling back to Explorer open without changing interception state: {path}");
+        Logger? transientRecoveryLogger = null;
+        try
+        {
+            string exePath = AppEnvironment.ResolveLaunchExecutablePath();
+            Logger? recoveryLogger = effectiveLogger;
+            if (recoveryLogger is null)
+            {
+                string tempLogPath = Path.Combine(Path.GetTempPath(), "WinTab", "wintab-handler-recovery.log");
+                recoveryLogger = new Logger(tempLogPath);
+                transientRecoveryLogger = recoveryLogger;
+            }
+
+            var interceptor = new RegistryOpenVerbInterceptor(exePath, recoveryLogger);
+            interceptor.DisableAndRestore();
+            effectiveLogger?.Info($"No existing WinTab pipe available; restored native Explorer open-verb defaults before fallback: {path}");
+        }
+        catch (Exception ex)
+        {
+            effectiveLogger?.Error("Failed to restore native Explorer open-verb defaults after pipe forwarding failure.", ex);
+        }
+        finally
+        {
+            transientRecoveryLogger?.Dispose();
+        }
+
+        effectiveLogger?.Warn($"No existing instance pipe; falling back to native Explorer open: {path}");
         AppEnvironment.TryOpenFolderFallback(path, effectiveLogger);
 
         return true;

@@ -25,6 +25,10 @@
        Use dynamic COM (Shell.Application) instead of <COMReference>. -->
 
   <ItemGroup>
+    <None Update="Assets\logo.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
     <ProjectReference Include="..\WinTab.Core\WinTab.Core.csproj" />
     <ProjectReference Include="..\WinTab.Diagnostics\WinTab.Diagnostics.csproj" />
     <ProjectReference Include="..\WinTab.Persistence\WinTab.Persistence.csproj" />

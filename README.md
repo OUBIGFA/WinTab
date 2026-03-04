@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/WinTab.App/Assets/wintab.ico" width="80" />
+<img src="src/WinTab.App/Assets/logo.png" width="80" />
 
 # WinTab
 
@@ -134,7 +134,7 @@ WinTab_Setup_<version>.exe /SILENT /REINSTALLMODE=CLEAN /REMOVEUSERDATA=1
   "RunAtStartup": false,
   "Language": "Chinese",
   "Theme": "Light",
-  "EnableExplorerOpenVerbInterception": true,
+  "EnableExplorerOpenVerbInterception": false,
   "OpenChildFolderInNewTabFromActiveTab": false,
   "CloseTabOnDoubleClick": true,
   "SchemaVersion": 1

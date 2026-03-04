@@ -10,15 +10,15 @@
       Title="BehaviorPage">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
-        <StackPanel Margin="0,0,24,24" MaxWidth="800">
+        <StackPanel Margin="0,0,24,24" MaxWidth="840">
 
             <!-- Interception & Interaction (Merges to System Hook) -->
             <TextBlock Text="{DynamicResource Behavior_Group_Interception}"
-                       FontSize="14" FontWeight="Medium"
+                       FontSize="13" FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,8" />
+                       Margin="0,0,0,10" />
                        
-            <ui:CardControl Margin="0,0,0,8">
+            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource Behavior_EnableExplorerOpenVerbInterception}" FontWeight="Medium" />
@@ -30,7 +30,7 @@
                 <ui:ToggleSwitch IsChecked="{Binding EnableExplorerOpenVerbInterception, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <ui:CardControl Margin="0,0,0,8">
+            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows}" FontWeight="Medium" />
@@ -42,7 +42,7 @@
                 <ui:ToggleSwitch IsChecked="{Binding EnableAutoConvertExplorerWindows, Mode=TwoWay}" />
             </ui:CardControl>
             
-            <ui:CardControl Margin="0,0,0,24">
+            <ui:CardControl Margin="0,0,0,24" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick}" FontWeight="Medium" />
@@ -55,11 +55,14 @@
             </ui:CardControl>
 
             <!-- Rules -->
+            <Border BorderThickness="0,0,0,1"
+                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                    Margin="0,6,0,16" />
             <TextBlock Text="{DynamicResource Behavior_Group_Tabs}"
-                       FontSize="14" FontWeight="Medium"
+                       FontSize="13" FontWeight="SemiBold"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,8" />
-            <ui:CardControl Margin="0,0,0,8">
+                       Margin="0,0,0,10" />
+            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath}" FontWeight="Medium" />
@@ -71,7 +74,7 @@
                 <ui:ToggleSwitch IsChecked="{Binding OpenNewTabFromActiveTabPath, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <ui:CardControl Margin="0,0,0,8">
+            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab}" FontWeight="Medium" />

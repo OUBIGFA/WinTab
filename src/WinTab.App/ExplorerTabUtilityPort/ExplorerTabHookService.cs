@@ -187,9 +187,6 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private async Task<bool> TryNavigateCurrentActiveTabLikeExplorer(string location, IntPtr clickTimeForeground)
     {
-        if (_settings.OpenChildFolderInNewTabFromActiveTab)
-            return false;
-
         // clickTimeForeground is captured by the handler process at the exact moment the user clicked,
         // before the shell hands off control. This is the authoritative foreground for determining
         // if the open action originated from within an Explorer window.
@@ -211,6 +208,29 @@ public sealed class ExplorerTabHookService : IDisposable
         IntPtr activeTab = GetActiveTabHandle(explorerWindow);
         if (activeTab == IntPtr.Zero || !NativeMethods.IsWindow(activeTab))
             return false;
+
+        bool forceNavigateCurrentForSameParent = false;
+        if (_settings.OpenNewTabFromActiveTabPath && IsRealFileSystemLocation(location))
+        {
+            string? currentLocation = await UiAsync(() => TryGetLocationByTabHandleUi(activeTab));
+            if (IsRealFileSystemLocation(currentLocation))
+            {
+                string? currentParent = TryGetNormalizedParentPath(currentLocation!);
+                string? targetParent = TryGetNormalizedParentPath(location);
+                if (currentParent is not null && targetParent is not null)
+                {
+                    forceNavigateCurrentForSameParent = string.Equals(currentParent, targetParent, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+        }
+
+        if (_settings.OpenChildFolderInNewTabFromActiveTab && !forceNavigateCurrentForSameParent)
+            return false;
+
+        if (forceNavigateCurrentForSameParent)
+        {
+            _logger.Info($"[Intercept] Same-parent browse detected with inherit-current-path enabled; keep native current-tab navigation: {location}");
+        }
 
         bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: 600, ct: _cts.Token);
         if (!navigated)
@@ -2065,7 +2085,14 @@ public sealed class ExplorerTabHookService : IDisposable
                     catch (Exception ex) when (IsComOrRpcException(ex))
                     {
                         // Stale COM object — discard and recreate below.
-                        try { Marshal.FinalReleaseComObject(_shellWindows); } catch { }
+                        try
+                        {
+                            Marshal.FinalReleaseComObject(_shellWindows);
+                        }
+                        catch (Exception releaseEx)
+                        {
+                            Debug.WriteLine($"[ExplorerTabHookService] Failed to release stale ShellWindows COM object: {releaseEx.Message}");
+                        }
                         _shellWindows = null;
                     }
                 }
@@ -2073,7 +2100,14 @@ public sealed class ExplorerTabHookService : IDisposable
                 // If called on a different thread, recreate to match COM apartment.
                 if (_shellWindows is not null)
                 {
-                    try { Marshal.FinalReleaseComObject(_shellWindows); } catch { }
+                    try
+                    {
+                        Marshal.FinalReleaseComObject(_shellWindows);
+                    }
+                    catch (Exception releaseEx)
+                    {
+                        Debug.WriteLine($"[ExplorerTabHookService] Failed to release ShellWindows COM object on thread switch: {releaseEx.Message}");
+                    }
                     _shellWindows = null;
                 }
 
@@ -2192,6 +2226,23 @@ public sealed class ExplorerTabHookService : IDisposable
         catch
         {
             return false;
+        }
+    }
+
+    private static string? TryGetNormalizedParentPath(string path)
+    {
+        try
+        {
+            string fullPath = Path.GetFullPath(path);
+            string? parent = Path.GetDirectoryName(fullPath);
+            if (string.IsNullOrWhiteSpace(parent))
+                return null;
+
+            return NormalizePathForCompare(parent);
+        }
+        catch
+        {
+            return null;
         }
     }
 

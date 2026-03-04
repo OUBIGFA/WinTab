@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Reflection;
 using FluentAssertions;
 using WinTab.App.Services;
@@ -37,6 +38,47 @@ public sealed class ExplorerOpenRequestServerTests
 
         handled.Should().BeFalse();
         path.Should().BeNull();
+    }
+
+    [Fact]
+    public void TryParseOpenRequest_ShouldRejectUriPath()
+    {
+        bool handled = InvokeTryParseOpenRequest("OPEN file:///C:/Windows", out string? path);
+
+        handled.Should().BeFalse();
+        path.Should().BeNull();
+    }
+
+    [Fact]
+    public void TryParseOpenExRequest_ShouldRejectControlCharactersInPath()
+    {
+        string invalidPath = "C:\\Windows" + '\u0001';
+        bool handled = InvokeTryParseOpenExRequest($"OPEN_EX 12345 {invalidPath}", out string? path, out IntPtr foreground, out string? invalidReason);
+
+        handled.Should().BeFalse();
+        path.Should().BeNull();
+        foreground.Should().Be(IntPtr.Zero);
+        invalidReason.Should().Be("contains control characters");
+    }
+
+    [Fact]
+    public void TryParseOpenRequest_ShouldAcceptAndNormalizeExistingDirectory()
+    {
+        string tempDirectory = Path.Combine(Path.GetTempPath(), "WinTabPipeParseTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDirectory);
+
+        try
+        {
+            bool handled = InvokeTryParseOpenRequest($"OPEN {tempDirectory}", out string? path);
+
+            handled.Should().BeTrue();
+            path.Should().Be(Path.GetFullPath(tempDirectory));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDirectory))
+                Directory.Delete(tempDirectory, recursive: true);
+        }
     }
 
 

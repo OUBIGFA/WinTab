@@ -118,10 +118,10 @@ public sealed class ExplorerOpenRequestServer : IDisposable
         if (string.IsNullOrWhiteSpace(candidatePath))
             return false;
 
-        if (candidatePath.Length > 2048)
+        if (!AppEnvironment.TryNormalizeExistingDirectoryPath(candidatePath, out string normalizedPath, out _))
             return false;
 
-        path = candidatePath;
+        path = normalizedPath;
         return true;
     }
 
@@ -168,14 +168,14 @@ public sealed class ExplorerOpenRequestServer : IDisposable
             return false;
         }
 
-        if (candidatePath.Length > 2048)
+        if (!AppEnvironment.TryNormalizeExistingDirectoryPath(candidatePath, out string normalizedPath, out string pathReason))
         {
-            invalidReason = "path too long";
+            invalidReason = pathReason;
             return false;
         }
 
         foreground = new IntPtr(hwndLong);
-        path = candidatePath;
+        path = normalizedPath;
         return true;
     }
 
