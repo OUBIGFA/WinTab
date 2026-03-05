@@ -1,9 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using WinTab.App.ExplorerTabUtilityPort;
-using WinTab.App.Services;
 using WinTab.Core.Models;
-using System.IO;
-using WinTab.Diagnostics;
 using WinTab.Persistence;
 
 namespace WinTab.App.ViewModels;
@@ -12,10 +9,7 @@ public partial class BehaviorViewModel : ObservableObject
 {
     private readonly AppSettings _settings;
     private readonly SettingsStore _settingsStore;
-    private readonly RegistryOpenVerbInterceptor _openVerbInterceptor;
     private readonly ExplorerTabMouseHookService _tabMouseHookService;
-    private readonly Logger _logger;
-    private bool _isUpdatingExplorerOpenVerbToggle;
     private bool _isUpdatingCloseTabOnDoubleClickToggle;
 
     [ObservableProperty]
@@ -25,32 +19,24 @@ public partial class BehaviorViewModel : ObservableObject
     private bool _openChildFolderInNewTabFromActiveTab;
 
     [ObservableProperty]
-    private bool _enableExplorerOpenVerbInterception;
-
-    [ObservableProperty]
     private bool _closeTabOnDoubleClick;
 
     [ObservableProperty]
     private bool _enableAutoConvertExplorerWindows;
 
-    public bool IsOpenChildFolderInNewTabOptionEnabled => EnableExplorerOpenVerbInterception;
+    public bool IsOpenChildFolderInNewTabOptionEnabled => EnableAutoConvertExplorerWindows;
 
     public BehaviorViewModel(
         AppSettings settings,
         SettingsStore settingsStore,
-        RegistryOpenVerbInterceptor openVerbInterceptor,
-        ExplorerTabMouseHookService tabMouseHookService,
-        Logger logger)
+        ExplorerTabMouseHookService tabMouseHookService)
     {
         _settings = settings;
         _settingsStore = settingsStore;
-        _openVerbInterceptor = openVerbInterceptor;
         _tabMouseHookService = tabMouseHookService;
-        _logger = logger;
 
         _openNewTabFromActiveTabPath = settings.OpenNewTabFromActiveTabPath;
         _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
-        _enableExplorerOpenVerbInterception = settings.EnableExplorerOpenVerbInterception;
         _closeTabOnDoubleClick = settings.CloseTabOnDoubleClick;
         _enableAutoConvertExplorerWindows = settings.EnableAutoConvertExplorerWindows;
     }
@@ -67,30 +53,11 @@ public partial class BehaviorViewModel : ObservableObject
         SaveSettings();
     }
 
-    partial void OnEnableExplorerOpenVerbInterceptionChanged(bool value)
+    partial void OnEnableAutoConvertExplorerWindowsChanged(bool value)
     {
-        if (_isUpdatingExplorerOpenVerbToggle)
-            return;
-
-        try
-        {
-            if (value)
-                _openVerbInterceptor.EnableOrRepair();
-            else
-                _openVerbInterceptor.DisableAndRestore();
-
-            _settings.EnableExplorerOpenVerbInterception = value;
-            SaveSettings();
-
-            OnPropertyChanged(nameof(IsOpenChildFolderInNewTabOptionEnabled));
-
-            _logger.Info($"Explorer open-verb interception toggled to {(value ? "enabled" : "disabled")}.");
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
-        {
-            _logger.Error("Failed to apply Explorer open-verb interception toggle.", ex);
-            SetExplorerOpenVerbToggle(_settings.EnableExplorerOpenVerbInterception);
-        }
+        _settings.EnableAutoConvertExplorerWindows = value;
+        SaveSettings();
+        OnPropertyChanged(nameof(IsOpenChildFolderInNewTabOptionEnabled));
     }
 
 
@@ -108,29 +75,6 @@ public partial class BehaviorViewModel : ObservableObject
 
         _settings.CloseTabOnDoubleClick = applied;
         SaveSettings();
-    }
-
-    partial void OnEnableAutoConvertExplorerWindowsChanged(bool value)
-    {
-        _settings.EnableAutoConvertExplorerWindows = value;
-        SaveSettings();
-    }
-
-    private void SetExplorerOpenVerbToggle(bool value)
-    {
-        _isUpdatingExplorerOpenVerbToggle = true;
-        try
-        {
-            EnableExplorerOpenVerbInterception = value;
-            _settings.EnableExplorerOpenVerbInterception = value;
-            SaveSettings();
-
-            OnPropertyChanged(nameof(IsOpenChildFolderInNewTabOptionEnabled));
-        }
-        finally
-        {
-            _isUpdatingExplorerOpenVerbToggle = false;
-        }
     }
 
     private void SetCloseTabOnDoubleClickToggle(bool value)

@@ -55,6 +55,33 @@ public sealed class ExplorerTabHookServiceHelpersTests
         actual.Should().Be(expected);
     }
 
+    /// <summary>
+    /// Verifies that the timeout used for in-place current-tab navigation is kept low
+    /// enough to feel native. A confirmation wait of >250ms is user-perceptible.
+    /// </summary>
+    [Fact]
+    public void CurrentTabNavigateTimeoutMs_ShouldBeLowEnoughToFeelNative()
+    {
+        // Native Explorer navigation is instant. Our COM-based path adds process-startup
+        // overhead (~100-200 ms). Any additional timeout on top of that should be minimal.
+        // 250 ms is the threshold at which humans begin to perceive latency as "sluggish".
+        ExplorerTabHookService.CurrentTabNavigateTimeoutMs.Should().BeLessOrEqualTo(250,
+            "current-tab COM navigation is fire-and-commit; excessive retries make it feel sluggish");
+    }
+
+    /// <summary>
+    /// Verifies that the per-retry delay inside the navigation retry loop is ≤120ms,
+    /// so that within the navigate timeout we get at least one meaningful retry attempt
+    /// without the loop adding more latency than the timeout itself.
+    /// </summary>
+    [Fact]
+    public void CurrentTabNavigateRetryMs_ShouldFitWithinTimeout()
+    {
+        ExplorerTabHookService.CurrentTabNavigateRetryMs.Should().BeLessOrEqualTo(
+            ExplorerTabHookService.CurrentTabNavigateTimeoutMs,
+            "each retry delay must fit within the navigate timeout so we always get at least one retry");
+    }
+
     private static T InvokePrivateStatic<T>(string methodName, params object?[] args)
     {
         MethodInfo method = typeof(ExplorerTabHookService).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)

@@ -232,12 +232,13 @@ public sealed class ExplorerTabHookService : IDisposable
             _logger.Info($"[Intercept] Same-parent browse detected with inherit-current-path enabled; keep native current-tab navigation: {location}");
         }
 
-        bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: 600, ct: _cts.Token);
+        // Use a tight timeout for current-tab in-place navigation: COM navigate is
+        // fire-and-commit. When TryNavigateTabByHandleUi returns true the instruction
+        // is accepted; we only retry briefly in case the COM object is momentarily
+        // unavailable. No confirmation wait — that would add 60-600 ms of polling
+        // with no correctness benefit.
+        bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: CurrentTabNavigateTimeoutMs, ct: _cts.Token);
         if (!navigated)
-            return false;
-
-        bool confirmed = await WaitUntilTabLocationMatches(activeTab, location, timeoutMs: 600, pollMs: 60);
-        if (!confirmed)
             return false;
 
         TryBringToForeground(explorerWindow);
@@ -251,6 +252,13 @@ public sealed class ExplorerTabHookService : IDisposable
     private const string ExplorerExe = "explorer.exe";
     private const string ExplorerTabClass = "ShellTabWindowClass";
     private const string ExplorerWindowClass = "CabinetWClass";
+
+    // Timeout constants for current-tab in-place navigation.
+    // COM navigate is fire-and-commit: when TryNavigateTabByHandleUi returns true the
+    // navigation instruction is accepted by Explorer's COM interface. We only retry
+    // briefly in case the COM object is momentarily unavailable.
+    internal const int CurrentTabNavigateTimeoutMs = 200;
+    internal const int CurrentTabNavigateRetryMs = 100;
 
     private static readonly object ShellWindowsInitLock = new();
     private static object? _shellWindows;
@@ -1831,7 +1839,7 @@ public sealed class ExplorerTabHookService : IDisposable
             bool ok = await UiAsync(() => TryNavigateTabByHandleUi(tabHandle, location));
             if (ok)
                 return true;
-            await Task.Delay(120, ct);
+            await Task.Delay(CurrentTabNavigateRetryMs, ct);
         }
         return false;
     }

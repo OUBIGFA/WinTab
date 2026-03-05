@@ -94,6 +94,15 @@ public static class AppEnvironment
             }
         }
 
+        // Keep shell namespace support (e.g. "::{GUID}") and permissive Explorer-open semantics.
+        // Only normalize rooted file-system paths; for shell targets keep original token.
+        if (trimmedPath.StartsWith("::", StringComparison.Ordinal) ||
+            trimmedPath.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedPath = trimmedPath;
+            return true;
+        }
+
         string fullPath;
         try
         {
@@ -108,18 +117,6 @@ public static class AppEnvironment
         if (!Path.IsPathRooted(fullPath))
         {
             failureReason = "path is not rooted";
-            return false;
-        }
-
-        if (fullPath.StartsWith("\\\\", StringComparison.Ordinal))
-        {
-            failureReason = "network path is not allowed";
-            return false;
-        }
-
-        if (!Directory.Exists(fullPath))
-        {
-            failureReason = "directory does not exist";
             return false;
         }
 

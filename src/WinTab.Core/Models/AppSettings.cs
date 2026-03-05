@@ -17,7 +17,7 @@ public sealed class AppSettings
     public ThemeMode Theme { get; set; } = ThemeMode.Light;
 
     // Behavior
-    public bool EnableExplorerOpenVerbInterception { get; set; } = false;
+    public bool EnableExplorerOpenVerbInterception { get; set; } = true;
     public bool PersistExplorerOpenVerbInterceptionAcrossExit { get; set; } = false;
     public bool OpenNewTabFromActiveTabPath { get; set; } = true;
     public bool OpenChildFolderInNewTabFromActiveTab { get; set; } = false;

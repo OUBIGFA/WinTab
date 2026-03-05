@@ -96,7 +96,15 @@ public partial class App : Application
         }
 
         // -- 5.1 Pre-flight ------------------------------------------------
-        // No-op placeholder: keep settings load spot for future migrations.
+        // Restore direct open-verb interception behavior for existing users.
+        // Previous builds may have persisted this as false and would force
+        // open-new-window-then-convert (visible flicker).
+        if (!settings.EnableExplorerOpenVerbInterception)
+        {
+            settings.EnableExplorerOpenVerbInterception = true;
+            settingsStore.Save(settings);
+            _logger?.Info("Migrated setting: EnableExplorerOpenVerbInterception=true to restore direct tab reuse path.");
+        }
 
         // -- 6. Apply language --------------------------------------------
         LocalizationManager.ApplyLanguage(settings.Language);

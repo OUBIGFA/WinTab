@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using WinTab.Diagnostics;
 using WinTab.Platform.Win32;
 
@@ -7,6 +8,14 @@ namespace WinTab.App.Services;
 
 public static class ExplorerOpenVerbHandler
 {
+    internal static Func<string, nint, bool> SendOpenFolderRequest =
+        static (path, foreground) => ExplorerOpenRequestClient.TrySendOpenFolderEx(path, foreground);
+
+    internal static Action<int> DelayBetweenRetries = Thread.Sleep;
+
+    internal static Action<string, Logger?> OpenFolderFallback =
+        static (path, logger) => AppEnvironment.TryOpenFolderFallback(path, logger);
+
     public static bool TryHandleOpenFolderInvocation(string[] args, Logger? logger)
     {
         using Logger? tempLogger = logger is null ? UninstallCleanupHandler.TryCreateCompanionLogger() : null;
@@ -22,10 +31,9 @@ public static class ExplorerOpenVerbHandler
             return false;
         }
 
-        string rawPath = args[1];
-        if (!AppEnvironment.TryNormalizeExistingDirectoryPath(rawPath, out string path, out string reason))
+        if (!AppEnvironment.TryNormalizeExistingDirectoryPath(args[1], out string path, out string reason))
         {
-            effectiveLogger?.Warn($"Rejected open-folder invocation due to invalid path ({reason}). Raw='{rawPath}'");
+            effectiveLogger?.Warn($"Rejected open-folder invocation due to invalid path ({reason}). Raw='{args[1]}'");
             return true;
         }
 
@@ -33,6 +41,11 @@ public static class ExplorerOpenVerbHandler
         // of what was foreground at the moment the user initiated the open action.
         nint clickTimeForeground = (nint)NativeMethods.GetForegroundWindow();
 
+        // Always forward to the main instance regardless of foreground state.
+        // When OpenChildFolderInNewTabFromActiveTab=false, the main instance navigates
+        // the current tab in-place (native behavior). When it is true, the main instance
+        // opens a new tab. Calling OpenFolderFallback (explorer.exe "path") instead would
+        // always create a new window, which is never the correct native behavior here.
         try
         {
             // The handler process is launched by a user-initiated shell action,
@@ -44,40 +57,22 @@ public static class ExplorerOpenVerbHandler
             // best effort
         }
 
-        bool sent = ExplorerOpenRequestClient.TrySendOpenFolderEx(path, clickTimeForeground);
+        bool sent = false;
+        for (int attempt = 0; attempt < 3 && !sent; attempt++)
+        {
+            sent = SendOpenFolderRequest(path, clickTimeForeground);
+            if (!sent && attempt < 2)
+                DelayBetweenRetries(80);
+        }
+
         if (sent)
         {
             effectiveLogger?.Info($"Forwarded open-folder request to existing instance: {path}");
             return true;
         }
 
-        Logger? transientRecoveryLogger = null;
-        try
-        {
-            string exePath = AppEnvironment.ResolveLaunchExecutablePath();
-            Logger? recoveryLogger = effectiveLogger;
-            if (recoveryLogger is null)
-            {
-                string tempLogPath = Path.Combine(Path.GetTempPath(), "WinTab", "wintab-handler-recovery.log");
-                recoveryLogger = new Logger(tempLogPath);
-                transientRecoveryLogger = recoveryLogger;
-            }
-
-            var interceptor = new RegistryOpenVerbInterceptor(exePath, recoveryLogger);
-            interceptor.DisableAndRestore();
-            effectiveLogger?.Info($"No existing WinTab pipe available; restored native Explorer open-verb defaults before fallback: {path}");
-        }
-        catch (Exception ex)
-        {
-            effectiveLogger?.Error("Failed to restore native Explorer open-verb defaults after pipe forwarding failure.", ex);
-        }
-        finally
-        {
-            transientRecoveryLogger?.Dispose();
-        }
-
-        effectiveLogger?.Warn($"No existing instance pipe; falling back to native Explorer open: {path}");
-        AppEnvironment.TryOpenFolderFallback(path, effectiveLogger);
+        effectiveLogger?.Warn($"No existing instance pipe; falling back to Explorer open without changing interception state: {path}");
+        OpenFolderFallback(path, effectiveLogger);
 
         return true;
     }

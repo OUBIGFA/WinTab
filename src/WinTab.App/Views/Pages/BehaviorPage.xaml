@@ -21,18 +21,6 @@
             <ui:CardControl Margin="0,0,0,10" Padding="18,14">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource Behavior_EnableExplorerOpenVerbInterception}" FontWeight="Medium" />
-                        <TextBlock Text="{DynamicResource Behavior_EnableExplorerOpenVerbInterception_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding EnableExplorerOpenVerbInterception, Mode=TwoWay}" />
-            </ui:CardControl>
-
-            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
-                <ui:CardControl.Header>
-                    <StackPanel>
                         <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows}" FontWeight="Medium" />
                         <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows_Desc}"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
