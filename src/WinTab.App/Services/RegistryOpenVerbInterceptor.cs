@@ -8,7 +8,7 @@ using WinTab.Persistence;
 
 namespace WinTab.App.Services;
 
-public sealed class RegistryOpenVerbInterceptor
+public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 {
     private const string OpenVerb = "open";
     private const string NoneVerb = "none";

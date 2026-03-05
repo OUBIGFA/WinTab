@@ -6,6 +6,7 @@ internal static class ExplorerOpenVerbInterceptionPolicy
 {
     public static bool NormalizeForNativeCurrentDirectoryBehavior(AppSettings settings)
     {
+        _ = settings;
         return false;
     }
 

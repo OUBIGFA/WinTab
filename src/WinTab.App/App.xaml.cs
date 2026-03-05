@@ -96,8 +96,11 @@ public partial class App : Application
         }
 
         // -- 5.1 Pre-flight ------------------------------------------------
-        // No-op placeholder: keep settings load spot for future migrations.
-        _ = ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings);
+        if (ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings))
+        {
+            settingsStore.Save(settings);
+            _logger?.Info("Disabled Explorer open-verb interception because OpenChildFolderInNewTabFromActiveTab=false; native folder navigation is preserved.");
+        }
 
         // -- 6. Apply language --------------------------------------------
         LocalizationManager.ApplyLanguage(settings.Language);
@@ -157,44 +160,9 @@ public partial class App : Application
                 _logger?.Error("Failed to handle open-folder request.", ex);
             }
         });
-
-        // Registry interception + companion (Win11 only).
-        try
-        {
-            var interceptor = _serviceProvider.GetRequiredService<RegistryOpenVerbInterceptor>();
-
-            bool isWin11 = OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000);
-            string openVerbHandlerPath = AppEnvironment.ResolveLaunchExecutablePath();
-            bool hasStableOpenVerbHandlerPath = ExplorerOpenVerbHandler.IsStableOpenVerbHandlerPath(openVerbHandlerPath);
-            bool enableExplorerOpenVerbInterception =
-                ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath);
-
-            if (!hasStableOpenVerbHandlerPath)
-            {
-                _logger?.Warn($"Explorer open-verb interception disabled for transient executable path: {openVerbHandlerPath}");
-            }
-
-            if (!isWin11 && settings.EnableExplorerOpenVerbInterception)
-            {
-                _logger?.Warn("Explorer open-verb interception is running in compatibility mode on non-Windows 11 systems.");
-            }
-
-            // Always self-check first (repairs old crash residue).
-            interceptor.StartupSelfCheck(settingEnabled: enableExplorerOpenVerbInterception);
-
-            if (enableExplorerOpenVerbInterception)
-            {
-                interceptor.EnableOrRepair();
-            }
-            else
-            {
-                interceptor.DisableAndRestore();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error("Failed to configure Explorer open-verb interception.", ex);
-        }
+        // Registry interception startup checks run in background to avoid blocking first paint.
+        var openVerbStartup = _serviceProvider.GetRequiredService<ExplorerOpenVerbStartupService>();
+        openVerbStartup.Start(settings);
 
         // -- 11. Initialize tray icon -------------------------------------
         SetTrayIconVisibility(settings.ShowTrayIcon);
@@ -214,6 +182,9 @@ public partial class App : Application
 
             try
             {
+                var openVerbStartup = _serviceProvider?.GetService<ExplorerOpenVerbStartupService>();
+                openVerbStartup?.WaitForStartupConfigurationToFinish(TimeSpan.FromSeconds(3));
+
                 AppSettings? settings = _serviceProvider?.GetService<AppSettings>();
                 if (settings is not null &&
                     settings.EnableExplorerOpenVerbInterception)
@@ -265,10 +236,12 @@ public partial class App : Application
 
         services.AddSingleton<AppLifecycleService>();
 
-        services.AddSingleton(sp =>
+        services.AddSingleton<RegistryOpenVerbInterceptor>(sp =>
             new RegistryOpenVerbInterceptor(
                 exePath,
                 sp.GetRequiredService<Logger>()));
+        services.AddSingleton<IExplorerOpenVerbInterceptor>(sp => sp.GetRequiredService<RegistryOpenVerbInterceptor>());
+        services.AddSingleton<ExplorerOpenVerbStartupService>();
 
         services.AddSingleton<ExplorerOpenRequestServer>();
 
@@ -346,3 +319,4 @@ public partial class App : Application
 
 
 }
+

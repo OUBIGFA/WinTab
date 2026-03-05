@@ -52,6 +52,20 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
     }
 
     [Fact]
+    public void ShouldEnableOpenVerbInterception_WhenAllConditionsSatisfied_ShouldBeTrue()
+    {
+        var settings = new AppSettings
+        {
+            OpenChildFolderInNewTabFromActiveTab = true,
+            EnableExplorerOpenVerbInterception = true,
+        };
+
+        bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: true);
+
+        enabled.Should().BeTrue();
+    }
+
+    [Fact]
     public void ShouldEnableOpenVerbInterception_WhenHandlerPathUnstable_ShouldBeFalse()
     {
         var settings = new AppSettings
