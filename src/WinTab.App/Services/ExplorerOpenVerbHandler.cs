@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using WinTab.Diagnostics;
+using WinTab.Persistence;
 using WinTab.Platform.Win32;
 
 namespace WinTab.App.Services;
@@ -15,6 +16,9 @@ public static class ExplorerOpenVerbHandler
 
     internal static Action<string, Logger?> OpenFolderFallback =
         static (path, logger) => AppEnvironment.TryOpenFolderFallback(path, logger);
+
+    internal static Func<bool> ShouldBypassInterceptionAndUseNativeOpen =
+        static () => !LoadOpenChildFolderInNewTabSetting();
 
     public static bool TryHandleOpenFolderInvocation(string[] args, Logger? logger)
     {
@@ -37,15 +41,19 @@ public static class ExplorerOpenVerbHandler
             return true;
         }
 
+        if (ShouldBypassInterceptionAndUseNativeOpen())
+        {
+            effectiveLogger?.Info($"Open-child-folder-in-new-tab is disabled; using native Explorer open directly: {path}");
+            OpenFolderFallback(path, effectiveLogger);
+            return true;
+        }
+
         // Capture foreground BEFORE granting foreground rights — this is the accurate snapshot
         // of what was foreground at the moment the user initiated the open action.
         nint clickTimeForeground = (nint)NativeMethods.GetForegroundWindow();
 
-        // Always forward to the main instance regardless of foreground state.
-        // When OpenChildFolderInNewTabFromActiveTab=false, the main instance navigates
-        // the current tab in-place (native behavior). When it is true, the main instance
-        // opens a new tab. Calling OpenFolderFallback (explorer.exe "path") instead would
-        // always create a new window, which is never the correct native behavior here.
+        // Interception path (setting ON): forward to main instance and let it open in tab flow.
+        // Native path (setting OFF) is handled above and returns early.
         try
         {
             // The handler process is launched by a user-initiated shell action,
@@ -95,6 +103,19 @@ public static class ExplorerOpenVerbHandler
                 return false;
 
             return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool LoadOpenChildFolderInNewTabSetting()
+    {
+        try
+        {
+            using var store = new SettingsStore(AppPaths.SettingsPath);
+            return store.Load().OpenChildFolderInNewTabFromActiveTab;
         }
         catch
         {

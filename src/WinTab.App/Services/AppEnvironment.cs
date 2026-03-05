@@ -103,6 +103,16 @@ public static class AppEnvironment
             return true;
         }
 
+        // Drive designator-only input (e.g. "C:") from shell invocations can arrive as "C:".
+        // Do not resolve it against process current directory, always normalize to drive root.
+        if (trimmedPath.Length == 2 &&
+            char.IsLetter(trimmedPath[0]) &&
+            trimmedPath[1] == ':')
+        {
+            normalizedPath = $"{trimmedPath}\\";
+            return true;
+        }
+
         string fullPath;
         try
         {

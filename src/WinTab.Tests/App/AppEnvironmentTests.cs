@@ -1,3 +1,4 @@
+using System.IO;
 using FluentAssertions;
 using WinTab.App.Services;
 using Xunit;
@@ -6,6 +7,30 @@ namespace WinTab.Tests.App;
 
 public sealed class AppEnvironmentTests
 {
+    [Fact]
+    public void TryNormalizeExistingDirectoryPath_WhenDriveDesignatorOnly_ShouldNormalizeToDriveRoot()
+    {
+        string originalCurrentDirectory = Directory.GetCurrentDirectory();
+        string systemDirectory = Environment.SystemDirectory;
+        string expectedDriveRoot = Path.GetPathRoot(systemDirectory)!;
+        string driveDesignator = expectedDriveRoot[..2];
+
+        try
+        {
+            Directory.SetCurrentDirectory(systemDirectory);
+
+            bool ok = AppEnvironment.TryNormalizeExistingDirectoryPath(driveDesignator, out string normalized, out string reason);
+
+            ok.Should().BeTrue();
+            normalized.Should().Be(expectedDriveRoot);
+            reason.Should().BeEmpty();
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalCurrentDirectory);
+        }
+    }
+
     [Fact]
     public void TryNormalizeExistingDirectoryPath_WhenShellNamespace_ShouldPassThrough()
     {

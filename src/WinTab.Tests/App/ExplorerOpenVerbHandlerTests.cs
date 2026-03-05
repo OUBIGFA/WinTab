@@ -46,6 +46,7 @@ public sealed class ExplorerOpenVerbHandlerTests
         var originalSend = ExplorerOpenVerbHandler.SendOpenFolderRequest;
         var originalDelay = ExplorerOpenVerbHandler.DelayBetweenRetries;
         var originalFallback = ExplorerOpenVerbHandler.OpenFolderFallback;
+        var originalBypass = ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen;
 
         try
         {
@@ -56,6 +57,7 @@ public sealed class ExplorerOpenVerbHandlerTests
             };
             ExplorerOpenVerbHandler.DelayBetweenRetries = static _ => { };
             ExplorerOpenVerbHandler.OpenFolderFallback = (_, _) => fallbackCalls++;
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = static () => false;
 
             bool handled = ExplorerOpenVerbHandler.TryHandleOpenFolderInvocation(
                 [RegistryOpenVerbInterceptor.HandlerArgument, tempDir],
@@ -70,6 +72,7 @@ public sealed class ExplorerOpenVerbHandlerTests
             ExplorerOpenVerbHandler.SendOpenFolderRequest = originalSend;
             ExplorerOpenVerbHandler.DelayBetweenRetries = originalDelay;
             ExplorerOpenVerbHandler.OpenFolderFallback = originalFallback;
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = originalBypass;
             Directory.Delete(tempDir, recursive: true);
         }
     }
@@ -84,6 +87,7 @@ public sealed class ExplorerOpenVerbHandlerTests
         var originalSend = ExplorerOpenVerbHandler.SendOpenFolderRequest;
         var originalDelay = ExplorerOpenVerbHandler.DelayBetweenRetries;
         var originalFallback = ExplorerOpenVerbHandler.OpenFolderFallback;
+        var originalBypass = ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen;
 
         try
         {
@@ -94,6 +98,7 @@ public sealed class ExplorerOpenVerbHandlerTests
             };
             ExplorerOpenVerbHandler.DelayBetweenRetries = static _ => { };
             ExplorerOpenVerbHandler.OpenFolderFallback = (_, _) => fallbackCalls++;
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = static () => false;
 
             bool handled = ExplorerOpenVerbHandler.TryHandleOpenFolderInvocation(
                 [RegistryOpenVerbInterceptor.HandlerArgument, tempDir],
@@ -108,6 +113,7 @@ public sealed class ExplorerOpenVerbHandlerTests
             ExplorerOpenVerbHandler.SendOpenFolderRequest = originalSend;
             ExplorerOpenVerbHandler.DelayBetweenRetries = originalDelay;
             ExplorerOpenVerbHandler.OpenFolderFallback = originalFallback;
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = originalBypass;
             Directory.Delete(tempDir, recursive: true);
         }
     }
@@ -121,6 +127,7 @@ public sealed class ExplorerOpenVerbHandlerTests
         var originalSend = ExplorerOpenVerbHandler.SendOpenFolderRequest;
         var originalDelay = ExplorerOpenVerbHandler.DelayBetweenRetries;
         var originalFallback = ExplorerOpenVerbHandler.OpenFolderFallback;
+        var originalBypass = ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen;
 
         try
         {
@@ -132,6 +139,7 @@ public sealed class ExplorerOpenVerbHandlerTests
             };
             ExplorerOpenVerbHandler.DelayBetweenRetries = static _ => { };
             ExplorerOpenVerbHandler.OpenFolderFallback = (_, _) => throw new InvalidOperationException("Fallback should not run.");
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = static () => false;
 
             bool handled = ExplorerOpenVerbHandler.TryHandleOpenFolderInvocation(
                 [RegistryOpenVerbInterceptor.HandlerArgument, shellNamespace],
@@ -145,16 +153,13 @@ public sealed class ExplorerOpenVerbHandlerTests
             ExplorerOpenVerbHandler.SendOpenFolderRequest = originalSend;
             ExplorerOpenVerbHandler.DelayBetweenRetries = originalDelay;
             ExplorerOpenVerbHandler.OpenFolderFallback = originalFallback;
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = originalBypass;
         }
     }
 
     [Fact]
-    public void TryHandleOpenFolderInvocation_WhenOpenChildFolderInNewTabDisabledAndExplorerForeground_ShouldForwardToMainInstanceNotLaunchNewWindow()
+    public void TryHandleOpenFolderInvocation_WhenOpenChildFolderInNewTabDisabled_ShouldUseNativeOpenDirectlyWithoutPipeForwarding()
     {
-        // Regression test: when OpenChildFolderInNewTabFromActiveTab=false and Explorer is foreground,
-        // the handler must forward to the main instance so it navigates the current tab in-place.
-        // Previously the handler called OpenFolderFallback (explorer.exe "path") which incorrectly
-        // opened a new window instead of navigating the current tab.
         string tempDir = CreateTempDirectory();
         int sendAttempts = 0;
         int fallbackCalls = 0;
@@ -162,48 +167,50 @@ public sealed class ExplorerOpenVerbHandlerTests
         var originalSend = ExplorerOpenVerbHandler.SendOpenFolderRequest;
         var originalDelay = ExplorerOpenVerbHandler.DelayBetweenRetries;
         var originalFallback = ExplorerOpenVerbHandler.OpenFolderFallback;
+        var originalBypass = ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen;
 
         try
         {
             ExplorerOpenVerbHandler.SendOpenFolderRequest = (_, _) => { sendAttempts++; return true; };
             ExplorerOpenVerbHandler.DelayBetweenRetries = static _ => { };
             ExplorerOpenVerbHandler.OpenFolderFallback = (_, _) => fallbackCalls++;
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = static () => true;
 
             bool handled = ExplorerOpenVerbHandler.TryHandleOpenFolderInvocation(
                 [RegistryOpenVerbInterceptor.HandlerArgument, tempDir],
                 logger: null);
 
             handled.Should().BeTrue();
-            sendAttempts.Should().Be(1, "must forward to main instance so it navigates the current tab without opening a new window");
-            fallbackCalls.Should().Be(0, "must not call OpenFolderFallback which would launch a new explorer.exe window");
+            sendAttempts.Should().Be(0, "setting disabled must bypass interception forwarding completely");
+            fallbackCalls.Should().Be(1, "setting disabled must use native Explorer open directly");
         }
         finally
         {
             ExplorerOpenVerbHandler.SendOpenFolderRequest = originalSend;
             ExplorerOpenVerbHandler.DelayBetweenRetries = originalDelay;
             ExplorerOpenVerbHandler.OpenFolderFallback = originalFallback;
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = originalBypass;
             Directory.Delete(tempDir, recursive: true);
         }
     }
 
     [Fact]
-    public void TryHandleOpenFolderInvocation_AlwaysForwardsToMainInstance_RegardlessOfForegroundState()
+    public void TryHandleOpenFolderInvocation_WhenOpenChildFolderInNewTabEnabled_ShouldForwardToMainInstance()
     {
-        // The handler is unconditional: it always forwards to the main instance.
-        // Navigation intent (new tab vs current tab) is decided by the main instance
-        // based on its settings.
         string tempDir = CreateTempDirectory();
         int sendAttempts = 0;
 
         var originalSend = ExplorerOpenVerbHandler.SendOpenFolderRequest;
         var originalDelay = ExplorerOpenVerbHandler.DelayBetweenRetries;
         var originalFallback = ExplorerOpenVerbHandler.OpenFolderFallback;
+        var originalBypass = ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen;
 
         try
         {
             ExplorerOpenVerbHandler.SendOpenFolderRequest = (_, _) => { sendAttempts++; return true; };
             ExplorerOpenVerbHandler.DelayBetweenRetries = static _ => { };
             ExplorerOpenVerbHandler.OpenFolderFallback = (_, _) => throw new InvalidOperationException("Fallback should not run when pipe succeeds.");
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = static () => false;
 
             bool handled = ExplorerOpenVerbHandler.TryHandleOpenFolderInvocation(
                 [RegistryOpenVerbInterceptor.HandlerArgument, tempDir],
@@ -217,6 +224,7 @@ public sealed class ExplorerOpenVerbHandlerTests
             ExplorerOpenVerbHandler.SendOpenFolderRequest = originalSend;
             ExplorerOpenVerbHandler.DelayBetweenRetries = originalDelay;
             ExplorerOpenVerbHandler.OpenFolderFallback = originalFallback;
+            ExplorerOpenVerbHandler.ShouldBypassInterceptionAndUseNativeOpen = originalBypass;
             Directory.Delete(tempDir, recursive: true);
         }
     }

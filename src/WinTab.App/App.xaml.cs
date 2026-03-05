@@ -96,14 +96,11 @@ public partial class App : Application
         }
 
         // -- 5.1 Pre-flight ------------------------------------------------
-        // Restore direct open-verb interception behavior for existing users.
-        // Previous builds may have persisted this as false and would force
-        // open-new-window-then-convert (visible flicker).
-        if (!settings.EnableExplorerOpenVerbInterception)
+        // When child-folder-in-new-tab is disabled, keep current-directory browsing native.
+        if (ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings))
         {
-            settings.EnableExplorerOpenVerbInterception = true;
             settingsStore.Save(settings);
-            _logger?.Info("Migrated setting: EnableExplorerOpenVerbInterception=true to restore direct tab reuse path.");
+            _logger?.Info("Disabled Explorer open-verb interception because OpenChildFolderInNewTabFromActiveTab=false to preserve native current-directory browsing.");
         }
 
         // -- 6. Apply language --------------------------------------------
@@ -174,8 +171,7 @@ public partial class App : Application
             string openVerbHandlerPath = AppEnvironment.ResolveLaunchExecutablePath();
             bool hasStableOpenVerbHandlerPath = ExplorerOpenVerbHandler.IsStableOpenVerbHandlerPath(openVerbHandlerPath);
             bool enableExplorerOpenVerbInterception =
-                settings.EnableExplorerOpenVerbInterception &&
-                hasStableOpenVerbHandlerPath;
+                ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath);
 
             if (!hasStableOpenVerbHandlerPath)
             {
