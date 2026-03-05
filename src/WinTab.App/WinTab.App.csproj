@@ -29,11 +29,36 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
+    <None Include="..\WinTab.ShellBridge\bin\$(Configuration)\net9.0-windows\WinTab.ShellBridge.runtimeconfig.json">
+      <Link>WinTab.ShellBridge.runtimeconfig.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="..\WinTab.ShellBridge\bin\$(Configuration)\net9.0-windows\WinTab.ShellBridge.deps.json">
+      <Link>WinTab.ShellBridge.deps.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
     <ProjectReference Include="..\WinTab.Core\WinTab.Core.csproj" />
     <ProjectReference Include="..\WinTab.Diagnostics\WinTab.Diagnostics.csproj" />
     <ProjectReference Include="..\WinTab.Persistence\WinTab.Persistence.csproj" />
     <ProjectReference Include="..\WinTab.Platform.Win32\WinTab.Platform.Win32.csproj" />
+    <ProjectReference Include="..\WinTab.ShellBridge\WinTab.ShellBridge.csproj" />
     <ProjectReference Include="..\WinTab.UI\WinTab.UI.csproj" />
   </ItemGroup>
+
+  <Target Name="CopyShellBridgeComMetadataToPublish" AfterTargets="Publish">
+    <PropertyGroup>
+      <ShellBridgeBuildOutputDir>$(MSBuildThisFileDirectory)..\WinTab.ShellBridge\bin\$(Configuration)\net9.0-windows\</ShellBridgeBuildOutputDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <ShellBridgeComMetadata Include="$(ShellBridgeBuildOutputDir)WinTab.ShellBridge.runtimeconfig.json" />
+      <ShellBridgeComMetadata Include="$(ShellBridgeBuildOutputDir)WinTab.ShellBridge.deps.json" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(ShellBridgeComMetadata)"
+      DestinationFolder="$(PublishDir)"
+      SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

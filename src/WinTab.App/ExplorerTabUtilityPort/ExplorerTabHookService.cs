@@ -74,9 +74,27 @@ public sealed class ExplorerTabHookService : IDisposable
     {
         // Match native Explorer behavior first: when opening from inside Explorer,
         // navigate current active tab unless user explicitly enabled child-folder-in-new-tab.
-        bool navigatedCurrent = await TryNavigateCurrentActiveTabLikeExplorer(location, clickTimeForeground);
-        if (navigatedCurrent)
+        CurrentNavigateAttemptResult currentNavigate = await TryNavigateCurrentActiveTabLikeExplorer(location, clickTimeForeground);
+        if (currentNavigate.NavigatedCurrentTab)
             return true;
+
+        if (!ShouldContinueWithTabReuseAfterCurrentNavigateAttempt(
+                currentNavigate.NavigatedCurrentTab,
+                currentNavigate.RequiredCurrentWindowNavigation))
+        {
+            _logger.Warn($"[Intercept] Required current-window navigation failed, skipped tab-hijack fallback: {location}");
+
+            // Best-effort safety fallback: keep shell-native behavior instead of forcing tab hijack.
+            _nativeBrowseFallbackBypass.Register(location, NativeBrowseFallbackBypassTtl);
+            bool launched = TryLaunchExplorerWindow(location);
+            if (!launched)
+            {
+                _nativeBrowseFallbackBypass.Revoke(location);
+                _logger.Warn($"[Intercept] Native fallback launch failed after current-window navigation failure: {location}");
+            }
+
+            return launched;
+        }
 
         IntPtr targetTopLevel = PickInterceptTargetExplorerWindow(clickTimeForeground);
         if (targetTopLevel == IntPtr.Zero)
@@ -185,7 +203,7 @@ public sealed class ExplorerTabHookService : IDisposable
         }
     }
 
-    private async Task<bool> TryNavigateCurrentActiveTabLikeExplorer(string location, IntPtr clickTimeForeground)
+    private async Task<CurrentNavigateAttemptResult> TryNavigateCurrentActiveTabLikeExplorer(string location, IntPtr clickTimeForeground)
     {
         // clickTimeForeground is captured by the handler process at the exact moment the user clicked,
         // before the shell hands off control. This is the authoritative foreground for determining
@@ -203,11 +221,15 @@ public sealed class ExplorerTabHookService : IDisposable
         }
 
         if (explorerWindow == IntPtr.Zero || !NativeMethods.IsWindow(explorerWindow))
-            return false;
+            return CurrentNavigateAttemptResult.NotRequiredAndNotNavigated();
+
+        bool requiredCurrentWindowNavigation = !_settings.OpenChildFolderInNewTabFromActiveTab;
 
         IntPtr activeTab = GetActiveTabHandle(explorerWindow);
         if (activeTab == IntPtr.Zero || !NativeMethods.IsWindow(activeTab))
-            return false;
+            return requiredCurrentWindowNavigation
+                ? CurrentNavigateAttemptResult.RequiredButNotNavigated()
+                : CurrentNavigateAttemptResult.NotRequiredAndNotNavigated();
 
         bool forceNavigateCurrentForSameParent = false;
         if (_settings.OpenNewTabFromActiveTabPath && IsRealFileSystemLocation(location))
@@ -224,8 +246,11 @@ public sealed class ExplorerTabHookService : IDisposable
             }
         }
 
-        if (_settings.OpenChildFolderInNewTabFromActiveTab && !forceNavigateCurrentForSameParent)
-            return false;
+        if (forceNavigateCurrentForSameParent)
+            requiredCurrentWindowNavigation = true;
+
+        if (!requiredCurrentWindowNavigation)
+            return CurrentNavigateAttemptResult.NotRequiredAndNotNavigated();
 
         if (forceNavigateCurrentForSameParent)
         {
@@ -239,11 +264,25 @@ public sealed class ExplorerTabHookService : IDisposable
         // with no correctness benefit.
         bool navigated = await NavigateTabByHandleWithRetry(activeTab, location, timeoutMs: CurrentTabNavigateTimeoutMs, ct: _cts.Token);
         if (!navigated)
-            return false;
+        {
+            // Keep native browse behavior in the current Explorer window even when COM navigate is flaky.
+            TryBringToForeground(explorerWindow);
+            bool navigatedViaAddressBar = await NavigateViaAddressBar(location);
+            if (!navigatedViaAddressBar)
+                return CurrentNavigateAttemptResult.RequiredButNotNavigated();
+
+            _logger.Info($"Navigated active Explorer tab via address bar fallback: {location}");
+            return CurrentNavigateAttemptResult.RequiredAndNavigated();
+        }
 
         TryBringToForeground(explorerWindow);
         _logger.Info($"Navigated active Explorer tab directly: {location}");
-        return true;
+        return CurrentNavigateAttemptResult.RequiredAndNavigated();
+    }
+
+    private static bool ShouldContinueWithTabReuseAfterCurrentNavigateAttempt(bool navigatedCurrentTab, bool requiredCurrentWindowNavigation)
+    {
+        return !navigatedCurrentTab && !requiredCurrentWindowNavigation;
     }
 
     private static readonly Guid ShellBrowserGuid = typeof(IShellBrowser).GUID;
@@ -259,6 +298,7 @@ public sealed class ExplorerTabHookService : IDisposable
     // briefly in case the COM object is momentarily unavailable.
     internal const int CurrentTabNavigateTimeoutMs = 200;
     internal const int CurrentTabNavigateRetryMs = 100;
+    private static readonly TimeSpan NativeBrowseFallbackBypassTtl = TimeSpan.FromSeconds(4);
 
     private static readonly object ShellWindowsInitLock = new();
     private static object? _shellWindows;
@@ -268,6 +308,7 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly IWindowEventSource _windowEvents;
     private readonly IWindowManager _windowManager;
     private readonly ShellLocationIdentityService _locationIdentity;
+    private readonly NativeBrowseFallbackBypassStore _nativeBrowseFallbackBypass;
     private readonly AppSettings _settings;
     private readonly Logger _logger;
     private readonly bool _autoConvertEnabled;
@@ -310,6 +351,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _windowEvents = windowEvents;
         _windowManager = windowManager;
         _locationIdentity = locationIdentity;
+        _nativeBrowseFallbackBypass = new NativeBrowseFallbackBypassStore(locationIdentity);
         _settings = settings;
         _logger = logger;
         _windowRegisteredHandler = cookie => OnShellWindowRegisteredSafe(cookie);
@@ -370,6 +412,13 @@ public sealed class ExplorerTabHookService : IDisposable
                 dispatcher);
             _cleanupTimer.Start();
         }
+    }
+
+    private readonly record struct CurrentNavigateAttemptResult(bool NavigatedCurrentTab, bool RequiredCurrentWindowNavigation)
+    {
+        public static CurrentNavigateAttemptResult NotRequiredAndNotNavigated() => new(false, false);
+        public static CurrentNavigateAttemptResult RequiredAndNavigated() => new(true, true);
+        public static CurrentNavigateAttemptResult RequiredButNotNavigated() => new(false, true);
     }
 
     private readonly record struct RegisteredCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string? Location, bool IsKnownTopLevel);
@@ -1429,6 +1478,12 @@ public sealed class ExplorerTabHookService : IDisposable
             if (targetTopLevel == sourceTopLevel)
                 return;
 
+            if (hasReadyLocation && location is not null && _nativeBrowseFallbackBypass.TryConsume(location))
+            {
+                _logger.Info($"Skip convert: native-browse fallback bypass matched for {location}");
+                return;
+            }
+
             if (!sourceHidden)
                 sourceHidden = _windowManager.Hide(sourceTopLevel);
 
@@ -1441,6 +1496,12 @@ public sealed class ExplorerTabHookService : IDisposable
             if (string.IsNullOrWhiteSpace(location))
             {
                 _logger.Info($"Skip convert: location not ready for 0x{sourceTopLevel.ToInt64():X}");
+                return;
+            }
+
+            if (_nativeBrowseFallbackBypass.TryConsume(location))
+            {
+                _logger.Info($"Skip convert: native-browse fallback bypass matched for {location}");
                 return;
             }
 
@@ -2366,6 +2427,8 @@ public sealed class ExplorerTabHookService : IDisposable
             if (kvp.Value <= DateTimeOffset.UtcNow)
                 _suppressNewTabDefaultUntil.TryRemove(kvp.Key, out _);
         }
+
+        _nativeBrowseFallbackBypass.CleanupExpired();
     }
 
     public void Dispose()

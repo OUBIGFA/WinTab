@@ -28,13 +28,13 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
         var settings = new AppSettings
         {
             OpenChildFolderInNewTabFromActiveTab = true,
-            EnableExplorerOpenVerbInterception = true,
+            EnableExplorerOpenVerbInterception = false,
         };
 
         bool changed = ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings);
 
         changed.Should().BeFalse();
-        settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
+        settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
     }
 
     [Fact]
@@ -75,6 +75,20 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
         };
 
         bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: false);
+
+        enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ShouldEnableOpenVerbInterception_WhenSettingDisabled_ShouldBeFalse()
+    {
+        var settings = new AppSettings
+        {
+            OpenChildFolderInNewTabFromActiveTab = true,
+            EnableExplorerOpenVerbInterception = false,
+        };
+
+        bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: true);
 
         enabled.Should().BeFalse();
     }

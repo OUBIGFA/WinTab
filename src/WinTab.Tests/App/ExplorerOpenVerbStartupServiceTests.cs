@@ -56,6 +56,37 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
     }
 
     [Fact]
+    public void Start_WhenInterceptionSettingDisabled_ShouldRunSynchronouslyToAvoidRace()
+    {
+        var interceptor = new FakeExplorerOpenVerbInterceptor(
+            startupSelfCheckDelayMs: 250,
+            enableOrRepairDelayMs: 0);
+
+        var service = new ExplorerOpenVerbStartupService(
+            interceptor,
+            _logger,
+            isWindows11: static () => true,
+            resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
+            isStableOpenVerbHandlerPath: static _ => true,
+            runInBackground: work => Task.Run(work));
+
+        var settings = new AppSettings
+        {
+            EnableExplorerOpenVerbInterception = false,
+            OpenChildFolderInNewTabFromActiveTab = true,
+        };
+
+        var sw = Stopwatch.StartNew();
+        service.Start(settings);
+        sw.ElapsedMilliseconds.Should().BeGreaterOrEqualTo(200,
+            "disable path should complete synchronously so the shell is not left hijacked while a background task is pending");
+
+        interceptor.StartupSelfCheckCalls.Should().Be(1);
+        interceptor.DisableAndRestoreCalls.Should().Be(1);
+        interceptor.EnableOrRepairCalls.Should().Be(0);
+    }
+
+    [Fact]
     public async Task WaitForStartupConfigurationToFinish_ShouldSynchronizeBackgroundOperationBeforeExitPath()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor(
@@ -83,7 +114,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
         interceptor.EnableOrRepairCalls.Should().Be(1);
     }
     [Fact]
-    public async Task Start_WhenChildFolderNewTabDisabled_ShouldStillKeepInterceptionEnabledForDirectReuse()
+    public async Task Start_WhenChildFolderNewTabDisabled_ShouldKeepInterceptionEnabledForDirectReuse()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor();
         var service = new ExplorerOpenVerbStartupService(

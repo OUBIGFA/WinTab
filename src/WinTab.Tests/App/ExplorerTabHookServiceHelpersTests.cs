@@ -82,6 +82,24 @@ public sealed class ExplorerTabHookServiceHelpersTests
             "each retry delay must fit within the navigate timeout so we always get at least one retry");
     }
 
+    [Theory]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, false, false)]
+    public void ShouldContinueWithTabReuseAfterCurrentNavigateAttempt_ShouldRespectNativeBrowseRequirement(
+        bool navigatedCurrentTab,
+        bool requiredCurrentWindowNavigation,
+        bool expected)
+    {
+        bool actual = InvokePrivateStatic<bool>(
+            "ShouldContinueWithTabReuseAfterCurrentNavigateAttempt",
+            navigatedCurrentTab,
+            requiredCurrentWindowNavigation);
+
+        actual.Should().Be(expected);
+    }
+
     private static T InvokePrivateStatic<T>(string methodName, params object?[] args)
     {
         MethodInfo method = typeof(ExplorerTabHookService).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Win32;
 using WinTab.Diagnostics;
 using WinTab.Persistence;
+using WinTab.ShellBridge;
 
 namespace WinTab.App.Services;
 
@@ -22,6 +23,8 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private const string BackupRegistryPath = @"Software\WinTab\Backups\ExplorerOpenVerb";
     private const string BackupRegistryValueName = "BackupJson";
+    private const string DelegateExecuteValueName = "DelegateExecute";
+    private const string DelegateExecuteComDescription = "WinTab Open Folder DelegateExecute";
 
     private const string HandlerArgNew = "--wintab-open-folder";
     private const string HandlerArgLegacy = "--open-folder";
@@ -33,16 +36,19 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
     ];
 
     private readonly string _exePath;
+    private readonly string _comHostPath;
     private readonly Logger _logger;
 
     public RegistryOpenVerbInterceptor(string exePath, Logger logger)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exePath);
         _exePath = exePath;
+        _comHostPath = Path.Combine(Path.GetDirectoryName(_exePath) ?? string.Empty, "WinTab.ShellBridge.comhost.dll");
         _logger = logger;
     }
 
     private static string BackupPath => Path.Combine(AppPaths.BaseDirectory, "explorer-open-verb-backup.json");
+    private static string DelegateExecuteClsidBraced => "{" + DelegateExecuteIds.OpenFolderDelegateExecuteClsid + "}";
 
     public static string HandlerArgument => HandlerArgNew;
 
@@ -50,17 +56,25 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
     {
         try
         {
+            bool allVerbsDelegateExecute = true;
+            bool allVerbsLegacyCommand = true;
+
             foreach (string cls in TargetClasses)
             {
                 foreach (string verb in TargetVerbs)
                 {
                     string? cmd = ReadCommand(cls, verb);
-                    if (!CommandPointsToWinTab(cmd))
-                        return false;
+                    string? delegateExecute = ReadDelegateExecute(cls, verb);
+
+                    allVerbsDelegateExecute &= DelegateExecutePointsToWinTab(delegateExecute);
+                    allVerbsLegacyCommand &= CommandPointsToWinTab(cmd);
                 }
             }
 
-            return true;
+            if (allVerbsDelegateExecute && IsDelegateExecuteComServerRegistered())
+                return true;
+
+            return allVerbsLegacyCommand;
         }
         catch
         {
@@ -101,6 +115,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
 
         RestoreFromBackup(backup);
+        RemoveDelegateExecuteComServerRegistration();
 
         if (IsLikelyBrokenOpenVerbState())
         {
@@ -255,6 +270,10 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private void WriteOverride()
     {
+        bool preferDelegateExecute = File.Exists(_comHostPath);
+        if (preferDelegateExecute)
+            RegisterDelegateExecuteComServer();
+
         foreach (string cls in TargetClasses)
         {
             foreach (string verb in TargetVerbs)
@@ -262,7 +281,16 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 using RegistryKey key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\shell\{verb}\command", writable: true)
                     ?? throw new InvalidOperationException("Failed to create registry key.");
 
-                key.SetValue(string.Empty, BuildOverrideCommand(), RegistryValueKind.String);
+                if (preferDelegateExecute)
+                {
+                    key.SetValue(string.Empty, string.Empty, RegistryValueKind.String);
+                    key.SetValue(DelegateExecuteValueName, DelegateExecuteClsidBraced, RegistryValueKind.String);
+                }
+                else
+                {
+                    key.DeleteValue(DelegateExecuteValueName, throwOnMissingValue: false);
+                    key.SetValue(string.Empty, BuildOverrideCommand(), RegistryValueKind.String);
+                }
             }
         }
 
@@ -275,7 +303,15 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             key.SetValue(string.Empty, OpenVerb, RegistryValueKind.String);
         }
 
-        _logger.Info("Enabled Explorer open-verb interception (HKCU)." );
+        if (preferDelegateExecute)
+        {
+            _logger.Info("Enabled Explorer open-verb interception via DelegateExecute COM bridge (HKCU).");
+        }
+        else
+        {
+            _logger.Warn($"DelegateExecute COM host is missing, using legacy command override: {_comHostPath}");
+            _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU).");
+        }
     }
 
     private void RemoveOverridesOnly()
@@ -291,6 +327,8 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 root.DeleteSubKeyTree($@"{cls}\{BuildCommandSubKey(verb)}", throwOnMissingSubKey: false);
             }
         }
+
+        RemoveDelegateExecuteComServerRegistration();
     }
 
     private void ApplySafeDefaultsAndRemoveOverrides()
@@ -328,12 +366,18 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 continue;
 
             string? openCommand = ReadEffectiveCommandDefaultValue(cls, OpenVerb);
-            if (string.IsNullOrWhiteSpace(openCommand))
+            string? openDelegateExecute = ReadEffectiveDelegateExecuteValue(cls, OpenVerb);
+            if (string.IsNullOrWhiteSpace(openCommand) && !DelegateExecutePointsToWinTab(openDelegateExecute))
                 return true;
 
             foreach (string verb in TargetVerbs)
             {
-                string? command = ReadCommand(cls, verb);
+                string? command = ReadEffectiveCommandDefaultValue(cls, verb);
+                string? delegateExecute = ReadEffectiveDelegateExecuteValue(cls, verb);
+
+                if (DelegateExecutePointsToWinTab(delegateExecute))
+                    continue;
+
                 if (string.IsNullOrWhiteSpace(command))
                     continue;
 
@@ -352,6 +396,10 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             foreach (string verb in TargetVerbs)
             {
                 string? command = ReadCommand(cls, verb);
+                string? delegateExecute = ReadDelegateExecute(cls, verb);
+                if (DelegateExecutePointsToWinTab(delegateExecute))
+                    return true;
+
                 if (string.IsNullOrWhiteSpace(command))
                     continue;
 
@@ -408,6 +456,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                         ?? throw new InvalidOperationException("Failed to create registry key.");
 
                     k.SetValue(string.Empty, entry.CommandDefault, RegistryValueKind.String);
+                    k.DeleteValue(DelegateExecuteValueName, throwOnMissingValue: false);
                 }
             }
         }
@@ -423,10 +472,22 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         return k?.GetValue(string.Empty) as string;
     }
 
+    private string? ReadDelegateExecute(string className, string verb)
+    {
+        using RegistryKey? k = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{className}\{BuildCommandSubKey(verb)}");
+        return k?.GetValue(DelegateExecuteValueName) as string;
+    }
+
     private static string? ReadEffectiveCommandDefaultValue(string className, string verb)
     {
         using RegistryKey? k = Registry.ClassesRoot.OpenSubKey($@"{className}\{BuildCommandSubKey(verb)}", writable: false);
         return k?.GetValue(string.Empty) as string;
+    }
+
+    private static string? ReadEffectiveDelegateExecuteValue(string className, string verb)
+    {
+        using RegistryKey? k = Registry.ClassesRoot.OpenSubKey($@"{className}\{BuildCommandSubKey(verb)}", writable: false);
+        return k?.GetValue(DelegateExecuteValueName) as string;
     }
 
     private static string? ReadEffectiveDefaultVerb(string className)
@@ -460,6 +521,68 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
 
         return false;
+    }
+
+    private static bool DelegateExecutePointsToWinTab(string? delegateExecute)
+    {
+        if (string.IsNullOrWhiteSpace(delegateExecute))
+            return false;
+
+        string normalized = delegateExecute.Trim().Trim('{', '}');
+        return string.Equals(
+            normalized,
+            DelegateExecuteIds.OpenFolderDelegateExecuteClsid,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string DelegateExecuteClsidKeyPath => $@"Software\Classes\CLSID\{DelegateExecuteClsidBraced}";
+
+    private bool IsDelegateExecuteComServerRegistered()
+    {
+        try
+        {
+            using RegistryKey? inproc = Registry.CurrentUser.OpenSubKey($@"{DelegateExecuteClsidKeyPath}\InProcServer32", writable: false);
+            if (inproc is null)
+                return false;
+
+            string? registeredPath = inproc.GetValue(string.Empty) as string;
+            if (string.IsNullOrWhiteSpace(registeredPath))
+                return false;
+
+            string normalizedRegistered = Path.GetFullPath(registeredPath).Replace('/', '\\');
+            string normalizedExpected = Path.GetFullPath(_comHostPath).Replace('/', '\\');
+
+            if (!string.Equals(normalizedRegistered, normalizedExpected, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string? threadingModel = inproc.GetValue("ThreadingModel") as string;
+            if (!string.Equals(threadingModel, "Apartment", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return File.Exists(normalizedExpected);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void RegisterDelegateExecuteComServer()
+    {
+        using RegistryKey clsidKey = Registry.CurrentUser.CreateSubKey(DelegateExecuteClsidKeyPath, writable: true)
+            ?? throw new InvalidOperationException("Failed to create DelegateExecute CLSID key.");
+        clsidKey.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
+
+        using RegistryKey inproc = clsidKey.CreateSubKey("InProcServer32", writable: true)
+            ?? throw new InvalidOperationException("Failed to create DelegateExecute InProcServer32 key.");
+        inproc.SetValue(string.Empty, _comHostPath, RegistryValueKind.String);
+        inproc.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
+    }
+
+    private void RemoveDelegateExecuteComServerRegistration()
+    {
+        using RegistryKey? root = Registry.CurrentUser.OpenSubKey(@"Software\Classes\CLSID", writable: true);
+        root?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
     }
 
     private string BuildOverrideCommand()

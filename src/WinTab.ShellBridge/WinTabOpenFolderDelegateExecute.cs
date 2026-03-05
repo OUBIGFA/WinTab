@@ -1,0 +1,160 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using WinTab.ShellBridge.Interop;
+
+namespace WinTab.ShellBridge;
+
+[ComVisible(true)]
+[ClassInterface(ClassInterfaceType.None)]
+[Guid(DelegateExecuteIds.OpenFolderDelegateExecuteClsid)]
+public sealed class WinTabOpenFolderDelegateExecute : IExecuteCommand, IObjectWithSelection
+{
+    private const int S_OK = 0;
+    private const int E_FAIL = unchecked((int)0x80004005);
+
+    private IShellItemArray? _selection;
+    private string? _parameters;
+
+    public int SetKeyState(uint grfKeyState) => S_OK;
+
+    public int SetParameters(string? pszParameters)
+    {
+        _parameters = pszParameters;
+        return S_OK;
+    }
+
+    public int SetPosition(Point pt) => S_OK;
+
+    public int SetShowWindow(int nShow) => S_OK;
+
+    public int SetNoShowUI(int fNoShowUI) => S_OK;
+
+    public int SetDirectory(string? pszDirectory) => S_OK;
+
+    public int SetSelection(IShellItemArray? psia)
+    {
+        ReleaseSelection();
+        _selection = psia;
+        return S_OK;
+    }
+
+    public int GetSelection(ref Guid riid, out IntPtr ppv)
+    {
+        ppv = IntPtr.Zero;
+        if (_selection is null)
+            return E_FAIL;
+
+        IntPtr unk = Marshal.GetIUnknownForObject(_selection);
+        try
+        {
+            return Marshal.QueryInterface(unk, ref riid, out ppv);
+        }
+        finally
+        {
+            Marshal.Release(unk);
+        }
+    }
+
+    public int Execute()
+    {
+        try
+        {
+            string? rawTarget = TryGetTargetFromSelection();
+            if (string.IsNullOrWhiteSpace(rawTarget))
+                rawTarget = TryGetTargetFromParameters();
+
+            if (!PathNormalization.TryNormalizeOpenTarget(rawTarget, out string target))
+                return S_OK;
+
+            nint foreground = User32Native.GetForegroundWindow();
+            if (OpenRequestPipeClient.TrySendOpenFolderEx(target, foreground))
+                return S_OK;
+
+            TryOpenFallback(target);
+            return S_OK;
+        }
+        finally
+        {
+            ReleaseSelection();
+        }
+    }
+
+    private string? TryGetTargetFromParameters()
+    {
+        if (string.IsNullOrWhiteSpace(_parameters))
+            return null;
+
+        string value = _parameters.Trim();
+        if (value.StartsWith("\"", StringComparison.Ordinal) && value.EndsWith("\"", StringComparison.Ordinal) && value.Length >= 2)
+            return value[1..^1];
+
+        return value;
+    }
+
+    private string? TryGetTargetFromSelection()
+    {
+        IShellItemArray? selection = _selection;
+        if (selection is null)
+            return null;
+
+        if (selection.GetCount(out uint count) != S_OK || count == 0)
+            return null;
+
+        if (selection.GetItemAt(0, out IShellItem item) != S_OK || item is null)
+            return null;
+
+        try
+        {
+            string? fileSystemPath = TryGetDisplayName(item, Sigdn.FileSystemPath);
+            if (!string.IsNullOrWhiteSpace(fileSystemPath))
+                return fileSystemPath;
+
+            return TryGetDisplayName(item, Sigdn.DesktopAbsoluteParsing);
+        }
+        finally
+        {
+            Marshal.FinalReleaseComObject(item);
+        }
+    }
+
+    private static string? TryGetDisplayName(IShellItem item, Sigdn sigdn)
+    {
+        if (item.GetDisplayName(sigdn, out IntPtr rawName) != S_OK || rawName == IntPtr.Zero)
+            return null;
+
+        try
+        {
+            return Marshal.PtrToStringUni(rawName);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(rawName);
+        }
+    }
+
+    private static void TryOpenFallback(string target)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{target}\"",
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // ignore
+        }
+    }
+
+    private void ReleaseSelection()
+    {
+        if (_selection is null)
+            return;
+
+        Marshal.FinalReleaseComObject(_selection);
+        _selection = null;
+    }
+}

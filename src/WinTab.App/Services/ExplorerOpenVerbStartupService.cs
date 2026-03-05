@@ -63,6 +63,20 @@ public sealed class ExplorerOpenVerbStartupService
 
         try
         {
+            // If we need to DISABLE interception (e.g. preserve native in-Explorer browsing),
+            // do it synchronously to avoid a race where Explorer still launches the handler
+            // before the background task runs.
+            string openVerbHandlerPath = _resolveLaunchExecutablePath();
+            bool hasStableOpenVerbHandlerPath = _isStableOpenVerbHandlerPath(openVerbHandlerPath);
+            bool enableExplorerOpenVerbInterception =
+                ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(snapshot, hasStableOpenVerbHandlerPath);
+
+            if (!enableExplorerOpenVerbInterception)
+            {
+                _startupTask = ConfigureAsync(snapshot);
+                return;
+            }
+
             _startupTask = _runInBackground(() => ConfigureAsync(snapshot));
         }
         catch (Exception ex)

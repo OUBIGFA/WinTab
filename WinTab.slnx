@@ -5,6 +5,7 @@
     <Project Path="src/WinTab.Platform.Win32/WinTab.Platform.Win32.csproj" />
     <Project Path="src/WinTab.Persistence/WinTab.Persistence.csproj" />
     <Project Path="src/WinTab.UI/WinTab.UI.csproj" />
+    <Project Path="src/WinTab.ShellBridge/WinTab.ShellBridge.csproj" />
     <Project Path="src/WinTab.App/WinTab.App.csproj" />
   </Folder>
   <Folder Name="/tests/">

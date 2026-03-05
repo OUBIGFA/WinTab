@@ -10,6 +10,8 @@ namespace WinTab.App.Services;
 
 public static class UninstallCleanupHandler
 {
+    private const string DelegateExecuteClsidBraced = "{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}";
+
     public static int RunUninstallCleanup(string exePath)
     {
         Logger? cleanupLogger = null;
@@ -78,6 +80,8 @@ public static class UninstallCleanupHandler
                         classesRoot.DeleteSubKeyTree($@"{cls}\shell\{verb}\command", throwOnMissingSubKey: false);
                     }
                 }
+
+                classesRoot.DeleteSubKeyTree($@"CLSID\{DelegateExecuteClsidBraced}", throwOnMissingSubKey: false);
             }
 
             using RegistryKey? folderShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Folder\shell", writable: true);

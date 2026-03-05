@@ -95,13 +95,6 @@ public partial class App : Application
             settingsStore.Save(settings);
         }
 
-        // -- 5.1 Pre-flight ------------------------------------------------
-        if (ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings))
-        {
-            settingsStore.Save(settings);
-            _logger?.Info("Disabled Explorer open-verb interception because OpenChildFolderInNewTabFromActiveTab=false; native folder navigation is preserved.");
-        }
-
         // -- 6. Apply language --------------------------------------------
         LocalizationManager.ApplyLanguage(settings.Language);
 
@@ -113,6 +106,12 @@ public partial class App : Application
         ConfigureServices(services, settings, settingsStore, _logger!);
         _serviceProvider = services.BuildServiceProvider();
         Services = _serviceProvider;
+
+        // Registry interception startup checks:
+        // When interception must be disabled (native browse), do it before any UI is shown
+        // to avoid a short window where Explorer still launches the handler.
+        var openVerbStartup = _serviceProvider.GetRequiredService<ExplorerOpenVerbStartupService>();
+        openVerbStartup.Start(settings);
 
         // -- 9. Create and show MainWindow --------------------------------
         var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
@@ -160,9 +159,6 @@ public partial class App : Application
                 _logger?.Error("Failed to handle open-folder request.", ex);
             }
         });
-        // Registry interception startup checks run in background to avoid blocking first paint.
-        var openVerbStartup = _serviceProvider.GetRequiredService<ExplorerOpenVerbStartupService>();
-        openVerbStartup.Start(settings);
 
         // -- 11. Initialize tray icon -------------------------------------
         SetTrayIconVisibility(settings.ShowTrayIcon);

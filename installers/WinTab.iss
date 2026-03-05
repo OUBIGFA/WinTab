@@ -8,6 +8,7 @@
 #define AppPublisher "WinTab Contributors"
 #define AppURL "https://github.com/user/WinTab"
 #define AppExeName "WinTab.exe"
+#define DelegateExecuteClsid "{{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}"
 
 [Setup]
 AppId={{B8F3D2A1-7E4C-4D9F-A6B2-1C8E5F0D3A7B}
@@ -90,6 +91,10 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; F
 [Registry]
 ; Add startup entry if task selected
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
+; Register DelegateExecute COM host for Explorer open verb interception (HKCU only).
+Root: HKCU; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
@@ -100,6 +105,8 @@ Type: filesandordirs; Name: "{userappdata}\WinTab"; Check: ShouldRemoveUserData
 Filename: "{app}\{#AppExeName}"; Parameters: "--wintab-cleanup"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "WinTabCleanup"
 ; Remove startup registry entry on uninstall
 Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v ""{#AppName}"" /f"; Flags: runhidden; RunOnceId: "WinTabStartupRunCleanup"
+; Redundant cleanup in case uninstall registry flags were not applied.
+Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanup"
 
 [Code]
 var
