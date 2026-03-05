@@ -96,12 +96,8 @@ public partial class App : Application
         }
 
         // -- 5.1 Pre-flight ------------------------------------------------
-        // When child-folder-in-new-tab is disabled, keep current-directory browsing native.
-        if (ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings))
-        {
-            settingsStore.Save(settings);
-            _logger?.Info("Disabled Explorer open-verb interception because OpenChildFolderInNewTabFromActiveTab=false to preserve native current-directory browsing.");
-        }
+        // No-op placeholder: keep settings load spot for future migrations.
+        _ = ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings);
 
         // -- 6. Apply language --------------------------------------------
         LocalizationManager.ApplyLanguage(settings.Language);

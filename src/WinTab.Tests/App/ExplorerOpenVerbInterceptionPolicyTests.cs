@@ -8,7 +8,7 @@ namespace WinTab.Tests.App;
 public sealed class ExplorerOpenVerbInterceptionPolicyTests
 {
     [Fact]
-    public void NormalizeForNativeCurrentDirectoryBehavior_WhenChildFolderNewTabDisabled_ShouldDisableInterception()
+    public void NormalizeForNativeCurrentDirectoryBehavior_WhenChildFolderNewTabDisabled_ShouldNotMutateInterceptionFlag()
     {
         var settings = new AppSettings
         {
@@ -18,8 +18,8 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
 
         bool changed = ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings);
 
-        changed.Should().BeTrue();
-        settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
+        changed.Should().BeFalse();
+        settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
     }
 
     [Fact]
-    public void ShouldEnableOpenVerbInterception_WhenChildFolderNewTabDisabled_ShouldBeFalse()
+    public void ShouldEnableOpenVerbInterception_WhenChildFolderNewTabDisabled_ShouldRemainTrueForDirectReuse()
     {
         var settings = new AppSettings
         {
@@ -48,11 +48,11 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
 
         bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: true);
 
-        enabled.Should().BeFalse();
+        enabled.Should().BeTrue();
     }
 
     [Fact]
-    public void ShouldEnableOpenVerbInterception_WhenAllConditionsSatisfied_ShouldBeTrue()
+    public void ShouldEnableOpenVerbInterception_WhenHandlerPathUnstable_ShouldBeFalse()
     {
         var settings = new AppSettings
         {
@@ -60,8 +60,8 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
             EnableExplorerOpenVerbInterception = true,
         };
 
-        bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: true);
+        bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: false);
 
-        enabled.Should().BeTrue();
+        enabled.Should().BeFalse();
     }
 }
