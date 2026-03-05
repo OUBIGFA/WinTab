@@ -47,4 +47,13 @@ public sealed class ShellLocationIdentityServiceTests
 
         _service.AreEquivalent(withForwardSlash, withTrailingSlash).Should().BeTrue();
     }
+
+    [Fact]
+    public void AreEquivalent_ShouldMatchRecycleBinNamespaceAliases()
+    {
+        const string recycleGuid = "::{645FF040-5081-101B-9F08-00AA002F954E}";
+        const string recycleAlias = "shell:RecycleBinFolder";
+
+        _service.AreEquivalent(recycleGuid, recycleAlias).Should().BeTrue();
+    }
 }

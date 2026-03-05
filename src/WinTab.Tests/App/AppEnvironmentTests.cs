@@ -63,4 +63,16 @@ public sealed class AppEnvironmentTests
         ok.Should().BeFalse();
         reason.Should().Be("unsupported URI scheme");
     }
+
+    [Fact]
+    public void TryNormalizeExistingDirectoryPath_WhenBareGuid_ShouldNormalizeToShellNamespace()
+    {
+        const string bareGuid = "{645FF040-5081-101B-9F08-00AA002F954E}";
+
+        bool ok = AppEnvironment.TryNormalizeExistingDirectoryPath(bareGuid, out string normalized, out string reason);
+
+        ok.Should().BeTrue();
+        Assert.Equal("::" + bareGuid, normalized);
+        reason.Should().BeEmpty();
+    }
 }

@@ -94,12 +94,10 @@ public static class AppEnvironment
             }
         }
 
-        // Keep shell namespace support (e.g. "::{GUID}") and permissive Explorer-open semantics.
-        // Only normalize rooted file-system paths; for shell targets keep original token.
-        if (trimmedPath.StartsWith("::", StringComparison.Ordinal) ||
-            trimmedPath.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+        // Keep shell namespace support (e.g. "::{GUID}", "{GUID}", "shell:RecycleBinFolder").
+        if (TryNormalizeShellNamespaceToken(trimmedPath, out string namespaceToken))
         {
-            normalizedPath = trimmedPath;
+            normalizedPath = namespaceToken;
             return true;
         }
 
@@ -132,5 +130,49 @@ public static class AppEnvironment
 
         normalizedPath = fullPath;
         return true;
+    }
+
+    private static bool TryNormalizeShellNamespaceToken(string value, out string normalized)
+    {
+        normalized = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        string token = value.Trim();
+
+        if (token.StartsWith("::", StringComparison.Ordinal))
+        {
+            normalized = token;
+            return true;
+        }
+
+        if (token.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+        {
+            if (token.StartsWith("shell::", StringComparison.OrdinalIgnoreCase) &&
+                !token.StartsWith("shell:::", StringComparison.OrdinalIgnoreCase))
+            {
+                string remainder = token[7..].TrimStart(':');
+                if (!string.IsNullOrWhiteSpace(remainder))
+                {
+                    normalized = "shell:" + remainder;
+                    return true;
+                }
+            }
+
+            normalized = token;
+            return true;
+        }
+
+        if (token.Length >= 2 &&
+            token[0] == '{' &&
+            token[^1] == '}' &&
+            Guid.TryParse(token, out _))
+        {
+            normalized = "::" + token;
+            return true;
+        }
+
+        return false;
     }
 }

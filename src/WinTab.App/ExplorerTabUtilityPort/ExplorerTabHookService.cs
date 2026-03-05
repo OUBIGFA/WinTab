@@ -1434,7 +1434,10 @@ public sealed class ExplorerTabHookService : IDisposable
         var sw = Stopwatch.StartNew();
 
         bool sourceHidden = sourceHiddenAlready;
+        bool visibilitySuppressionStarted = false;
         bool converted = false;
+        using var visibilitySuppressionCts = new CancellationTokenSource();
+        Task? visibilitySuppressionTask = null;
 
         try
         {
@@ -1486,6 +1489,9 @@ public sealed class ExplorerTabHookService : IDisposable
 
             if (!sourceHidden)
                 sourceHidden = _windowManager.Hide(sourceTopLevel);
+
+            visibilitySuppressionTask = KeepWindowHiddenUntilConversionCompletes(sourceTopLevel, visibilitySuppressionCts.Token);
+            visibilitySuppressionStarted = true;
 
             if (!hasReadyLocation)
             {
@@ -1539,8 +1545,40 @@ public sealed class ExplorerTabHookService : IDisposable
         }
         finally
         {
-            if (!converted && sourceHidden && _windowManager.IsAlive(sourceTopLevel))
+            visibilitySuppressionCts.Cancel();
+
+            if (visibilitySuppressionTask is not null)
+            {
+                try
+                {
+                    await visibilitySuppressionTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // expected on shutdown
+                }
+            }
+
+            if (!converted &&
+                (sourceHidden || visibilitySuppressionStarted) &&
+                _windowManager.IsAlive(sourceTopLevel))
+            {
                 _windowManager.Show(sourceTopLevel);
+            }
+        }
+    }
+
+    private async Task KeepWindowHiddenUntilConversionCompletes(IntPtr hwnd, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+                return;
+
+            if (NativeMethods.IsWindowVisible(hwnd))
+                _windowManager.Hide(hwnd);
+
+            await Task.Delay(30, ct);
         }
     }
 

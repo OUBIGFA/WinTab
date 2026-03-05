@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using WinTab.App.ExplorerTabUtilityPort.Interop;
 using WinTab.Diagnostics;
@@ -159,7 +160,7 @@ public sealed class ShellComNavigator
         {
             dynamic win = comTab;
 
-            if (location.Contains('#'))
+            if (ShouldNavigateViaNamespace(location))
             {
                 Type? shellType = Type.GetTypeFromProgID("Shell.Application");
                 if (shellType is null)
@@ -174,9 +175,10 @@ public sealed class ShellComNavigator
                     object? navigationFolder = null;
                     try
                     {
-                        navigationFolder = ((dynamic)shell).NameSpace(location);
+                        navigationFolder = TryResolveNamespaceFolder(shell, location);
                         if (navigationFolder is null)
                             return false;
+
                         win.Navigate2(navigationFolder);
                         return true;
                     }
@@ -208,6 +210,110 @@ public sealed class ShellComNavigator
         {
             return false;
         }
+    }
+
+    private static bool ShouldNavigateViaNamespace(string location)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+            return false;
+
+        string token = location.Trim();
+        if (token.Contains('#'))
+            return true;
+
+        if (token.StartsWith("::", StringComparison.Ordinal))
+            return true;
+
+        if (token.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return IsBracedGuid(token);
+    }
+
+    private static object? TryResolveNamespaceFolder(object shell, string location)
+    {
+        foreach (string candidate in BuildNamespaceCandidates(location))
+        {
+            try
+            {
+                object? folder = ((dynamic)shell).NameSpace(candidate);
+                if (folder is not null)
+                    return folder;
+            }
+            catch (Exception ex) when (IsComOrRpcException(ex))
+            {
+                return null;
+            }
+            catch
+            {
+                // Try next candidate.
+            }
+        }
+
+        return null;
+    }
+
+    private static IReadOnlyList<string> BuildNamespaceCandidates(string location)
+    {
+        string token = location.Trim();
+        var candidates = new List<string>(4);
+
+        void addCandidate(string candidate)
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                return;
+
+            if (!candidates.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+                candidates.Add(candidate);
+        }
+
+        addCandidate(token);
+
+        if (IsBracedGuid(token))
+        {
+            addCandidate("::" + token);
+            addCandidate("shell:::" + token);
+            return candidates;
+        }
+
+        if (token.StartsWith("::", StringComparison.Ordinal))
+        {
+            addCandidate("shell:::" + token[2..]);
+            return candidates;
+        }
+
+        if (token.StartsWith("shell:::", StringComparison.OrdinalIgnoreCase))
+        {
+            addCandidate("::" + token[8..]);
+            return candidates;
+        }
+
+        if (token.StartsWith("shell::", StringComparison.OrdinalIgnoreCase))
+        {
+            string remainder = token[7..].TrimStart(':');
+            addCandidate("shell:" + remainder);
+            return candidates;
+        }
+
+        if (token.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+        {
+            string remainder = token[6..].TrimStart(':');
+            if (IsBracedGuid(remainder))
+            {
+                addCandidate("::" + remainder);
+                addCandidate("shell:::" + remainder);
+            }
+        }
+
+        return candidates;
+    }
+
+    private static bool IsBracedGuid(string value)
+    {
+        if (value.Length < 2 || value[0] != '{' || value[^1] != '}')
+            return false;
+
+        return Guid.TryParse(value, out _);
     }
 
     private static bool IsComOrRpcException(Exception ex)
