@@ -187,6 +187,7 @@ public sealed class ExplorerTabMouseHookService : IDisposable
 
             ResetClickState();
             _logger.Info("Explorer tab double-click detected; sending close command.");
+            ExplorerTabHookService.SuppressNewTabDefaultForWindow(topLevelHandle);
             CloseTab(topLevelHandle, tabHandle);
             return true;
         }

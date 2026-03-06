@@ -159,6 +159,49 @@ public sealed class ExplorerTabHookServiceHelpersTests
         skip.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData(2, 3, @"C:\Users\bigfa\Desktop", true)]
+    [InlineData(2, 2, @"C:\Users\bigfa\Desktop", false)]
+    [InlineData(3, 2, @"C:\Users\bigfa\Desktop", false)]
+    [InlineData(2, 3, null, false)]
+    [InlineData(2, 3, "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}", false)]
+    public void ShouldApplyCachedNewTabAlignment_ShouldRequireTabGrowthAndFileSystemSource(
+        int previousTabCount,
+        int currentTabCount,
+        string? cachedSourceLocation,
+        bool expected)
+    {
+        bool actual = InvokePrivateStatic<bool>(
+            "ShouldApplyCachedNewTabAlignment",
+            previousTabCount,
+            currentTabCount,
+            cachedSourceLocation);
+
+        actual.Should().Be(expected);
+    }
+
+    [Fact]
+    public void Regression_DoubleClickCloseSequence_ShouldNotQualifyForAlignment()
+    {
+        // Repro model for the observed incident:
+        // 1) Explorer had an active tab with a file-system location.
+        // 2) User double-clicked tab title to close a tab.
+        // 3) Explorer internal UI events may still emit tab-create notifications.
+        //    If tab count does not grow from the cached baseline, alignment must be skipped.
+        const int baselineTabCount = 2;
+        const int tabCountAfterCloseAndUiChurn = 2;
+        const string cachedActiveLocation = @"E:\_Free code\WinTab\publish";
+
+        bool shouldAlign = InvokePrivateStatic<bool>(
+            "ShouldApplyCachedNewTabAlignment",
+            baselineTabCount,
+            tabCountAfterCloseAndUiChurn,
+            cachedActiveLocation);
+
+        shouldAlign.Should().BeFalse(
+            "close-tab UI churn must not be treated as a real new-tab creation for inherit-current-path alignment");
+    }
+
     private static T InvokePrivateStatic<T>(string methodName, params object?[] args)
     {
         MethodInfo method = typeof(ExplorerTabHookService).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)

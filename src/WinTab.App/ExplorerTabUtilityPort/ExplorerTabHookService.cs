@@ -284,11 +284,14 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
             if (!navigatedViaAddressBar)
                 return CurrentNavigateAttemptResult.RequiredButNotNavigated();
 
+            SuppressNewTabDefaultBehavior(explorerWindow, AddressBarFallbackSuppressionTtl);
+            RememberNewTabDefaultSnapshot(explorerWindow, CountTabs(explorerWindow), location);
             _logger.Info($"Navigated active Explorer tab via address bar fallback: {location}");
             return CurrentNavigateAttemptResult.RequiredAndNavigated();
         }
 
         TryBringToForeground(explorerWindow);
+        RememberNewTabDefaultSnapshot(explorerWindow, CountTabs(explorerWindow), location);
         _logger.Info($"Navigated active Explorer tab directly: {location}");
         return CurrentNavigateAttemptResult.RequiredAndNavigated();
     }
@@ -312,11 +315,14 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
     internal const int CurrentTabNavigateTimeoutMs = 200;
     internal const int CurrentTabNavigateRetryMs = 100;
     private static readonly TimeSpan NativeBrowseFallbackBypassTtl = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan AddressBarFallbackSuppressionTtl = TimeSpan.FromMilliseconds(1200);
+    private static readonly TimeSpan ExternalSuppressionDefaultTtl = TimeSpan.FromMilliseconds(1200);
 
     private static readonly object ShellWindowsInitLock = new();
     private static object? _shellWindows;
     private static int _shellWindowsThreadId;
     private static bool _clipboardOperationInProgress;
+    private static readonly ConcurrentDictionary<IntPtr, DateTimeOffset> _externalSuppressNewTabDefaultUntil = new();
 
     private readonly IWindowEventSource _windowEvents;
     private readonly IWindowManager _windowManager;
@@ -340,6 +346,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
     private readonly ConcurrentDictionary<IntPtr, byte> _earlyHiddenExplorer = new();
     private readonly ConcurrentDictionary<IntPtr, ConcurrentDictionary<IntPtr, int>> _tabIndexCache = new();
     private readonly ConcurrentDictionary<IntPtr, byte> _newTabDefaultInFlight = new();
+    private readonly ConcurrentDictionary<IntPtr, NewTabDefaultSnapshot> _newTabDefaultSnapshots = new();
     private readonly ConcurrentDictionary<int, byte> _windowRegisteredInFlight = new();
     private readonly CancellationTokenSource _cts = new();
     private readonly ConcurrentDictionary<uint, bool> _explorerPidCache = new();
@@ -386,7 +393,10 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         // Seed cache with existing Explorer windows so we don't treat normal
         // "show" events (navigation, layout changes) as new windows.
         foreach (IntPtr h in EnumerateExplorerTopLevelWindows(includeInvisible: true))
+        {
             _knownExplorerTopLevels.TryAdd(h, 0);
+            SeedNewTabDefaultSnapshot(h);
+        }
 
         _mainExplorerTopLevel = PickEtuTargetExplorerWindow(exclude: IntPtr.Zero);
 
@@ -430,6 +440,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         public static CurrentNavigateAttemptResult RequiredButNotNavigated() => new(false, true);
     }
 
+    private readonly record struct NewTabDefaultSnapshot(int TabCount, string? ActiveLocation, DateTimeOffset CapturedAtUtc);
     private readonly record struct RegisteredCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string? Location, bool IsKnownTopLevel);
     private readonly record struct ExistingTabCandidate(IntPtr TopLevelHwnd, IntPtr TabHandle, string Location);
 
@@ -975,47 +986,74 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel) || !IsExplorerTopLevelWindow(topLevel))
             return;
 
-        if (IsNewTabDefaultSuppressed(topLevel))
-            return;
-
-        await Task.Delay(80, _cts.Token);
-
-        IntPtr newTabHandle = GetActiveTabHandle(topLevel);
-        if (newTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(newTabHandle))
-            newTabHandle = suggestedTabHandle;
-
-        if (newTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(newTabHandle))
-            return;
-
-        string? newTabLocation = await UiAsync(() => TryGetLocationByTabHandleUi(newTabHandle));
-        if (!IsRealFileSystemLocation(newTabLocation) && newTabHandle == suggestedTabHandle)
-            newTabLocation = suggestedLocation;
-
-        // Sometimes the registration callback arrives before Explorer actually
-        // switches active tab; retry once before deciding alignment behavior.
-        if (IsRealFileSystemLocation(newTabLocation))
+        try
         {
-            await Task.Delay(120, _cts.Token);
+            if (IsNewTabDefaultSuppressed(topLevel))
+                return;
 
-            IntPtr refreshedActiveTab = GetActiveTabHandle(topLevel);
-            if (refreshedActiveTab != IntPtr.Zero && NativeMethods.IsWindow(refreshedActiveTab))
-                newTabHandle = refreshedActiveTab;
+            if (!_newTabDefaultSnapshots.TryGetValue(topLevel, out NewTabDefaultSnapshot baseline))
+                return;
 
-            newTabLocation = await UiAsync(() => TryGetLocationByTabHandleUi(newTabHandle));
+            await Task.Delay(80, _cts.Token);
+
+            int currentTabCount = CountTabs(topLevel);
+            if (!ShouldApplyCachedNewTabAlignment(baseline.TabCount, currentTabCount, baseline.ActiveLocation))
+                return;
+
+            string sourceLocation = baseline.ActiveLocation!;
+
+            IntPtr newTabHandle = GetActiveTabHandle(topLevel);
+            if (newTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(newTabHandle))
+                newTabHandle = suggestedTabHandle;
+
+            if (newTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(newTabHandle))
+                return;
+
+            string? newTabLocation = await UiAsync(() => TryGetLocationByTabHandleUi(newTabHandle));
             if (!IsRealFileSystemLocation(newTabLocation) && newTabHandle == suggestedTabHandle)
                 newTabLocation = suggestedLocation;
+
+            // Sometimes the registration callback arrives before Explorer actually
+            // switches active tab; retry once before deciding alignment behavior.
+            if (IsRealFileSystemLocation(newTabLocation))
+            {
+                await Task.Delay(120, _cts.Token);
+
+                IntPtr refreshedActiveTab = GetActiveTabHandle(topLevel);
+                if (refreshedActiveTab != IntPtr.Zero && NativeMethods.IsWindow(refreshedActiveTab))
+                    newTabHandle = refreshedActiveTab;
+
+                newTabLocation = await UiAsync(() => TryGetLocationByTabHandleUi(newTabHandle));
+                if (!IsRealFileSystemLocation(newTabLocation) && newTabHandle == suggestedTabHandle)
+                    newTabLocation = suggestedLocation;
+            }
+
+            if (ShouldSkipNewTabAlignment(newTabLocation, sourceLocation, _locationIdentity))
+                return;
+
+            bool navigated = await NavigateTabByHandleWithRetry(newTabHandle, sourceLocation, timeoutMs: 420, ct: _cts.Token);
+            if (!navigated)
+                return;
+
+            _ = await WaitUntilTabLocationMatches(newTabHandle, sourceLocation, timeoutMs: 420, pollMs: 60);
+            _logger.Info($"Aligned new Explorer tab to active tab location: {sourceLocation}");
+            RememberNewTabDefaultSnapshot(topLevel, currentTabCount, sourceLocation);
         }
-
-        string? sourceLocation = await UiAsync(() => TryGetPreferredSourceLocationForNewTabUi(topLevel, newTabHandle));
-        if (ShouldSkipNewTabAlignment(newTabLocation, sourceLocation, _locationIdentity))
-            return;
-
-        bool navigated = await NavigateTabByHandleWithRetry(newTabHandle, sourceLocation!, timeoutMs: 420, ct: _cts.Token);
-        if (!navigated)
-            return;
-
-        _ = await WaitUntilTabLocationMatches(newTabHandle, sourceLocation!, timeoutMs: 420, pollMs: 60);
-        _logger.Info($"Aligned new Explorer tab to active tab location: {sourceLocation}");
+        finally
+        {
+            try
+            {
+                await RefreshNewTabDefaultSnapshot(topLevel);
+            }
+            catch (OperationCanceledException)
+            {
+                // ignore
+            }
+            catch
+            {
+                // ignore
+            }
+        }
     }
 
     private static bool ShouldSkipNewTabAlignment(
@@ -1034,33 +1072,72 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         return locationIdentity.AreEquivalent(newTabLocation, sourceLocation);
     }
 
-    private string? TryGetPreferredSourceLocationForNewTabUi(IntPtr topLevel, IntPtr newTabHandle)
+    private static bool ShouldApplyCachedNewTabAlignment(int previousTabCount, int currentTabCount, string? cachedSourceLocation)
     {
-        if (topLevel == IntPtr.Zero || newTabHandle == IntPtr.Zero)
-            return null;
+        if (previousTabCount <= 0)
+            return false;
 
-        List<IntPtr> tabs = GetAllTabHandles(topLevel);
-        if (tabs.Count == 0)
-            return null;
+        if (currentTabCount <= previousTabCount)
+            return false;
 
-        if (tabs.Count >= 2 && tabs[0] == newTabHandle)
+        return IsPhysicalFileSystemLocation(cachedSourceLocation);
+    }
+
+    private void SeedNewTabDefaultSnapshot(IntPtr topLevel)
+    {
+        if (topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel) || !IsExplorerTopLevelWindow(topLevel))
+            return;
+
+        try
         {
-            string? previousActiveLocation = TryGetLocationByTabHandleUi(tabs[1]);
-            if (IsRealFileSystemLocation(previousActiveLocation))
-                return previousActiveLocation;
+            NewTabDefaultSnapshot snapshot = UiAsync(() => CaptureNewTabDefaultSnapshotUi(topLevel)).GetAwaiter().GetResult();
+            _newTabDefaultSnapshots[topLevel] = snapshot;
         }
-
-        foreach (IntPtr tabHandle in tabs)
+        catch
         {
-            if (tabHandle == newTabHandle)
-                continue;
-
-            string? location = TryGetLocationByTabHandleUi(tabHandle);
-            if (IsRealFileSystemLocation(location))
-                return location;
+            // ignore
         }
+    }
 
-        return null;
+    private async Task RefreshNewTabDefaultSnapshot(IntPtr topLevel)
+    {
+        if (_disposed || topLevel == IntPtr.Zero || !NativeMethods.IsWindow(topLevel) || !IsExplorerTopLevelWindow(topLevel))
+            return;
+
+        NewTabDefaultSnapshot snapshot = await UiAsync(() => CaptureNewTabDefaultSnapshotUi(topLevel));
+        _newTabDefaultSnapshots[topLevel] = snapshot;
+    }
+
+    private NewTabDefaultSnapshot CaptureNewTabDefaultSnapshotUi(IntPtr topLevel)
+    {
+        int tabCount = CountTabs(topLevel);
+        string? activeLocation = null;
+
+        IntPtr activeTab = GetActiveTabHandle(topLevel);
+        if (activeTab != IntPtr.Zero && NativeMethods.IsWindow(activeTab))
+            activeLocation = TryGetLocationByTabHandleUi(activeTab);
+
+        return new NewTabDefaultSnapshot(tabCount, activeLocation, DateTimeOffset.UtcNow);
+    }
+
+    private void RememberNewTabDefaultSnapshot(IntPtr topLevel, int tabCount, string? activeLocation)
+    {
+        if (topLevel == IntPtr.Zero)
+            return;
+
+        _newTabDefaultSnapshots[topLevel] = new NewTabDefaultSnapshot(tabCount, activeLocation, DateTimeOffset.UtcNow);
+    }
+
+    public static void SuppressNewTabDefaultForWindow(IntPtr explorerTopLevel, TimeSpan? duration = null)
+    {
+        if (explorerTopLevel == IntPtr.Zero)
+            return;
+
+        TimeSpan effectiveDuration = duration ?? ExternalSuppressionDefaultTtl;
+        if (effectiveDuration <= TimeSpan.Zero)
+            return;
+
+        _externalSuppressNewTabDefaultUntil[explorerTopLevel] = DateTimeOffset.UtcNow.Add(effectiveDuration);
     }
 
     private void SuppressNewTabDefaultBehavior(IntPtr explorerTopLevel, TimeSpan duration)
@@ -1073,16 +1150,27 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
 
     private bool IsNewTabDefaultSuppressed(IntPtr explorerTopLevel)
     {
-        if (!_suppressNewTabDefaultUntil.TryGetValue(explorerTopLevel, out DateTimeOffset untilUtc))
-            return false;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
 
-        if (untilUtc <= DateTimeOffset.UtcNow)
+        bool localSuppressed = false;
+        if (_suppressNewTabDefaultUntil.TryGetValue(explorerTopLevel, out DateTimeOffset untilUtc))
         {
-            _suppressNewTabDefaultUntil.TryRemove(explorerTopLevel, out _);
-            return false;
+            if (untilUtc > now)
+                localSuppressed = true;
+            else
+                _suppressNewTabDefaultUntil.TryRemove(explorerTopLevel, out _);
         }
 
-        return true;
+        bool externalSuppressed = false;
+        if (_externalSuppressNewTabDefaultUntil.TryGetValue(explorerTopLevel, out DateTimeOffset externalUntilUtc))
+        {
+            if (externalUntilUtc > now)
+                externalSuppressed = true;
+            else
+                _externalSuppressNewTabDefaultUntil.TryRemove(explorerTopLevel, out _);
+        }
+
+        return localSuppressed || externalSuppressed;
     }
 
     private void OnExplorerObjectCreate(
@@ -1280,6 +1368,25 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         {
             _lastExplorerForeground = hwnd;
             _mainExplorerTopLevel = hwnd;
+
+            if (!_cts.IsCancellationRequested)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await RefreshNewTabDefaultSnapshot(hwnd);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // ignore
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
+                }, _cts.Token);
+            }
         }
     }
 
@@ -1320,6 +1427,8 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         _pending.TryRemove(hwnd, out _);
         _newTabDefaultInFlight.TryRemove(hwnd, out _);
         _suppressNewTabDefaultUntil.TryRemove(hwnd, out _);
+        _newTabDefaultSnapshots.TryRemove(hwnd, out _);
+        _externalSuppressNewTabDefaultUntil.TryRemove(hwnd, out _);
         _tabIndexCache.TryRemove(hwnd, out _);
     }
 
@@ -1832,6 +1941,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         }
 
         TryBringToForeground(targetTopLevel);
+        RememberNewTabDefaultSnapshot(targetTopLevel, CountTabs(targetTopLevel), location);
         return true;
     }
 
@@ -2342,6 +2452,20 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         return false;
     }
 
+    private static bool IsPhysicalFileSystemLocation(string? location)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+            return false;
+
+        if (location.StartsWith("\\\\", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (location.Length >= 3 && char.IsLetter(location[0]) && location[1] == ':' && (location[2] == '\\' || location[2] == '/'))
+            return true;
+
+        return false;
+    }
+
     private static bool IsTabNavigableLocation(string? location)
     {
         if (IsRealFileSystemLocation(location))
@@ -2516,6 +2640,12 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
                 _newTabDefaultInFlight.TryRemove(hwnd, out _);
         }
 
+        foreach (IntPtr hwnd in _newTabDefaultSnapshots.Keys)
+        {
+            if (!NativeMethods.IsWindow(hwnd))
+                _newTabDefaultSnapshots.TryRemove(hwnd, out _);
+        }
+
         DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddSeconds(-30);
         foreach (var kvp in _pending)
         {
@@ -2527,6 +2657,12 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         {
             if (kvp.Value <= DateTimeOffset.UtcNow)
                 _suppressNewTabDefaultUntil.TryRemove(kvp.Key, out _);
+        }
+
+        foreach (var kvp in _externalSuppressNewTabDefaultUntil)
+        {
+            if (kvp.Value <= DateTimeOffset.UtcNow || !NativeMethods.IsWindow(kvp.Key))
+                _externalSuppressNewTabDefaultUntil.TryRemove(kvp.Key, out _);
         }
 
         _nativeBrowseFallbackBypass.CleanupExpired();
