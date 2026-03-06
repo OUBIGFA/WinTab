@@ -16,11 +16,22 @@ English | [简体中文](README.md)
 
 ---
 
-## Introduction
+## Overview
 
-WinTab is an open-source Windows window tab manager. It intercepts system folder-open events so you can manage File Explorer windows as **browser-style tabs** — all within a single window.
+WinTab is an open-source tab manager for Windows Explorer. It intercepts or absorbs folder-open requests and routes them into tabs inside an existing Explorer window whenever possible, instead of leaving every navigation as a separate top-level window.
 
-Thanks to its fully event-driven Win32 architecture, **CPU usage stays near 0% at idle**, with a memory footprint of roughly 30–80 MB.
+The project uses an event-driven Win32 + COM architecture and is designed for long-running background use without polling loops.
+
+---
+
+## Recent Improvements
+
+Recent fixes and behavior refinements focused on these areas:
+
+- **Better system-folder compatibility**: improved normalization and navigation for Shell namespace targets such as `shell:`, `::{GUID}`, and bare GUID values.
+- **Fixed “inherit current tab path” behavior**: when enabled, a newly created tab now correctly aligns to the active tab path even if Explorer first opens that tab at `This PC`.
+- **Reduced conversion flicker**: when direct interception is not possible and WinTab has to convert a newly opened Explorer window into a tab, the source window is hidden earlier and kept suppressed during conversion.
+- **Expanded regression coverage**: additional tests now cover path normalization, Shell namespace navigation, and new-tab default correction logic.
 
 ---
 
@@ -28,23 +39,24 @@ Thanks to its fully event-driven Win32 architecture, **CPU usage stays near 0% a
 
 ### Core
 
-- **Tab interception**: Catches folder-open requests from the OS or other apps and routes them into the current WinTab window as new tabs — no new windows
-- **Clone current path**: New tabs default to the current directory instead of "This PC"
-- **Open subfolders in new tabs**: Entering a subfolder spawns a fresh tab without overwriting your current view
-- **Double-click title to close**: Double-click a tab's title bar to close it — equivalent to a middle-click
+- **Folder-open interception**: captures folder-open requests from the OS or other apps and opens them as tabs in an existing Explorer window whenever possible.
+- **Inherit current tab path**: new tabs can default to the active tab path instead of `This PC`.
+- **Open subfolders in new tabs**: optionally keep the current view and open child folders in separate tabs.
+- **Double-click to close tab**: optionally close an Explorer tab by double-clicking its title.
 
 ### System Integration
 
-- **Tray resident**: Auto-start at boot + start hidden in tray; restore any time from the notification area
-- **Tray icon toggle**: Show or hide the WinTab icon in the system notification area independently
-- **Themes**: Light and dark modes
-- **Bilingual UI**: Simplified Chinese / English, instant switch in Settings
+- **Tray resident**: supports start minimized, tray residency, and restore from the notification area.
+- **Run at startup**: optional startup integration.
+- **Theme support**: light and dark modes.
+- **Bilingual UI**: instant switch between Simplified Chinese and English.
 
 ### Reliability
 
-- Automatic run log and crash log generation
-- Registry changes are automatically restored on exit or uninstall — no leftover state
-- Built-in registry state self-check on startup to prevent environment corruption
+- **Low idle overhead**: event-driven architecture with near-zero idle CPU usage.
+- **Runtime and crash logs**: useful for diagnosing interception, navigation, and conversion behavior.
+- **Registry self-check**: validates the Explorer open-verb takeover state on startup.
+- **State restoration on exit/uninstall**: restores registry entries that WinTab has taken over.
 
 ---
 
@@ -54,56 +66,105 @@ Thanks to its fully event-driven Win32 architecture, **CPU usage stays near 0% a
 |---|---|
 | OS | Windows 10 / 11 (x64 only) |
 | Runtime | [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0) |
-| Recommended | Windows 11 (full tab interception support) |
+| Recommended | Windows 11 |
 
-> **Note**: The folder open-verb interception feature requires Windows 11 (`10.0.22000+`). The app runs on Windows 10 but this feature will be unavailable.
+> Note: full Explorer tab interception depends on the Windows 11 Explorer tab environment. The app can still run on Windows 10, but some tab takeover features are unavailable there.
+
+---
+
+## How It Works
+
+WinTab handles Explorer navigations with two layers:
+
+### 1. Direct interception (preferred)
+
+When the open request can be intercepted before Explorer creates a new window:
+
+```text
+System / app opens a folder
+  -> RegistryOpenVerbInterceptor / ShellBridge intercepts the request
+  -> Named Pipe forwards it to the main process
+  -> WinTab locates an existing Explorer window
+  -> The target opens directly as a new tab
+```
+
+This is the ideal path because it avoids the “open window, then close/merge it” sequence entirely.
+
+### 2. Auto-convert fallback
+
+If a new Explorer window cannot be intercepted in advance, WinTab falls back to:
+
+- watching for new Explorer top-level windows
+- hiding the new window as early as possible
+- resolving its target location
+- reopening that location in an existing Explorer window as a tab
+- closing the source window
+
+This fallback cannot eliminate window creation at the OS level, but the current implementation reduces visible flicker as much as possible.
+
+---
+
+## System Folder Compatibility
+
+WinTab now has stronger handling for Shell namespace targets, including:
+
+- `shell:`
+- `::{GUID}`
+- bare GUID values such as `{645FF040-5081-101B-9F08-00AA002F954E}`
+
+These locations are normalized internally and are navigated via `Shell.Application.NameSpace(...)` + `Navigate2(object)` instead of being treated as plain filesystem paths.
+
+This notably improves compatibility with:
+
+- Recycle Bin
+- This PC
+- other Shell namespace folders
 
 ---
 
 ## Download & Install
 
-Visit the [Releases](../../releases) page to get the latest version.
+Get the latest build from the [Releases](../../releases) page.
 
-### Installed Version (Recommended)
+### Installer Build (Recommended)
 
 Download `WinTab_Setup_<version>.exe` and run it.
 
-- Custom installation path supported
-- Automatically detects missing .NET 9 runtime and guides you to download it
-- Auto-detects system language (Chinese / English)
-- Optional **Run at Windows startup** task during setup
+- custom install path supported
+- auto-detects missing .NET 9 Desktop Runtime
+- initializes UI language from the system language
+- can optionally create a Windows startup task
 
-#### Reinstallation
+#### Reinstall Modes
 
-Running the installer when a version is already installed presents two options:
+If WinTab is already installed, the installer supports:
 
 | Mode | Description |
 |---|---|
-| **Uninstall then install (recommended)** | Fully uninstalls the old version first; optionally remove user data |
-| **Install directly** | Overwrites program files, preserves all user settings |
+| Uninstall then install | removes the old version first, then installs the new one; can also remove user data |
+| Install directly | overwrites program files and keeps user settings |
 
-Silent install parameters:
+Silent install example:
 
-```
+```powershell
 WinTab_Setup_<version>.exe /SILENT /REINSTALLMODE=CLEAN /REMOVEUSERDATA=1
 ```
 
 | Parameter | Description |
 |---|---|
-| `/REINSTALLMODE=CLEAN` | Uninstall first, then install |
-| `/REINSTALLMODE=DIRECT` | Overwrite directly (default in silent mode) |
-| `/REMOVEUSERDATA=1` | CLEAN mode only — deletes `%AppData%\Roaming\WinTab` |
+| `/REINSTALLMODE=CLEAN` | uninstall first, then install |
+| `/REINSTALLMODE=DIRECT` | overwrite directly |
+| `/REMOVEUSERDATA=1` | only meaningful in CLEAN mode; removes `%AppData%\WinTab` |
 
----
+### Portable Build
 
-### Portable Version (No Install Required)
+Download `WinTab_<version>_portable.zip`, extract it, and run `WinTab.exe`.
 
-Download `WinTab_<version>_portable.zip` and extract it. Run `WinTab.exe` directly.
+The archive includes a `portable.txt` marker file, so the app automatically switches to portable mode:
 
-The archive contains a `portable.txt` marker file. The app automatically enters portable mode:
-
-- Config and logs are written to a local `data/` folder next to the executable
-- To remove, simply delete the extracted folder
+- config and logs are stored in a local `data/` folder
+- `%AppData%` is not used
+- removal is just deleting the extracted folder
 
 ---
 
@@ -114,16 +175,16 @@ The archive contains a `portable.txt` marker file. The app automatically enters 
 | Type | Path |
 |---|---|
 | Config | `%AppData%\WinTab\settings.json` |
-| Log | `%AppData%\WinTab\logs\wintab.log` |
+| Runtime log | `%AppData%\WinTab\logs\wintab.log` |
 | Crash log | `%AppData%\WinTab\logs\crash.log` |
 
 ### Portable
 
 | Type | Path |
 |---|---|
-| Config | `<extracted folder>\data\settings.json` |
-| Log | `<extracted folder>\data\logs\wintab.log` |
-| Crash log | `<extracted folder>\data\logs\crash.log` |
+| Config | `<app folder>\data\settings.json` |
+| Runtime log | `<app folder>\data\logs\wintab.log` |
+| Crash log | `<app folder>\data\logs\crash.log` |
 
 ### Example `settings.json`
 
@@ -134,84 +195,76 @@ The archive contains a `portable.txt` marker file. The app automatically enters 
   "RunAtStartup": false,
   "Language": "English",
   "Theme": "Light",
-  "EnableExplorerOpenVerbInterception": false,
+  "EnableExplorerOpenVerbInterception": true,
+  "PersistExplorerOpenVerbInterceptionAcrossExit": false,
+  "OpenNewTabFromActiveTabPath": true,
   "OpenChildFolderInNewTabFromActiveTab": false,
-  "CloseTabOnDoubleClick": true,
-  "SchemaVersion": 1
+  "CloseTabOnDoubleClick": false,
+  "EnableAutoConvertExplorerWindows": true,
+  "SchemaVersion": 2
 }
 ```
+
+### Key Settings
+
+| Setting | Purpose |
+|---|---|
+| `EnableExplorerOpenVerbInterception` | enables Explorer open-verb interception |
+| `PersistExplorerOpenVerbInterceptionAcrossExit` | keeps interception active after app exit |
+| `OpenNewTabFromActiveTabPath` | inherits the active tab path for new tabs |
+| `OpenChildFolderInNewTabFromActiveTab` | opens child folders in new tabs |
+| `CloseTabOnDoubleClick` | closes a tab on double-click |
+| `EnableAutoConvertExplorerWindows` | converts non-intercepted Explorer windows into tabs |
 
 ---
 
 ## Resource Usage
 
-WinTab is built for long-term background residency. All monitoring is purely event-driven — **no polling loops**.
+WinTab is designed for long-lived background execution and avoids active polling.
 
-| Resource | Idle | Active use |
+| Resource | Idle | Active |
 |---|---|---|
-| CPU | ≈ 0% | Brief spikes on window events |
-| Memory | 30–80 MB | No significant growth |
-| Disk | No background writes | Log / settings writes only |
-| Network | None | None |
+| CPU | near 0% | short spikes during window events, navigation, or conversion |
+| Memory | about 30–50 MB | no meaningful sustained growth |
+| Disk | no background churn | settings/log writes only |
+| Network | none | none |
 
-**Internal mechanisms**:
+Main internal mechanisms:
 
-- `SetWinEventHook` (Win32) — passive system window event callbacks, CPU-friendly
-- `NamedPipeServerStream.WaitForConnectionAsync` — async `await` blocks until a client connects; no CPU consumed while idle
-- `EventWaitHandle.WaitOne()` — OS-level blocking for single-instance activation signals
-- `RegistryOpenVerbInterceptor` — one-time self-check at startup only; no periodic registry polling
+- `SetWinEventHook`
+- `NamedPipeServerStream.WaitForConnectionAsync`
+- `EventWaitHandle.WaitOne()`
+- Explorer COM navigation and Shell namespace resolution
 
 ---
 
 ## Uninstall
 
-From the **Uninstall** page inside the app:
+From the in-app uninstall page you can choose:
 
-- **Keep user data** (default): Removes program files, leaves `%AppData%\WinTab` intact
-- **Full cleanup**: Check "Remove user data" to also delete config and logs
+- **Keep user data**: remove program files and keep config/logs
+- **Full cleanup**: remove config/logs as well
 
-The uninstall process automatically restores all `Folder/Directory/Drive` open-verb registry entries to their original values.
-
----
-
-## How It Works
-
-```
-System / app opens a folder
-        │
-        ▼
-RegistryOpenVerbInterceptor intercepts the open-verb
-        │
-        ▼
-ExplorerOpenVerbHandler spawns (--wintab-open-folder)
-        │
-        ▼
-NamedPipe → ExplorerOpenRequestServer (main process)
-        │
-        ▼
-WindowManager finds / activates an existing Explorer window
-        │
-        ▼
-Folder opens as a new tab in the existing window
-```
+The uninstall flow restores the Explorer open-verb registry entries that WinTab took over.
 
 ---
 
 ## Project Structure
 
-```
+```text
 src/
   WinTab.App/             WPF host (DI, pages, services, tray, startup)
-  WinTab.UI/              UI resources & localization (zh/en)
+  WinTab.UI/              UI resources and localization
   WinTab.Core/            Core models and interfaces
-  WinTab.Platform.Win32/  Win32 interop and window manipulation
-  WinTab.Persistence/     Config and path management
+  WinTab.Platform.Win32/  Win32 interop and window operations
+  WinTab.Persistence/     Configuration, paths, persistence
   WinTab.Diagnostics/     Logging and crash handling
+  WinTab.ShellBridge/     Shell open-verb / DelegateExecute bridge
   WinTab.Tests/           Unit tests
 installers/
   WinTab.iss              Inno Setup installer script
 .github/workflows/
-  build-release.yml       CI/CD (build → test → package → release)
+  build-release.yml       CI / build / test / package
 ```
 
 ---
@@ -220,9 +273,9 @@ installers/
 
 ### Prerequisites
 
+- Windows
 - .NET SDK 9.x
-- Windows (PowerShell recommended)
-- Optional: [Inno Setup 6](https://jrsoftware.org/isinfo.php) (for building the installer)
+- optional: [Inno Setup 6](https://jrsoftware.org/isinfo.php)
 
 ### Build & Test
 
@@ -251,10 +304,10 @@ Compress-Archive publish/win-x64\* publish/WinTab_1.0.0_portable.zip -Force
 
 ---
 
-## Automated Releases (GitHub Actions)
+## Automated Releases
 
-- **Push to `master`**: Builds, tests, packages and uploads as Actions Artifacts
-- **Push a tag** (e.g., `1.0.0`): Creates a GitHub Release with the installer, portable zip, and their SHA256 files
+- push to `master`: build, test, package, upload GitHub Actions artifacts
+- push a version tag such as `1.0.0`: create a GitHub Release with installer, portable ZIP, and checksums
 
 ```powershell
 git push origin master
@@ -266,17 +319,17 @@ git push origin 1.0.0
 
 ## FAQ
 
-**Q: I get a prompt about missing .NET 9 runtime.**
-A: The installer will guide you to the download page. You can also manually visit https://dotnet.microsoft.com/download/dotnet/9.0 and download the Desktop Runtime.
+**Q: The app says .NET 9 Desktop Runtime is missing.**  
+A: The installer guides you to the download page, or you can install it manually from [dotnet 9 downloads](https://dotnet.microsoft.com/download/dotnet/9.0).
 
-**Q: Will my settings survive an uninstall?**
-A: Yes, by default. Check "Remove user data" during uninstall to delete them.
+**Q: Does WinTab work on Windows 10?**  
+A: The app runs on Windows 10, but some Explorer tab takeover features depend on the Windows 11 Explorer tab environment.
 
-**Q: Does it work on Windows 10?**
-A: The app runs on Windows 10, but the folder interception feature requires the Windows 11 File Explorer tab interface and will not function on Windows 10.
+**Q: Why do I still sometimes see a new Explorer window flash briefly?**  
+A: Some scenarios cannot be intercepted before Explorer creates the window, so WinTab must use the fallback “create window, then convert it into a tab” path. The current implementation suppresses visibility aggressively, but Explorer behavior still sets the lower bound.
 
-**Q: The GitHub Release wasn't created automatically. Why?**
-A: Verify that a `x.y.z` format tag was pushed, the workflow file exists in the tagged commit, Actions is enabled in the repository, and the workflow has `contents: write` permission.
+**Q: Are settings preserved after uninstall?**  
+A: Yes by default. They are removed only if you choose full cleanup.
 
 ---
 
@@ -286,7 +339,7 @@ Released under the [MIT License](LICENSE).
 
 ---
 
-## Acknowledgements
+## Credits
 
-- Explorer tab handling logic adapted from [ExplorerTabUtility](https://github.com/w4po/ExplorerTabUtility) (MIT)
-- Inno Setup Simplified Chinese translation from the community, stored at `installers/Languages/ChineseSimplified.isl`
+- Explorer tab handling logic is based on and adapted from [ExplorerTabUtility](https://github.com/w4po/ExplorerTabUtility)
+- Installer packaging uses Inno Setup
