@@ -24,6 +24,8 @@ public sealed class SettingsStore : IDisposable
 
     private readonly string _settingsPath;
     private readonly Logger? _logger;
+    private readonly Func<string, bool> _fileExists;
+    private readonly Func<string, string> _readAllText;
     private readonly object _lock = new();
     private Timer? _debounceTimer;
     private AppSettings? _pendingSave;
@@ -35,10 +37,24 @@ public sealed class SettingsStore : IDisposable
     /// <param name="settingsPath">Absolute path to the settings JSON file.</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
     public SettingsStore(string settingsPath, Logger? logger = null)
+        : this(settingsPath, logger, File.Exists, File.ReadAllText)
+    {
+    }
+
+    public SettingsStore(
+        string settingsPath,
+        Logger? logger,
+        Func<string, bool> fileExists,
+        Func<string, string> readAllText)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(settingsPath);
+        ArgumentNullException.ThrowIfNull(fileExists);
+        ArgumentNullException.ThrowIfNull(readAllText);
+
         _settingsPath = settingsPath;
         _logger = logger;
+        _fileExists = fileExists;
+        _readAllText = readAllText;
     }
 
     /// <summary>
@@ -51,13 +67,13 @@ public sealed class SettingsStore : IDisposable
         {
             try
             {
-                if (!File.Exists(_settingsPath))
+                if (!_fileExists(_settingsPath))
                 {
                     _logger?.Info("Settings file not found; returning defaults.");
                     return new AppSettings();
                 }
 
-                string json = File.ReadAllText(_settingsPath);
+                string json = _readAllText(_settingsPath);
                 AppSettings? settings = JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions);
 
                 if (settings is null)
@@ -89,6 +105,11 @@ public sealed class SettingsStore : IDisposable
             catch (IOException ex)
             {
                 _logger?.Error($"Failed to read settings file: {ex.Message}");
+                return new AppSettings();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                _logger?.Error($"Access denied while reading settings file: {ex.Message}");
                 return new AppSettings();
             }
         }

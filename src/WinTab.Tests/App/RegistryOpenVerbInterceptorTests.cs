@@ -112,6 +112,21 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
         backup.Should().NotBeNull();
     }
 
+    [Fact]
+    public void RestorePolicy_WhenOnlyDelegateExecuteExists_ShouldKeepCommandKey()
+    {
+        MethodInfo? method = typeof(RegistryOpenVerbInterceptor).GetMethod(
+            "ShouldDeleteCommandKeyOnRestore",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        method.Should().NotBeNull("restore policy must preserve DelegateExecute-only handlers");
+
+        object? shouldDelete = method?.Invoke(null, [null, "{A1111111-2222-3333-4444-555555555555}"]);
+        shouldDelete.Should().BeOfType<bool>();
+        ((bool)shouldDelete!).Should().BeFalse(
+            "when DelegateExecute is present, restore must not drop the shell handler");
+    }
+
     public void Dispose()
     {
         _logger.Dispose();
@@ -182,7 +197,8 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
                     ClassName = "Folder",
                     Verb = "open",
                     DefaultVerb = "open",
-                    CommandDefault = "explorer.exe \"%1\""
+                    CommandDefault = "explorer.exe \"%1\"",
+                    DelegateExecute = (string?)null
                 }
             },
             Sha256 = hash

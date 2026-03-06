@@ -33,6 +33,8 @@ public sealed class BehaviorViewModelTests
 
         context.Settings.EnableAutoConvertExplorerWindows.Should().BeTrue();
         context.Settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
+        context.AutoConvertController.LastSetEnabledValue.Should().BeTrue();
+        context.AutoConvertController.CallCount.Should().Be(1);
     }
 
     [Fact]
@@ -44,6 +46,8 @@ public sealed class BehaviorViewModelTests
 
         context.Settings.EnableAutoConvertExplorerWindows.Should().BeFalse();
         context.Settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
+        context.AutoConvertController.LastSetEnabledValue.Should().BeFalse();
+        context.AutoConvertController.CallCount.Should().Be(1);
     }
 
     private sealed class TestContext : IDisposable
@@ -54,6 +58,7 @@ public sealed class BehaviorViewModelTests
         public Logger Logger { get; }
         public SettingsStore SettingsStore { get; }
         public ExplorerTabMouseHookService MouseHookService { get; }
+        public FakeAutoConvertController AutoConvertController { get; }
         public BehaviorViewModel ViewModel { get; }
 
         public TestContext(bool enableAutoConvert)
@@ -71,11 +76,13 @@ public sealed class BehaviorViewModelTests
             };
 
             MouseHookService = new ExplorerTabMouseHookService(Settings, Logger);
+            AutoConvertController = new FakeAutoConvertController();
 
             ViewModel = new BehaviorViewModel(
                 Settings,
                 SettingsStore,
-                MouseHookService);
+                MouseHookService,
+                AutoConvertController);
         }
 
         public void Dispose()
@@ -86,6 +93,20 @@ public sealed class BehaviorViewModelTests
 
             if (Directory.Exists(_tempDir))
                 Directory.Delete(_tempDir, recursive: true);
+        }
+    }
+
+    public sealed class FakeAutoConvertController : IExplorerAutoConvertController
+    {
+        public bool IsAutoConvertEnabled { get; private set; }
+        public bool? LastSetEnabledValue { get; private set; }
+        public int CallCount { get; private set; }
+
+        public void SetAutoConvertEnabled(bool enabled)
+        {
+            IsAutoConvertEnabled = enabled;
+            LastSetEnabledValue = enabled;
+            CallCount++;
         }
     }
 }

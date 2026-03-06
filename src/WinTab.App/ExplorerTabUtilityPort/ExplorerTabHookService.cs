@@ -21,7 +21,7 @@ namespace WinTab.App.ExplorerTabUtilityPort;
 /// Uses WinEvent hooks for new windows and COM (Shell.Application) to
 /// navigate the correct tab object (avoids leaving a "This PC" tab behind).
 /// </summary>
-public sealed class ExplorerTabHookService : IDisposable
+public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertController
 {
     public async Task<bool> OpenLocationAsTabAsync(string location, IntPtr clickTimeForeground = default)
     {
@@ -35,7 +35,7 @@ public sealed class ExplorerTabHookService : IDisposable
             return true;
 
         _logger.Warn($"[AutoConvert] OpenLocationAsTabAsync: in-window open failed, fallback to normal explorer open for '{location}'.");
-        return TryLaunchExplorerWindow(location);
+        return TryLaunchExplorerWindowWithBypassPolicy(location);
     }
 
     public async Task<bool> OpenInterceptedLocationAsTabAsync(string location, IntPtr clickTimeForeground = default)
@@ -100,7 +100,7 @@ public sealed class ExplorerTabHookService : IDisposable
         if (targetTopLevel == IntPtr.Zero)
         {
             _logger.Info($"[Intercept] No active Explorer window available; fallback to standalone Explorer launch: {location}");
-            bool launched = TryLaunchExplorerWindow(location);
+            bool launched = TryLaunchExplorerWindowWithBypassPolicy(location);
             if (!launched)
             {
                 _logger.Warn($"[Intercept] Fallback Explorer launch failed: {location}");
@@ -201,6 +201,19 @@ public sealed class ExplorerTabHookService : IDisposable
             _logger.Warn($"Failed to launch explorer fallback for '{location}': {ex.Message}");
             return false;
         }
+    }
+
+    private bool TryLaunchExplorerWindowWithBypassPolicy(string location)
+    {
+        bool shouldBypassAutoConvert = ShouldBypassAutoConvertForLocation(location);
+        if (shouldBypassAutoConvert)
+            _nativeBrowseFallbackBypass.Register(location, NativeBrowseFallbackBypassTtl);
+
+        bool launched = TryLaunchExplorerWindow(location);
+        if (!launched && shouldBypassAutoConvert)
+            _nativeBrowseFallbackBypass.Revoke(location);
+
+        return launched;
     }
 
     private async Task<CurrentNavigateAttemptResult> TryNavigateCurrentActiveTabLikeExplorer(string location, IntPtr clickTimeForeground)
@@ -311,7 +324,7 @@ public sealed class ExplorerTabHookService : IDisposable
     private readonly NativeBrowseFallbackBypassStore _nativeBrowseFallbackBypass;
     private readonly AppSettings _settings;
     private readonly Logger _logger;
-    private readonly bool _autoConvertEnabled;
+    private volatile bool _autoConvertEnabled;
 
     private readonly Action<int> _windowRegisteredHandler;
     private readonly NativeMethods.WinEventDelegate _createEventCallback;
@@ -364,8 +377,7 @@ public sealed class ExplorerTabHookService : IDisposable
         _windowEvents.WindowForegroundChanged += OnWindowForegroundChanged;
         _windowEvents.WindowDestroyed += OnWindowDestroyed;
 
-        if (_autoConvertEnabled)
-            _windowEvents.WindowShown += OnWindowShown;
+        _windowEvents.WindowShown += OnWindowShown;
 
         IntPtr currentForeground = NativeMethods.GetForegroundWindow();
         if (currentForeground != IntPtr.Zero && IsExplorerTopLevelWindow(currentForeground))
@@ -393,13 +405,10 @@ public sealed class ExplorerTabHookService : IDisposable
         // - on-demand mode: observe newly created tab windows for default new-tab behavior
         _winEventHookManager.Start();
 
-        if (!_autoConvertEnabled)
-        {
+        if (_autoConvertEnabled)
+            _logger.Info("ExplorerTabHookService started (ETU-style, no COMReference).");
+        else
             _logger.Info("ExplorerTabHookService started in on-demand mode (auto-convert disabled).");
-            return;
-        }
-
-        _logger.Info("ExplorerTabHookService started (ETU-style, no COMReference).");
 
         // Periodic cleanup of stale dictionary entries (every 5 minutes).
         var dispatcher = TryGetUiDispatcher();
@@ -445,7 +454,7 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private ExistingTabCandidate? TryFindExistingTabByLocationUi(string location, IntPtr excludeTopLevel, IntPtr requiredTopLevel)
     {
-        if (!IsRealFileSystemLocation(location))
+        if (!IsTabNavigableLocation(location))
             return null;
 
         IntPtr foreground = NativeMethods.GetForegroundWindow();
@@ -460,7 +469,7 @@ public sealed class ExplorerTabHookService : IDisposable
             {
                 string? tabLocation = _shellComNavigator.TryGetComLocation(tab);
                 if (tabLocation is null ||
-                    !IsRealFileSystemLocation(tabLocation) ||
+                    !IsTabNavigableLocation(tabLocation) ||
                     !_locationIdentity.AreEquivalent(tabLocation, location))
                     continue;
 
@@ -1316,7 +1325,7 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private void OnWindowShown(object? sender, IntPtr hwnd)
     {
-        if (_disposed || hwnd == IntPtr.Zero)
+        if (_disposed || hwnd == IntPtr.Zero || !_autoConvertEnabled)
             return;
 
         // Even when WindowRegistered is hooked, SHOW can still arrive earlier or be used for re-hide.
@@ -1325,6 +1334,9 @@ public sealed class ExplorerTabHookService : IDisposable
 
     private void TryQueueShownCandidate(IntPtr hwnd)
     {
+        if (!_autoConvertEnabled)
+            return;
+
         if (_pending.ContainsKey(hwnd))
             return;
 
@@ -1457,7 +1469,7 @@ public sealed class ExplorerTabHookService : IDisposable
         try
         {
             string? location = preferredLocation;
-            bool hasReadyLocation = IsRealFileSystemLocation(location);
+            bool hasReadyLocation = IsTabNavigableLocation(location);
 
             IntPtr sourceTabHandle = preferredTabHandle;
             if (!hasReadyLocation && (sourceTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(sourceTabHandle)))
@@ -1511,7 +1523,7 @@ public sealed class ExplorerTabHookService : IDisposable
             if (!hasReadyLocation)
             {
                 location = await WaitForRealLocationByTabHandle(sourceTabHandle, sourceTopLevel, timeoutMs: 500, ct: _cts.Token);
-                hasReadyLocation = IsRealFileSystemLocation(location);
+                hasReadyLocation = IsTabNavigableLocation(location);
             }
 
             if (string.IsNullOrWhiteSpace(location))
@@ -1879,7 +1891,7 @@ public sealed class ExplorerTabHookService : IDisposable
             string? location = await UiAsync(() =>
                 TryGetLocationByTabHandleUi(tabHandle) ?? TryGetLocationByTopLevelUi(topLevelHwnd));
 
-            if (IsRealFileSystemLocation(location))
+            if (IsTabNavigableLocation(location))
                 return location;
 
             await Task.Delay(60, ct);
@@ -2289,7 +2301,7 @@ public sealed class ExplorerTabHookService : IDisposable
         while (Environment.TickCount - start < timeoutMs)
         {
             string? location = _shellComNavigator.TryGetComLocation(comTab);
-            if (IsRealFileSystemLocation(location))
+            if (IsTabNavigableLocation(location))
             {
                 if (string.Equals(location, last, StringComparison.OrdinalIgnoreCase))
                     stable++;
@@ -2326,6 +2338,42 @@ public sealed class ExplorerTabHookService : IDisposable
 
         if (location.Length >= 3 && char.IsLetter(location[0]) && location[1] == ':' && (location[2] == '\\' || location[2] == '/'))
             return true;
+
+        return false;
+    }
+
+    private static bool IsTabNavigableLocation(string? location)
+    {
+        if (IsRealFileSystemLocation(location))
+            return true;
+
+        return IsShellNamespaceLocation(location);
+    }
+
+    private static bool ShouldBypassAutoConvertForLocation(string? location)
+    {
+        return IsShellNamespaceLocation(location);
+    }
+
+    private static bool IsShellNamespaceLocation(string? location)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+            return false;
+
+        string token = location.Trim();
+        if (token.StartsWith("::", StringComparison.Ordinal))
+            return true;
+
+        if (token.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (token.Length >= 2 &&
+            token[0] == '{' &&
+            token[^1] == '}' &&
+            Guid.TryParse(token, out _))
+        {
+            return true;
+        }
 
         return false;
     }
@@ -2522,5 +2570,25 @@ public sealed class ExplorerTabHookService : IDisposable
 
         _interceptOpenGate.Dispose();
         _cts.Dispose();
+    }
+
+    public bool IsAutoConvertEnabled => _autoConvertEnabled;
+
+    public void SetAutoConvertEnabled(bool enabled)
+    {
+        if (_disposed)
+            return;
+
+        bool previous = _autoConvertEnabled;
+        if (previous == enabled)
+            return;
+
+        _autoConvertEnabled = enabled;
+        _settings.EnableAutoConvertExplorerWindows = enabled;
+
+        if (enabled)
+            _logger.Info("Explorer auto-convert enabled at runtime.");
+        else
+            _logger.Info("Explorer auto-convert disabled at runtime.");
     }
 }

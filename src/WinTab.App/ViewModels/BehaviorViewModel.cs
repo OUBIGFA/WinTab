@@ -10,6 +10,7 @@ public partial class BehaviorViewModel : ObservableObject
     private readonly AppSettings _settings;
     private readonly SettingsStore _settingsStore;
     private readonly ExplorerTabMouseHookService _tabMouseHookService;
+    private readonly IExplorerAutoConvertController _autoConvertController;
     private bool _isUpdatingCloseTabOnDoubleClickToggle;
 
     [ObservableProperty]
@@ -29,11 +30,13 @@ public partial class BehaviorViewModel : ObservableObject
     public BehaviorViewModel(
         AppSettings settings,
         SettingsStore settingsStore,
-        ExplorerTabMouseHookService tabMouseHookService)
+        ExplorerTabMouseHookService tabMouseHookService,
+        IExplorerAutoConvertController autoConvertController)
     {
         _settings = settings;
         _settingsStore = settingsStore;
         _tabMouseHookService = tabMouseHookService;
+        _autoConvertController = autoConvertController;
 
         _openNewTabFromActiveTabPath = settings.OpenNewTabFromActiveTabPath;
         _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
@@ -56,6 +59,7 @@ public partial class BehaviorViewModel : ObservableObject
     partial void OnEnableAutoConvertExplorerWindowsChanged(bool value)
     {
         _settings.EnableAutoConvertExplorerWindows = value;
+        _autoConvertController.SetAutoConvertEnabled(value);
         SaveSettings();
         OnPropertyChanged(nameof(IsOpenChildFolderInNewTabOptionEnabled));
     }

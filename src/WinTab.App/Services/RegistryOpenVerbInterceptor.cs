@@ -201,6 +201,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 Verb = verb,
                 DefaultVerb = ReadEffectiveDefaultVerb(cls),
                 CommandDefault = ReadEffectiveCommandDefaultValue(cls, verb),
+                DelegateExecute = ReadEffectiveDelegateExecuteValue(cls, verb),
             })).ToList(),
         };
 
@@ -446,7 +447,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                     string.Equals(e.Verb, verb, StringComparison.OrdinalIgnoreCase));
 
                 string commandKey = $@"{cls}\shell\{verb}\command";
-                if (entry is null || entry.CommandDefault is null)
+                if (entry is null || ShouldDeleteCommandKeyOnRestore(entry.CommandDefault, entry.DelegateExecute))
                 {
                     root.DeleteSubKeyTree(commandKey, throwOnMissingSubKey: false);
                 }
@@ -455,8 +456,15 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                     using RegistryKey k = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{commandKey}", writable: true)
                         ?? throw new InvalidOperationException("Failed to create registry key.");
 
-                    k.SetValue(string.Empty, entry.CommandDefault, RegistryValueKind.String);
-                    k.DeleteValue(DelegateExecuteValueName, throwOnMissingValue: false);
+                    if (entry.CommandDefault is null)
+                        k.DeleteValue(string.Empty, throwOnMissingValue: false);
+                    else
+                        k.SetValue(string.Empty, entry.CommandDefault, RegistryValueKind.String);
+
+                    if (entry.DelegateExecute is null)
+                        k.DeleteValue(DelegateExecuteValueName, throwOnMissingValue: false);
+                    else
+                        k.SetValue(DelegateExecuteValueName, entry.DelegateExecute, RegistryValueKind.String);
                 }
             }
         }
@@ -598,6 +606,11 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         return Convert.ToHexString(hash);
     }
 
+    private static bool ShouldDeleteCommandKeyOnRestore(string? commandDefault, string? delegateExecute)
+    {
+        return commandDefault is null && delegateExecute is null;
+    }
+
     private sealed record BackupFile
     {
         public required string ExePath { get; init; }
@@ -612,5 +625,6 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         public required string Verb { get; init; }
         public string? DefaultVerb { get; init; }
         public string? CommandDefault { get; init; }
+        public string? DelegateExecute { get; init; }
     }
 }

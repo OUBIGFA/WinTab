@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+using System.Reflection;
 using FluentAssertions;
 using WinTab.Core.Enums;
 using WinTab.Core.Models;
+using WinTab.Diagnostics;
 using WinTab.Persistence;
 using Xunit;
 
@@ -107,5 +109,27 @@ public sealed class SettingsStoreTests
             if (Directory.Exists(tempDir))
                 Directory.Delete(tempDir, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Load_WhenReadThrowsUnauthorizedAccess_ShouldReturnDefaults()
+    {
+        ConstructorInfo? ctor = typeof(SettingsStore).GetConstructor(
+            BindingFlags.Public | BindingFlags.Instance,
+            binder: null,
+            [typeof(string), typeof(Logger), typeof(Func<string, bool>), typeof(Func<string, string>)],
+            modifiers: null);
+
+        ctor.Should().NotBeNull("settings load should be testable against access-denied scenarios");
+
+        Func<string, bool> fileExists = _ => true;
+        Func<string, string> readAllText = _ => throw new UnauthorizedAccessException("denied");
+
+        var store = (SettingsStore?)ctor?.Invoke(["ignored", null!, fileExists, readAllText]);
+        store.Should().NotBeNull();
+
+        AppSettings settings = store!.Load();
+        settings.SchemaVersion.Should().Be(2);
+        settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
     }
 }

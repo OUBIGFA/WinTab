@@ -183,7 +183,7 @@ public partial class App : Application
 
                 AppSettings? settings = _serviceProvider?.GetService<AppSettings>();
                 if (settings is not null &&
-                    settings.EnableExplorerOpenVerbInterception)
+                    ShouldDisableExplorerOpenVerbInterceptionOnExit(settings))
                 {
                     var interceptor = _serviceProvider?.GetService<RegistryOpenVerbInterceptor>();
                     interceptor?.DisableAndRestore();
@@ -243,6 +243,7 @@ public partial class App : Application
 
         // Back to native Explorer-tab pipeline (not overlay hijack).
         services.AddSingleton<ExplorerTabHookService>();
+        services.AddSingleton<IExplorerAutoConvertController>(sp => sp.GetRequiredService<ExplorerTabHookService>());
         services.AddSingleton<ExplorerTabMouseHookService>();
 
         services.AddSingleton<TrayIconController>(sp =>
@@ -285,6 +286,13 @@ public partial class App : Application
 
         _explicitShutdownRequested = true;
         Current.Shutdown();
+    }
+
+    private static bool ShouldDisableExplorerOpenVerbInterceptionOnExit(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.EnableExplorerOpenVerbInterception &&
+               !settings.PersistExplorerOpenVerbInterceptionAcrossExit;
     }
 
     public void SetTrayIconVisibility(bool visible)

@@ -3,15 +3,19 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
+using WinTab.Core.Models;
 using WinTab.App.Views.Pages;
 
 namespace WinTab.App.Views;
 
 public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
-    public MainWindow(IServiceProvider serviceProvider)
+    private readonly AppSettings _settings;
+
+    public MainWindow(IServiceProvider serviceProvider, AppSettings settings)
     {
         InitializeComponent();
+        _settings = settings;
 
         AddHandler(UIElement.PreviewMouseWheelEvent, new MouseWheelEventHandler(OnAnyPreviewMouseWheel), handledEventsToo: true);
 
@@ -72,7 +76,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (App.IsExplicitShutdownRequested)
+        if (!ShouldMinimizeToTrayOnClose(App.IsExplicitShutdownRequested, _settings.ShowTrayIcon))
         {
             base.OnClosing(e);
             return;
@@ -81,5 +85,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         e.Cancel = true;
         Hide();
         ShowInTaskbar = false;
+    }
+
+    private static bool ShouldMinimizeToTrayOnClose(bool explicitShutdownRequested, bool trayIconVisible)
+    {
+        return !explicitShutdownRequested && trayIconVisible;
     }
 }

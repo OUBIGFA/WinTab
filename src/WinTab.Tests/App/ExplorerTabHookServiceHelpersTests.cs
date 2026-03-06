@@ -25,6 +25,34 @@ public sealed class ExplorerTabHookServiceHelpersTests
         actual.Should().Be(expected);
     }
 
+    [Theory]
+    [InlineData("C:\\Windows", true)]
+    [InlineData("\\\\server\\share", true)]
+    [InlineData("shell:RecycleBinFolder", true)]
+    [InlineData("shell::Downloads", true)]
+    [InlineData("::{645FF040-5081-101B-9F08-00AA002F954E}", true)]
+    [InlineData("{645FF040-5081-101B-9F08-00AA002F954E}", true)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    public void IsTabNavigableLocation_ShouldMatchExpectedRules(string input, bool expected)
+    {
+        bool actual = InvokePrivateStatic<bool>("IsTabNavigableLocation", input);
+        actual.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("shell:RecycleBinFolder", true)]
+    [InlineData("shell::Downloads", true)]
+    [InlineData("::{645FF040-5081-101B-9F08-00AA002F954E}", true)]
+    [InlineData("{645FF040-5081-101B-9F08-00AA002F954E}", true)]
+    [InlineData("C:\\Windows", false)]
+    [InlineData("\\\\server\\share", false)]
+    public void ShouldBypassAutoConvertForLocation_ShouldPreferNativeForNamespaceTargets(string input, bool expected)
+    {
+        bool actual = InvokePrivateStatic<bool>("ShouldBypassAutoConvertForLocation", input);
+        actual.Should().Be(expected);
+    }
+
     [Fact]
     public void IsChildPathOf_ShouldDetectDirectChild()
     {
