@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using FluentAssertions;
 using WinTab.App.ExplorerTabUtilityPort;
+using WinTab.Platform.Win32;
 using Xunit;
 
 namespace WinTab.Tests.App;
@@ -98,6 +99,36 @@ public sealed class ExplorerTabHookServiceHelpersTests
             requiredCurrentWindowNavigation);
 
         actual.Should().Be(expected);
+    }
+
+    [Fact]
+    public void ShouldSkipNewTabAlignment_WhenNewTabIsThisPcAndSourceIsFolder_ShouldBeFalse()
+    {
+        const string thisPcNamespace = "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}";
+        string sourceFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop");
+
+        bool skip = InvokePrivateStatic<bool>(
+            "ShouldSkipNewTabAlignment",
+            thisPcNamespace,
+            sourceFolder,
+            new ShellLocationIdentityService());
+
+        skip.Should().BeFalse(
+            "inherit-current-tab-path should still align when the new tab starts at This PC");
+    }
+
+    [Fact]
+    public void ShouldSkipNewTabAlignment_WhenNewTabAlreadyMatchesSource_ShouldBeTrue()
+    {
+        string sourceFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop");
+
+        bool skip = InvokePrivateStatic<bool>(
+            "ShouldSkipNewTabAlignment",
+            sourceFolder,
+            sourceFolder,
+            new ShellLocationIdentityService());
+
+        skip.Should().BeTrue();
     }
 
     private static T InvokePrivateStatic<T>(string methodName, params object?[] args)

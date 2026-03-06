@@ -983,7 +983,7 @@ public sealed class ExplorerTabHookService : IDisposable
             newTabLocation = suggestedLocation;
 
         // Sometimes the registration callback arrives before Explorer actually
-        // switches active tab; retry once before deciding no action is needed.
+        // switches active tab; retry once before deciding alignment behavior.
         if (IsRealFileSystemLocation(newTabLocation))
         {
             await Task.Delay(120, _cts.Token);
@@ -993,13 +993,12 @@ public sealed class ExplorerTabHookService : IDisposable
                 newTabHandle = refreshedActiveTab;
 
             newTabLocation = await UiAsync(() => TryGetLocationByTabHandleUi(newTabHandle));
+            if (!IsRealFileSystemLocation(newTabLocation) && newTabHandle == suggestedTabHandle)
+                newTabLocation = suggestedLocation;
         }
 
-        if (IsRealFileSystemLocation(newTabLocation))
-            return;
-
         string? sourceLocation = await UiAsync(() => TryGetPreferredSourceLocationForNewTabUi(topLevel, newTabHandle));
-        if (!IsRealFileSystemLocation(sourceLocation))
+        if (ShouldSkipNewTabAlignment(newTabLocation, sourceLocation, _locationIdentity))
             return;
 
         bool navigated = await NavigateTabByHandleWithRetry(newTabHandle, sourceLocation!, timeoutMs: 420, ct: _cts.Token);
@@ -1008,6 +1007,22 @@ public sealed class ExplorerTabHookService : IDisposable
 
         _ = await WaitUntilTabLocationMatches(newTabHandle, sourceLocation!, timeoutMs: 420, pollMs: 60);
         _logger.Info($"Aligned new Explorer tab to active tab location: {sourceLocation}");
+    }
+
+    private static bool ShouldSkipNewTabAlignment(
+        string? newTabLocation,
+        string? sourceLocation,
+        ShellLocationIdentityService locationIdentity)
+    {
+        ArgumentNullException.ThrowIfNull(locationIdentity);
+
+        if (!IsRealFileSystemLocation(sourceLocation))
+            return true;
+
+        if (!IsRealFileSystemLocation(newTabLocation))
+            return false;
+
+        return locationIdentity.AreEquivalent(newTabLocation, sourceLocation);
     }
 
     private string? TryGetPreferredSourceLocationForNewTabUi(IntPtr topLevel, IntPtr newTabHandle)
