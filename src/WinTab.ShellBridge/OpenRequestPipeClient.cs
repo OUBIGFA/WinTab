@@ -6,14 +6,19 @@ namespace WinTab.ShellBridge;
 internal static class OpenRequestPipeClient
 {
     private const string PipeName = "WinTab_ExplorerOpenRequest";
-    private const int DefaultConnectTimeoutMs = 800;
-    private const int RetryConnectTimeoutMs = 1200;
-    private const int RetryDelayMs = 80;
+    // DelegateExecute runs in explorer.exe. Keep the sync budget tiny
+    // to avoid visibly freezing taskbar interactions when the server is unavailable.
+    private const int DefaultConnectTimeoutMs = 80;
+    private const int RetryConnectTimeoutMs = 120;
+    private const int RetryDelayMs = 20;
 
-    public static bool TrySendOpenFolderEx(string path, nint foregroundHwnd)
+    public static bool TrySendOpenFolderEx(string path, nint foregroundHwnd, bool allowRetry = true)
     {
         if (TrySendOpenFolderExCore(path, foregroundHwnd, DefaultConnectTimeoutMs))
             return true;
+
+        if (!allowRetry)
+            return false;
 
         try
         {

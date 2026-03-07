@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using WinTab.ShellBridge.Interop;
 
 namespace WinTab.ShellBridge;
@@ -11,6 +12,7 @@ public sealed class WinTabOpenFolderDelegateExecute : IExecuteCommand, IObjectWi
 {
     private const int S_OK = 0;
     private const int E_FAIL = unchecked((int)0x80004005);
+    private const string TaskbarWindowClass = "Shell_TrayWnd";
 
     private IShellItemArray? _selection;
     private string? _parameters;
@@ -47,7 +49,7 @@ public sealed class WinTabOpenFolderDelegateExecute : IExecuteCommand, IObjectWi
         IntPtr unk = Marshal.GetIUnknownForObject(_selection);
         try
         {
-            return Marshal.QueryInterface(unk, ref riid, out ppv);
+            return Marshal.QueryInterface(unk, in riid, out ppv);
         }
         finally
         {
@@ -67,7 +69,8 @@ public sealed class WinTabOpenFolderDelegateExecute : IExecuteCommand, IObjectWi
                 return S_OK;
 
             nint foreground = User32Native.GetForegroundWindow();
-            if (OpenRequestPipeClient.TrySendOpenFolderEx(target, foreground))
+            bool allowRetry = !IsTaskbarForegroundWindow(foreground);
+            if (OpenRequestPipeClient.TrySendOpenFolderEx(target, foreground, allowRetry))
                 return S_OK;
 
             TryOpenFallback(target);
@@ -147,6 +150,25 @@ public sealed class WinTabOpenFolderDelegateExecute : IExecuteCommand, IObjectWi
         {
             // ignore
         }
+    }
+
+    private static bool IsTaskbarForegroundWindow(nint foregroundHwnd, Func<nint, string>? classNameResolver = null)
+    {
+        if (foregroundHwnd == 0)
+            return false;
+
+        string className = (classNameResolver ?? ResolveWindowClassName)(foregroundHwnd);
+        return string.Equals(className, TaskbarWindowClass, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveWindowClassName(nint hwnd)
+    {
+        var className = new StringBuilder(64);
+        int written = User32Native.GetClassName(hwnd, className, className.Capacity);
+        if (written <= 0)
+            return string.Empty;
+
+        return className.ToString();
     }
 
     private void ReleaseSelection()
