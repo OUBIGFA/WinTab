@@ -124,6 +124,15 @@
         <Setter Property="Background" Value="{DynamicResource AppSurfaceElevatedBrush}" />
     </Style>
 
+    <Style x:Key="SettingRowActionHostStyle"
+           TargetType="Border">
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="24,0,0,0" />
+        <Setter Property="MinWidth" Value="220" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
     <Style x:Key="SettingsCardStyle"
            TargetType="ui:CardControl">
         <Setter Property="Margin" Value="0,0,0,12" />

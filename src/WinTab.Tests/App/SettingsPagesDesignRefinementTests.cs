@@ -52,6 +52,31 @@ public class SettingsPagesDesignRefinementTests
         }
     }
 
+    [Fact]
+    public void BehaviorPage_ShouldPlaceDoubleClickCloseRuleFirst()
+    {
+        string behaviorPagePath = GetProjectFilePath("WinTab.App", "Views", "Pages", "BehaviorPage.xaml");
+        XDocument behaviorPage = XDocument.Load(behaviorPagePath);
+
+        var ruleTitles = behaviorPage
+            .Descendants()
+            .Where(e => e.Name.LocalName == "TextBlock" &&
+                        (string?)e.Attribute("Style") == "{StaticResource SettingTitleStyle}")
+            .Select(e => (string?)e.Attribute("Text"))
+            .Where(v => v is not null && v.StartsWith("{DynamicResource Behavior_"))
+            .Skip(1)
+            .Take(3)
+            .ToList();
+
+        ruleTitles.Should().ContainInOrder(
+            [
+                "{DynamicResource Behavior_CloseTabOnDoubleClick}",
+                "{DynamicResource Behavior_OpenNewTabFromActiveTabPath}",
+                "{DynamicResource Behavior_OpenChildFolderInNewTab}"
+            ],
+            "tab rules should surface the most direct close action first");
+    }
+
     private static string GetProjectFilePath(string projectFolder, params string[] parts)
     {
         string current = AppContext.BaseDirectory;

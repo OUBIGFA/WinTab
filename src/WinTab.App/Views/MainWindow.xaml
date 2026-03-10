@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:pages="clr-namespace:WinTab.App.Views.Pages"
-        Title="{DynamicResource App_Name}" Width="980" Height="720"
+        Title="{DynamicResource App_Name}" Width="1180" Height="820" MinWidth="980" MinHeight="700"
         WindowStartupLocation="CenterScreen"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"

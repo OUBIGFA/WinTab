@@ -17,8 +17,11 @@
         </ResourceDictionary>
     </Page.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,28,28,36">
-        <StackPanel Margin="0,0,24,0" MaxWidth="880">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  CanContentScroll="False"
+                  PanningMode="VerticalFirst"
+                  Padding="28,28,28,36">
+        <StackPanel Margin="0,0,24,0" MaxWidth="880" Grid.IsSharedSizeScope="True">
 
             <Border Style="{StaticResource AppPanelBorderStyle}"
                     Background="{DynamicResource AppSurfaceStrongBrush}"
@@ -42,7 +45,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel MaxWidth="560">
@@ -51,10 +54,11 @@
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
 
-                    <ui:ToggleSwitch Grid.Column="1"
-                                     IsChecked="{Binding RunAtStartup, Mode=TwoWay}"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0" />
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <ui:ToggleSwitch IsChecked="{Binding RunAtStartup, Mode=TwoWay}"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Center" />
+                    </Border>
                 </Grid>
             </Border>
 
@@ -62,7 +66,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel MaxWidth="560">
@@ -71,10 +75,11 @@
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
 
-                    <ui:ToggleSwitch Grid.Column="1"
-                                     IsChecked="{Binding StartMinimized, Mode=TwoWay}"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0" />
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <ui:ToggleSwitch IsChecked="{Binding StartMinimized, Mode=TwoWay}"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Center" />
+                    </Border>
                 </Grid>
             </Border>
 
@@ -83,7 +88,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel MaxWidth="560">
@@ -92,10 +97,11 @@
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
 
-                    <ui:ToggleSwitch Grid.Column="1"
-                                     IsChecked="{Binding ShowTrayIcon, Mode=TwoWay}"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0" />
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <ui:ToggleSwitch IsChecked="{Binding ShowTrayIcon, Mode=TwoWay}"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Center" />
+                    </Border>
                 </Grid>
             </Border>
 
@@ -108,7 +114,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel MaxWidth="560">
@@ -117,14 +123,15 @@
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
 
-                    <ComboBox Grid.Column="1"
-                              SelectedIndex="{Binding SelectedLanguageIndex, Mode=TwoWay}"
-                              MinWidth="180"
-                              VerticalAlignment="Center"
-                              Margin="20,0,0,0">
-                        <ComboBoxItem Content="{DynamicResource General_Chinese}" />
-                        <ComboBoxItem Content="{DynamicResource General_English}" />
-                    </ComboBox>
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <ComboBox SelectedIndex="{Binding SelectedLanguageIndex, Mode=TwoWay}"
+                                  Width="190"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Center">
+                            <ComboBoxItem Content="{DynamicResource General_Chinese}" />
+                            <ComboBoxItem Content="{DynamicResource General_English}" />
+                        </ComboBox>
+                    </Border>
                 </Grid>
             </Border>
 
@@ -133,7 +140,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel MaxWidth="560">
@@ -142,20 +149,21 @@
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1"
-                                Orientation="Horizontal"
-                                VerticalAlignment="Center"
-                                Margin="20,0,0,0">
-                        <RadioButton Content="{DynamicResource Appearance_ThemeLight}"
-                                     IsChecked="{Binding IsThemeLight, Mode=TwoWay}"
-                                     GroupName="Theme"
-                                     MinWidth="96" />
-                        <RadioButton Content="{DynamicResource Appearance_ThemeDark}"
-                                     IsChecked="{Binding IsThemeDark, Mode=TwoWay}"
-                                     GroupName="Theme"
-                                     MinWidth="96"
-                                     Margin="16,0,0,0" />
-                    </StackPanel>
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center">
+                            <RadioButton Content="{DynamicResource Appearance_ThemeLight}"
+                                         IsChecked="{Binding IsThemeLight, Mode=TwoWay}"
+                                         GroupName="Theme"
+                                         MinWidth="96" />
+                            <RadioButton Content="{DynamicResource Appearance_ThemeDark}"
+                                         IsChecked="{Binding IsThemeDark, Mode=TwoWay}"
+                                         GroupName="Theme"
+                                         MinWidth="96"
+                                         Margin="16,0,0,0" />
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </Border>
 

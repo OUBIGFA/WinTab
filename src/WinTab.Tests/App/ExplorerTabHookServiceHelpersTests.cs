@@ -53,6 +53,19 @@ public sealed class ExplorerTabHookServiceHelpersTests
         actual.Should().Be(expected);
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(@"C:\Users\bigfa\Desktop", true)]
+    [InlineData("shell:RecycleBinFolder", false)]
+    [InlineData("::{645FF040-5081-101B-9F08-00AA002F954E}", false)]
+    [InlineData("shell::Downloads", false)]
+    public void ShouldConvertWindowLocationToTab_ShouldRejectShellNamespaceWindows(string? input, bool expected)
+    {
+        bool actual = InvokePrivateStatic<bool>("ShouldConvertWindowLocationToTab", input);
+        actual.Should().Be(expected,
+            "shell namespace windows should stay native even if standalone-window auto-convert is enabled");
+    }
+
     [Fact]
     public void IsChildPathOf_ShouldDetectDirectChild()
     {

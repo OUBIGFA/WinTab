@@ -67,7 +67,7 @@ public class UninstallPageRegressionTests
     }
 
     [Fact]
-    public void UninstallPage_ShouldExposeLogAccessAndOnlyOneAppDirectoryAction()
+    public void UninstallPage_ShouldOnlyExposeOneAppDirectoryActionInMaintenanceArea()
     {
         string pagePath = GetProjectFilePath("WinTab.App", "Views", "Pages", "UninstallPage.xaml");
         XDocument page = XDocument.Load(pagePath);
@@ -81,8 +81,8 @@ public class UninstallPageRegressionTests
 
         buttonContents.Count(v => v == "{DynamicResource Uninstall_OpenFolder}").Should().Be(1,
             "the uninstall flow should not duplicate the app directory action");
-        buttonContents.Should().Contain("{DynamicResource Uninstall_OpenLog}",
-            "the uninstall flow should provide direct log access for troubleshooting");
+        buttonContents.Should().NotContain("{DynamicResource Uninstall_OpenLog}",
+            "the uninstall page should avoid duplicating log entry points already provided on the About page");
     }
 
     private static int RenderAndCountNonEmptyTextBlocks(Page page)

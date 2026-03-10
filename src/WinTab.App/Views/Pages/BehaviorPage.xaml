@@ -17,8 +17,11 @@
         </ResourceDictionary>
     </Page.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,28,28,36">
-        <StackPanel Margin="0,0,24,0" MaxWidth="880">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  CanContentScroll="False"
+                  PanningMode="VerticalFirst"
+                  Padding="28,28,28,36">
+        <StackPanel Margin="0,0,24,0" MaxWidth="880" Grid.IsSharedSizeScope="True">
 
             <Border Style="{StaticResource AppPanelBorderStyle}"
                     Margin="0,0,0,24">
@@ -41,7 +44,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel MaxWidth="560">
@@ -50,10 +53,11 @@
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
 
-                    <ui:ToggleSwitch Grid.Column="1"
-                                     IsChecked="{Binding EnableAutoConvertExplorerWindows, Mode=TwoWay}"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0" />
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <ui:ToggleSwitch IsChecked="{Binding EnableAutoConvertExplorerWindows, Mode=TwoWay}"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Center" />
+                    </Border>
                 </Grid>
             </Border>
 
@@ -73,48 +77,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel MaxWidth="560">
-                        <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath}" Style="{StaticResource SettingTitleStyle}" />
-                        <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath_Desc}"
-                                   Style="{StaticResource SettingDescriptionStyle}" />
-                    </StackPanel>
-
-                    <ui:ToggleSwitch Grid.Column="1"
-                                     IsChecked="{Binding OpenNewTabFromActiveTabPath, Mode=TwoWay}"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0" />
-                </Grid>
-            </Border>
-
-            <Border Style="{StaticResource SettingRowBorderStyle}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel MaxWidth="560">
-                        <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab}" Style="{StaticResource SettingTitleStyle}" />
-                        <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab_Desc}"
-                                   Style="{StaticResource SettingDescriptionStyle}" />
-                    </StackPanel>
-
-                    <ui:ToggleSwitch Grid.Column="1"
-                                     IsChecked="{Binding OpenChildFolderInNewTabFromActiveTab, Mode=TwoWay}"
-                                     IsEnabled="{Binding IsOpenChildFolderInNewTabOptionEnabled}"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0" />
-                </Grid>
-            </Border>
-
-            <Border Style="{StaticResource SettingRowBorderStyle}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel MaxWidth="560">
@@ -123,10 +86,54 @@
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
 
-                    <ui:ToggleSwitch Grid.Column="1"
-                                     IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}"
-                                     VerticalAlignment="Center"
-                                     Margin="20,0,0,0" />
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <ui:ToggleSwitch IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
+                        <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath}" Style="{StaticResource SettingTitleStyle}" />
+                        <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath_Desc}"
+                                   Style="{StaticResource SettingDescriptionStyle}" />
+                    </StackPanel>
+
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <ui:ToggleSwitch IsChecked="{Binding OpenNewTabFromActiveTabPath, Mode=TwoWay}"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
+                        <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab}" Style="{StaticResource SettingTitleStyle}" />
+                        <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab_Desc}"
+                                   Style="{StaticResource SettingDescriptionStyle}" />
+                    </StackPanel>
+
+                    <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                        <ui:ToggleSwitch IsChecked="{Binding OpenChildFolderInNewTabFromActiveTab, Mode=TwoWay}"
+                                         IsEnabled="{Binding IsOpenChildFolderInNewTabOptionEnabled}"
+                                         HorizontalAlignment="Right"
+                                         VerticalAlignment="Center" />
+                    </Border>
                 </Grid>
             </Border>
 

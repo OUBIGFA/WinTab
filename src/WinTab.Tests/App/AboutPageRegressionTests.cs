@@ -40,7 +40,7 @@ public class AboutPageRegressionTests
             .First(e => e.Name.LocalName == "StackPanel" && e.Attribute("MaxWidth") is not null)
             .Attribute("MaxWidth")?.Value;
 
-        maxWidth.Should().Be("860", "polished About layout should use a roomier centered content width");
+        maxWidth.Should().Be("880", "polished About layout should use the shared content width rhythm of the settings shell");
 
         string? footerAlignment = page
             .Descendants()

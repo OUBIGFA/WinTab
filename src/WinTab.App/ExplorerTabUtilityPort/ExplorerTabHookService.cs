@@ -933,6 +933,14 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
                 }, _cts.Token);
             }
 
+            if (!candidate.Value.IsKnownTopLevel &&
+                !ShouldConvertWindowLocationToTab(candidate.Value.Location))
+            {
+                RestoreEarlyHiddenWindow(candidate.Value.TopLevelHwnd);
+                _logger.Info($"Skip convert: keep native shell window for {candidate.Value.Location}");
+                return;
+            }
+
             if (!_autoConvertEnabled || candidate.Value.IsKnownTopLevel)
                 return;
 
@@ -1586,6 +1594,11 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         {
             string? location = preferredLocation;
             bool hasReadyLocation = IsTabNavigableLocation(location);
+            if (hasReadyLocation && !ShouldConvertWindowLocationToTab(location))
+            {
+                _logger.Info($"Skip convert: keep native shell window for {location}");
+                return;
+            }
 
             IntPtr sourceTabHandle = preferredTabHandle;
             if (!hasReadyLocation && (sourceTabHandle == IntPtr.Zero || !NativeMethods.IsWindow(sourceTabHandle)))
@@ -1645,6 +1658,12 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
             if (string.IsNullOrWhiteSpace(location))
             {
                 _logger.Info($"Skip convert: location not ready for 0x{sourceTopLevel.ToInt64():X}");
+                return;
+            }
+
+            if (!ShouldConvertWindowLocationToTab(location))
+            {
+                _logger.Info($"Skip convert: keep native shell window for {location}");
                 return;
             }
 
@@ -2468,6 +2487,24 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
     private static bool ShouldBypassAutoConvertForLocation(string? location)
     {
         return IsShellNamespaceLocation(location);
+    }
+
+    private static bool ShouldConvertWindowLocationToTab(string? location)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+            return true;
+
+        return !ShouldBypassAutoConvertForLocation(location);
+    }
+
+    private void RestoreEarlyHiddenWindow(IntPtr hwnd)
+    {
+        bool hadEarlyHide = _earlyHiddenExplorer.TryRemove(hwnd, out _);
+        if (!hadEarlyHide)
+            return;
+
+        if (_windowManager.IsAlive(hwnd))
+            _windowManager.Show(hwnd);
     }
 
     private static bool IsShellNamespaceLocation(string? location)

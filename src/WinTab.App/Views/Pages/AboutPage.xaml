@@ -23,8 +23,12 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="28,28,28,36">
-            <StackPanel MaxWidth="860">
+        <ScrollViewer Grid.Row="0"
+                      VerticalScrollBarVisibility="Auto"
+                      CanContentScroll="False"
+                      PanningMode="VerticalFirst"
+                      Padding="28,28,28,36">
+            <StackPanel MaxWidth="880" Margin="0,0,24,0" Grid.IsSharedSizeScope="True">
 
                 <Border Style="{StaticResource AppPanelBorderStyle}"
                         Background="{DynamicResource AppSurfaceStrongBrush}"
@@ -84,7 +88,7 @@
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                         </Grid.ColumnDefinitions>
 
                         <StackPanel MaxWidth="560">
@@ -94,12 +98,13 @@
                                        Style="{StaticResource SettingDescriptionStyle}" />
                         </StackPanel>
 
-                        <ui:Button Grid.Column="1"
-                                   Content="{DynamicResource About_GitHub}"
-                                   Icon="{ui:SymbolIcon Link24}"
-                                   Command="{Binding OpenGitHubCommand}"
-                                   VerticalAlignment="Center"
-                                   Margin="20,0,0,0" />
+                        <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                            <ui:Button Content="{DynamicResource About_GitHub}"
+                                       Icon="{ui:SymbolIcon Link24}"
+                                       Command="{Binding OpenGitHubCommand}"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center" />
+                        </Border>
                     </Grid>
                 </Border>
 
@@ -113,7 +118,7 @@
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="SettingActionColumn" />
                         </Grid.ColumnDefinitions>
 
                         <StackPanel MaxWidth="560">
@@ -125,18 +130,19 @@
                                        Style="{StaticResource SettingDescriptionStyle}" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="1"
-                                    Orientation="Horizontal"
-                                    VerticalAlignment="Center"
-                                    Margin="20,0,0,0">
-                            <ui:Button Content="{DynamicResource About_OpenLog}"
-                                       Icon="{ui:SymbolIcon Document24}"
-                                       Command="{Binding OpenLogCommand}" />
-                            <ui:Button Content="{DynamicResource About_OpenLogFolder}"
-                                       Icon="{ui:SymbolIcon Folder24}"
-                                       Command="{Binding OpenLogFolderCommand}"
-                                       Margin="8,0,0,0" />
-                        </StackPanel>
+                        <Border Grid.Column="1" Style="{StaticResource SettingRowActionHostStyle}">
+                            <StackPanel Orientation="Horizontal"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center">
+                                <ui:Button Content="{DynamicResource About_OpenLog}"
+                                           Icon="{ui:SymbolIcon Document24}"
+                                           Command="{Binding OpenLogCommand}" />
+                                <ui:Button Content="{DynamicResource About_OpenLogFolder}"
+                                           Icon="{ui:SymbolIcon Folder24}"
+                                           Command="{Binding OpenLogFolderCommand}"
+                                           Margin="8,0,0,0" />
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </Border>
             </StackPanel>
