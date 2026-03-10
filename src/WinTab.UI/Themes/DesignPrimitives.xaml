@@ -1,0 +1,123 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+
+    <SolidColorBrush x:Key="BrandAccentBrush" Color="#2F6E5C" />
+    <SolidColorBrush x:Key="AppSurfaceSubtleBrush" Color="#F6F7F8" />
+    <SolidColorBrush x:Key="AppSurfaceElevatedBrush" Color="#FBFBFC" />
+    <SolidColorBrush x:Key="AppSurfaceStrongBrush" Color="#EEF3F1" />
+    <SolidColorBrush x:Key="AppDangerSurfaceBrush" Color="#FFF4F1" />
+    <SolidColorBrush x:Key="AppDangerBorderBrush" Color="#F1C8BE" />
+    <SolidColorBrush x:Key="AppInfoBorderBrush" Color="#D6DEDA" />
+
+    <Style x:Key="AppPanelBorderStyle"
+           TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceElevatedBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppInfoBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="16" />
+        <Setter Property="Padding" Value="22" />
+    </Style>
+
+    <Style x:Key="AppDangerPanelBorderStyle"
+           TargetType="Border"
+           BasedOn="{StaticResource AppPanelBorderStyle}">
+        <Setter Property="Background" Value="{DynamicResource AppDangerSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppDangerBorderBrush}" />
+    </Style>
+
+    <Style x:Key="PageEyebrowStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+
+    <Style x:Key="PageHeaderTitleStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+
+    <Style x:Key="PageHeaderDescriptionStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="LineHeight" Value="20" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style x:Key="PageSectionTitleStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+
+    <Style x:Key="PageGroupLabelStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+    </Style>
+
+    <Style x:Key="SectionDescriptionStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="LineHeight" Value="18" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,0,0,14" />
+    </Style>
+
+    <Style x:Key="SettingTitleStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <Style x:Key="SettingDescriptionStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        <Setter Property="Margin" Value="0,2,0,0" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineHeight" Value="18" />
+    </Style>
+
+    <Style x:Key="InfoPillStyle"
+           TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceStrongBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AppInfoBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Margin" Value="0,0,8,8" />
+    </Style>
+
+    <Style x:Key="InfoPillTextStyle"
+           TargetType="TextBlock"
+           BasedOn="{StaticResource {x:Type TextBlock}}">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="SettingsCardStyle"
+           TargetType="ui:CardControl">
+        <Setter Property="Margin" Value="0,0,0,12" />
+        <Setter Property="Padding" Value="18,16" />
+    </Style>
+</ResourceDictionary>

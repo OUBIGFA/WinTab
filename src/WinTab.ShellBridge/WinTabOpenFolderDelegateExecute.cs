@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using WinTab.ShellBridge.Interop;
+using WinTab.Platform.Win32;
 
 namespace WinTab.ShellBridge;
 
@@ -13,6 +14,9 @@ public sealed class WinTabOpenFolderDelegateExecute : IExecuteCommand, IObjectWi
     private const int S_OK = 0;
     private const int E_FAIL = unchecked((int)0x80004005);
     private const string TaskbarWindowClass = "Shell_TrayWnd";
+    internal static Func<string, nint, bool, bool> SendOpenFolderRequest =
+        static (target, foreground, allowRetry) => OpenRequestPipeClient.TrySendOpenFolderEx(target, foreground, allowRetry);
+    internal static Action<string> OpenFallbackTarget = static target => TryOpenFallback(target);
 
     private IShellItemArray? _selection;
     private string? _parameters;
@@ -68,12 +72,19 @@ public sealed class WinTabOpenFolderDelegateExecute : IExecuteCommand, IObjectWi
             if (!PathNormalization.TryNormalizeOpenTarget(rawTarget, out string target))
                 return S_OK;
 
+            OpenTargetInfo targetInfo = OpenTargetClassifier.Classify(target);
+            if (targetInfo.RequiresNativeShellLaunch)
+            {
+                OpenFallbackTarget(target);
+                return S_OK;
+            }
+
             nint foreground = User32Native.GetForegroundWindow();
             bool allowRetry = !IsTaskbarForegroundWindow(foreground);
-            if (OpenRequestPipeClient.TrySendOpenFolderEx(target, foreground, allowRetry))
+            if (SendOpenFolderRequest(target, foreground, allowRetry))
                 return S_OK;
 
-            TryOpenFallback(target);
+            OpenFallbackTarget(target);
             return S_OK;
         }
         finally
@@ -137,6 +148,9 @@ public sealed class WinTabOpenFolderDelegateExecute : IExecuteCommand, IObjectWi
 
     private static void TryOpenFallback(string target)
     {
+        if (NativeShellLauncher.TryOpen(target))
+            return;
+
         try
         {
             Process.Start(new ProcessStartInfo

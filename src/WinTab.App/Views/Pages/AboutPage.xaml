@@ -9,57 +9,107 @@
       mc:Ignorable="d"
       Title="AboutPage">
 
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/WinTab.UI;component/Themes/DesignPrimitives.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="24">
-            <StackPanel MaxWidth="800">
-                
-                <!-- App Identity & Description (Centered) -->
-                <StackPanel HorizontalAlignment="Center" Margin="0,16,0,42">
-                    <Border Width="96" Height="96"
-                            CornerRadius="12"
-                            HorizontalAlignment="Center"
-                            Margin="0,0,0,16"
-                            ClipToBounds="True"
-                            Background="{DynamicResource AppSurfaceSubtleBrush}">
-                        <Border.Effect>
-                            <DropShadowEffect BlurRadius="10" ShadowDepth="1" Opacity="0.08" Direction="270"/>
-                        </Border.Effect>
-                        <Image Source="pack://siteoforigin:,,,/Assets/logo.png"
-                               Width="80" Height="80"
-                               VerticalAlignment="Center"
-                               HorizontalAlignment="Center"
-                               RenderOptions.BitmapScalingMode="HighQuality" />
-                    </Border>
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="28,28,28,36">
+            <StackPanel MaxWidth="860">
 
-                    <TextBlock Text="{DynamicResource App_Name}"
-                               FontSize="42" FontWeight="SemiBold"
-                               HorizontalAlignment="Center"
-                               Margin="0,0,0,14"/>
+                <Border Style="{StaticResource AppPanelBorderStyle}"
+                        Background="{DynamicResource AppSurfaceStrongBrush}"
+                        Margin="0,0,0,24">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
 
-                    <TextBlock Text="{DynamicResource About_Description}"
-                               TextWrapping="NoWrap"
-                               TextAlignment="Center"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               FontSize="14"
-                               HorizontalAlignment="Center"/>
-                </StackPanel>
+                        <Border Width="88"
+                                Height="88"
+                                CornerRadius="20"
+                                Background="{DynamicResource AppSurfaceElevatedBrush}"
+                                BorderBrush="{DynamicResource AppInfoBorderBrush}"
+                                BorderThickness="1"
+                                Margin="0,0,18,0">
+                            <Image Source="pack://siteoforigin:,,,/Assets/logo.png"
+                                   Width="56"
+                                   Height="56"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                        </Border>
 
-                <!-- Log File Location (Unchanged) -->
-                <TextBlock Text="{DynamicResource About_LogLocation}"
-                           FontSize="20" FontWeight="SemiBold"
-                           Margin="0,0,0,16" />
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="{DynamicResource Nav_About}"
+                                       Style="{StaticResource PageEyebrowStyle}" />
+                            <TextBlock Text="{DynamicResource About_Title}"
+                                       Style="{StaticResource PageHeaderTitleStyle}" />
+                            <TextBlock Text="{DynamicResource About_Lead}"
+                                       Style="{StaticResource PageHeaderDescriptionStyle}"
+                                       Margin="0,0,0,14" />
+                            <WrapPanel>
+                                <Border Style="{StaticResource InfoPillStyle}">
+                                    <TextBlock Style="{StaticResource InfoPillTextStyle}">
+                                        <Run Text="{DynamicResource About_Version}" />
+                                        <Run Text=": " />
+                                        <Run Text="{Binding Version, Mode=OneWay}" />
+                                    </TextBlock>
+                                </Border>
+                                <Border Style="{StaticResource InfoPillStyle}">
+                                    <TextBlock Text="{Binding ModeText}"
+                                               Style="{StaticResource InfoPillTextStyle}" />
+                                </Border>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
 
-                <ui:CardControl>
+                <TextBlock Text="{DynamicResource About_SectionProject}"
+                           Style="{StaticResource PageSectionTitleStyle}" />
+                <TextBlock Text="{DynamicResource About_SectionProject_Desc}"
+                           Style="{StaticResource SectionDescriptionStyle}" />
+
+                <ui:CardControl Style="{StaticResource SettingsCardStyle}">
                     <ui:CardControl.Header>
-                        <TextBlock Text="{Binding LogPath}"
-                                   TextTrimming="CharacterEllipsis"
-                                   MaxWidth="500"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource About_GitHub}"
+                                       Style="{StaticResource SettingTitleStyle}" />
+                            <TextBlock Text="{DynamicResource About_GitHub_Desc}"
+                                       Style="{StaticResource SettingDescriptionStyle}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+                    <ui:Button Content="{DynamicResource About_GitHub}"
+                               Icon="{ui:SymbolIcon Link24}"
+                               Command="{Binding OpenGitHubCommand}" />
+                </ui:CardControl>
+
+                <TextBlock Text="{DynamicResource About_SectionDiagnostics}"
+                           Style="{StaticResource PageSectionTitleStyle}"
+                           Margin="0,8,0,0" />
+                <TextBlock Text="{DynamicResource About_SectionDiagnostics_Desc}"
+                           Style="{StaticResource SectionDescriptionStyle}" />
+
+                <ui:CardControl Style="{StaticResource SettingsCardStyle}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource About_LogLocation}"
+                                       Style="{StaticResource SettingTitleStyle}" />
+                            <TextBlock Text="{Binding LogPath}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxWidth="540"
+                                       Style="{StaticResource SettingDescriptionStyle}" />
+                        </StackPanel>
                     </ui:CardControl.Header>
                     <StackPanel Orientation="Horizontal">
                         <ui:Button Content="{DynamicResource About_OpenLog}"
@@ -76,13 +126,6 @@
 
         <!-- Footer: Version and License (At the very bottom, centered) -->
         <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,24">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12">
-                    <Run Text="{DynamicResource About_Version}" />
-                    <Run Text=" " />
-                    <Run Text="{Binding Version, Mode=OneWay}" />
-                </TextBlock>
-            </StackPanel>
             <TextBlock Text="{DynamicResource About_License}"
                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                        FontSize="12"

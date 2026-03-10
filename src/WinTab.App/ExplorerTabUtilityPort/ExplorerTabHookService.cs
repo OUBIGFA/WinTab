@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Threading;
 using WinTab.App.ExplorerTabUtilityPort.Interop;
+using WinTab.App.Services;
 using WinTab.Core.Interfaces;
 using WinTab.Core.Models;
 using WinTab.Diagnostics;
@@ -29,6 +30,9 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
             return false;
 
         location = location.Trim();
+        OpenTargetInfo targetInfo = OpenTargetClassifier.Classify(location);
+        if (targetInfo.RequiresNativeShellLaunch)
+            return AppEnvironment.TryOpenTargetFallback(location, _logger);
 
         bool handledInExistingWindow = await TryOpenLocationInExistingExplorerContextAsync(location, clickTimeForeground);
         if (handledInExistingWindow)
@@ -44,6 +48,9 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
             return false;
 
         location = location.Trim();
+        OpenTargetInfo targetInfo = OpenTargetClassifier.Classify(location);
+        if (targetInfo.RequiresNativeShellLaunch)
+            return AppEnvironment.TryOpenTargetFallback(location, _logger);
 
         try
         {
@@ -2433,23 +2440,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
 
     private static bool IsRealFileSystemLocation(string? location)
     {
-        if (string.IsNullOrWhiteSpace(location))
-            return false;
-
-        if (location.StartsWith("::", StringComparison.OrdinalIgnoreCase) ||
-            location.StartsWith("shell:::", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (location.StartsWith("shell::", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        if (location.StartsWith("\\\\", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (location.Length >= 3 && char.IsLetter(location[0]) && location[1] == ':' && (location[2] == '\\' || location[2] == '/'))
-            return true;
-
-        return false;
+        return OpenTargetClassifier.Classify(location).IsPhysicalFileSystem;
     }
 
     private static bool IsPhysicalFileSystemLocation(string? location)
@@ -2481,25 +2472,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
 
     private static bool IsShellNamespaceLocation(string? location)
     {
-        if (string.IsNullOrWhiteSpace(location))
-            return false;
-
-        string token = location.Trim();
-        if (token.StartsWith("::", StringComparison.Ordinal))
-            return true;
-
-        if (token.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (token.Length >= 2 &&
-            token[0] == '{' &&
-            token[^1] == '}' &&
-            Guid.TryParse(token, out _))
-        {
-            return true;
-        }
-
-        return false;
+        return OpenTargetClassifier.Classify(location).IsShellNamespace;
     }
 
     private static bool IsChildPathOf(string parentPath, string childPath)

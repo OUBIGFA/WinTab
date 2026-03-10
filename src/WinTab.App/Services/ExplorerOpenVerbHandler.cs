@@ -1,8 +1,8 @@
 using System;
 using System.IO;
 using System.Threading;
-using WinTab.Diagnostics;
 using WinTab.Platform.Win32;
+using WinTab.Diagnostics;
 
 namespace WinTab.App.Services;
 
@@ -34,6 +34,14 @@ public static class ExplorerOpenVerbHandler
         if (!AppEnvironment.TryNormalizeExistingDirectoryPath(args[1], out string path, out string reason))
         {
             effectiveLogger?.Warn($"Rejected open-folder invocation due to invalid path ({reason}). Raw='{args[1]}'");
+            return true;
+        }
+
+        OpenTargetInfo targetInfo = OpenTargetClassifier.Classify(path);
+        if (targetInfo.RequiresNativeShellLaunch)
+        {
+            effectiveLogger?.Info($"Bypassing WinTab open-folder pipe for native shell target: {path}");
+            OpenFolderFallback(path, effectiveLogger);
             return true;
         }
 

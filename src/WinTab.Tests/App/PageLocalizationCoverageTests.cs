@@ -38,13 +38,23 @@ public class PageLocalizationCoverageTests
     }
 
     [Fact]
-    public void AppXaml_TextBlockStyles_ShouldBeBasedOnDefaultTextBlockStyle()
+    public void DesignPrimitives_TextBlockStyles_ShouldBeBasedOnDefaultTextBlockStyle()
     {
         string appXamlPath = Path.GetFullPath(
             Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WinTab.App", "App.xaml"));
+        string primitivesPath = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WinTab.UI", "Themes", "DesignPrimitives.xaml"));
 
         XDocument appXaml = XDocument.Load(appXamlPath);
-        var styleElements = appXaml.Descendants().Where(e => e.Name.LocalName == "Style").ToList();
+        XDocument primitives = XDocument.Load(primitivesPath);
+        var styleElements = primitives.Descendants().Where(e => e.Name.LocalName == "Style").ToList();
+
+        bool appMergesPrimitives = appXaml
+            .Descendants()
+            .Any(e => e.Name.LocalName == "ResourceDictionary"
+                   && string.Equals((string?)e.Attribute("Source"), "pack://application:,,,/WinTab.UI;component/Themes/DesignPrimitives.xaml", StringComparison.Ordinal));
+
+        appMergesPrimitives.Should().BeTrue("App.xaml should merge the shared design primitives dictionary");
 
         string[] textStyles = ["PageSectionTitleStyle", "PageGroupLabelStyle", "SettingTitleStyle", "SettingDescriptionStyle"];
 
@@ -53,7 +63,7 @@ public class PageLocalizationCoverageTests
             XElement? style = styleElements.FirstOrDefault(e =>
                 string.Equals((string?)e.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml")), styleKey, StringComparison.Ordinal));
 
-            style.Should().NotBeNull($"App.xaml should define style '{styleKey}'");
+            style.Should().NotBeNull($"DesignPrimitives.xaml should define style '{styleKey}'");
             style!.Attribute("BasedOn").Should().NotBeNull($"Text style '{styleKey}' must preserve theme defaults via BasedOn");
         }
     }

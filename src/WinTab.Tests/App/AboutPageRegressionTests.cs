@@ -30,7 +30,7 @@ public class AboutPageRegressionTests
     }
 
     [Fact]
-    public void AboutPage_Design_ShouldAlignWithFirstApprovedCenteredComposition()
+    public void AboutPage_Design_ShouldAlignWithPolishedProjectAndDiagnosticsComposition()
     {
         string pagePath = GetProjectFilePath("WinTab.App", "Views", "Pages", "AboutPage.xaml");
         XDocument page = XDocument.Load(pagePath);
@@ -40,28 +40,33 @@ public class AboutPageRegressionTests
             .First(e => e.Name.LocalName == "StackPanel" && e.Attribute("MaxWidth") is not null)
             .Attribute("MaxWidth")?.Value;
 
-        maxWidth.Should().Be("800", "first approved About layout used centered composition with MaxWidth=800");
+        maxWidth.Should().Be("860", "polished About layout should use a roomier centered content width");
 
         string? footerAlignment = page
             .Descendants()
             .First(e => e.Name.LocalName == "StackPanel" && (string?)e.Attribute("Grid.Row") == "1")
             .Attribute("HorizontalAlignment")?.Value;
 
-        footerAlignment.Should().Be("Center", "first approved About layout used centered footer alignment");
+        footerAlignment.Should().Be("Center", "About footer should stay centered in the polished layout");
     }
 
     [Fact]
-    public void AboutPage_Description_ShouldBeSingleLineWithoutWrapping()
+    public void AboutPage_ShouldPromoteLeadCopyAndProjectSection()
     {
         string pagePath = GetProjectFilePath("WinTab.App", "Views", "Pages", "AboutPage.xaml");
         XDocument page = XDocument.Load(pagePath);
 
-        XElement description = page
+        XElement lead = page
             .Descendants()
-            .First(e => e.Name.LocalName == "TextBlock" && (string?)e.Attribute("Text") == "{DynamicResource About_Description}");
+            .First(e => e.Name.LocalName == "TextBlock" && (string?)e.Attribute("Text") == "{DynamicResource About_Lead}");
 
-        description.Attribute("TextWrapping")?.Value.Should().Be("NoWrap", "About description must stay on one line");
-        description.Attribute("TextTrimming")?.Value.Should().NotBe("CharacterEllipsis", "About description should show full text, not be truncated");
+        lead.Attribute("Style")?.Value.Should().Be("{StaticResource PageHeaderDescriptionStyle}", "About page should promote lead copy as a readable wrapped introduction");
+
+        bool hasProjectSection = page
+            .Descendants()
+            .Any(e => e.Name.LocalName == "TextBlock" && (string?)e.Attribute("Text") == "{DynamicResource About_SectionProject}");
+
+        hasProjectSection.Should().BeTrue("About page should expose a dedicated project section in the polished layout");
     }
 
     private static int RenderAndCountNonEmptyTextBlocks(Page page)

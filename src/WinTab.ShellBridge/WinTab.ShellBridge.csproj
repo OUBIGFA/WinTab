@@ -9,4 +9,8 @@
     <RootNamespace>WinTab.ShellBridge</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\WinTab.Platform.Win32\WinTab.Platform.Win32.csproj" />
+  </ItemGroup>
+
 </Project>

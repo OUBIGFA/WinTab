@@ -10,22 +10,43 @@
       Title="UninstallPage">
 
     <Page.Resources>
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/WinTab.UI;component/Themes/DesignPrimitives.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        </ResourceDictionary>
     </Page.Resources>
 
     <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="680" Margin="24,52,24,28">
-                
-                <ui:SymbolIcon Symbol="Delete24" FontSize="48" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,18"/>
-                <TextBlock Text="{DynamicResource Uninstall_Title}"
-                           FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
-                           Margin="0,0,0,30" />
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,28,28,36">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="760">
 
-                <ui:CardControl Margin="0,0,0,24">
-                    <StackPanel Margin="16">
-                        <!-- Environment Info -->
-                        <Grid Margin="0,0,0,24">
+                <Border Style="{StaticResource AppDangerPanelBorderStyle}"
+                        Margin="0,0,0,24">
+                    <StackPanel>
+                        <ui:SymbolIcon Symbol="Delete24"
+                                       FontSize="40"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Margin="0,0,0,14"/>
+                        <TextBlock Text="{DynamicResource Nav_Uninstall}"
+                                   Style="{StaticResource PageEyebrowStyle}" />
+                        <TextBlock Text="{DynamicResource Uninstall_Title}"
+                                   Style="{StaticResource PageHeaderTitleStyle}" />
+                        <TextBlock Text="{DynamicResource Uninstall_Lead}"
+                                   Style="{StaticResource PageHeaderDescriptionStyle}" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="{DynamicResource Uninstall_SectionRemoval}"
+                           Style="{StaticResource PageSectionTitleStyle}" />
+                <TextBlock Text="{DynamicResource Uninstall_SectionRemoval_Desc}"
+                           Style="{StaticResource SectionDescriptionStyle}" />
+
+                <ui:CardControl Style="{StaticResource SettingsCardStyle}"
+                                Margin="0,0,0,20">
+                    <StackPanel Margin="4">
+                        <Grid Margin="0,0,0,20">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
@@ -45,9 +66,8 @@
                                        Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                         </Grid>
 
-                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,8,0,24"/>
+                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" Margin="0,8,0,20"/>
 
-                        <!-- Installed mode: Remove user data option -->
                         <StackPanel Margin="0,0,0,28"
                                     Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <CheckBox Content="{DynamicResource Uninstall_RemoveUserData}"
@@ -60,14 +80,12 @@
                                        TextWrapping="Wrap" FontSize="13" />
                         </StackPanel>
 
-                        <!-- Portable mode: system config restore hint -->
                         <TextBlock Text="{DynamicResource Uninstall_RestoreSystemConfig_Desc}"
                                    Margin="0,0,0,28" LineHeight="20"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                    TextWrapping="Wrap" FontSize="13"
                                    Visibility="{Binding IsPortable, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
-                        <!-- Actions: installed mode -->
                         <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"
                                     Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <ui:Button Content="{DynamicResource Uninstall_Button}"
@@ -87,30 +105,44 @@
                                        Command="{Binding OpenAppDirectoryCommand}"
                                        Margin="0,0,0,12" />
                         </WrapPanel>
-
-                        <!-- Actions: portable mode -->
-                        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                                    Visibility="{Binding IsPortable, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <ui:Button Content="{DynamicResource Uninstall_RestoreSystemConfig}"
-                                       Icon="{ui:SymbolIcon ArrowCounterclockwise24}"
-                                       Appearance="Secondary"
-                                       Padding="24,10"
-                                       Margin="0,0,12,12"
-                                       Command="{Binding RestoreSystemConfigCommand}" />
-                            <ui:Button Content="{DynamicResource Uninstall_OpenFolder}"
-                                       Icon="{ui:SymbolIcon Folder24}"
-                                       Padding="16,10"
-                                       Command="{Binding OpenAppDirectoryCommand}"
-                                       Margin="0,0,0,12" />
-                        </WrapPanel>
                     </StackPanel>
                 </ui:CardControl>
 
-                <!-- Bottom hint: portable mode -->
+                <TextBlock Text="{DynamicResource Uninstall_SectionMaintenance}"
+                           Style="{StaticResource PageSectionTitleStyle}" />
+                <TextBlock Text="{DynamicResource Uninstall_SectionMaintenance_Desc}"
+                           Style="{StaticResource SectionDescriptionStyle}" />
+
+                <ui:CardControl Style="{StaticResource SettingsCardStyle}">
+                    <ui:CardControl.Header>
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource Uninstall_RestoreSystemConfig}"
+                                       Style="{StaticResource SettingTitleStyle}" />
+                            <TextBlock Text="{DynamicResource Uninstall_RestoreSystemConfig_Desc}"
+                                       Style="{StaticResource SettingDescriptionStyle}" />
+                        </StackPanel>
+                    </ui:CardControl.Header>
+
+                    <WrapPanel Orientation="Horizontal">
+                        <ui:Button Content="{DynamicResource Uninstall_RestoreSystemConfig}"
+                                   Icon="{ui:SymbolIcon ArrowCounterclockwise24}"
+                                   Appearance="Secondary"
+                                   Padding="24,10"
+                                   Margin="0,0,12,12"
+                                   Command="{Binding RestoreSystemConfigCommand}" />
+                        <ui:Button Content="{DynamicResource Uninstall_OpenFolder}"
+                                   Icon="{ui:SymbolIcon Folder24}"
+                                   Padding="16,10"
+                                   Command="{Binding OpenAppDirectoryCommand}"
+                                   Margin="0,0,0,12" />
+                    </WrapPanel>
+                </ui:CardControl>
+
                 <TextBlock Text="{DynamicResource Uninstall_PortableHint}"
                            HorizontalAlignment="Center" TextAlignment="Center" LineHeight="20"
                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                            FontSize="13" TextWrapping="Wrap" MaxWidth="540"
+                           Margin="0,18,0,0"
                            Visibility="{Binding IsPortable, Converter={StaticResource BooleanToVisibilityConverter}}"/>
 
             </StackPanel>

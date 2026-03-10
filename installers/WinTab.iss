@@ -114,6 +114,7 @@ var
   ExistingInstallDetected: Boolean;
   ExistingUninstallerPath: String;
   ExistingUninstallArgs: String;
+  ExplorerRestartRequired: Boolean;
   ReinstallModePage: TWizardPage;
   ReinstallCleanRadio: TRadioButton;
   ReinstallDirectRadio: TRadioButton;
@@ -259,6 +260,77 @@ begin
   Result := not DetectExistingInstall(DummyPath, DummyArgs);
 end;
 
+function GetExistingInstallAppExePath(): String;
+begin
+  Result := '';
+
+  if Trim(ExistingUninstallerPath) = '' then
+    exit;
+
+  Result := AddBackslash(ExtractFileDir(ExistingUninstallerPath)) + '{#AppExeName}';
+end;
+
+procedure StopExistingShellBridgeHostsForUpgrade();
+var
+  ExistingAppExePath: String;
+  ResultCode: Integer;
+begin
+  if not ExistingInstallDetected then
+    exit;
+
+  if ExplorerRestartRequired then
+    exit;
+
+  ExistingAppExePath := GetExistingInstallAppExePath();
+  if FileExists(ExistingAppExePath) then
+  begin
+    Exec(
+      ExistingAppExePath,
+      '--wintab-cleanup',
+      '',
+      SW_HIDE,
+      ewWaitUntilTerminated,
+      ResultCode);
+  end;
+
+  Exec(
+    ExpandConstant('{sys}\taskkill.exe'),
+    '/IM {#AppExeName} /F /T',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode);
+
+  Exec(
+    ExpandConstant('{sys}\taskkill.exe'),
+    '/IM explorer.exe /F',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode);
+
+  ExplorerRestartRequired := True;
+  Sleep(1200);
+end;
+
+procedure RestartExplorerShellIfNeeded();
+var
+  ResultCode: Integer;
+begin
+  if not ExplorerRestartRequired then
+    exit;
+
+  Exec(
+    ExpandConstant('{sys}\explorer.exe'),
+    '',
+    '',
+    SW_SHOWNORMAL,
+    ewNoWait,
+    ResultCode);
+
+  ExplorerRestartRequired := False;
+end;
+
 function ResolveRemoveUserDataChoiceForSetup(): Boolean;
 var
   TailUpper: String;
@@ -313,6 +385,7 @@ begin
   ExistingInstallDetected := DetectExistingInstall(ExistingUninstallerPath, ExistingUninstallArgs);
   SelectedReinstallMode := ResolveReinstallModeForSetup();
   RemoveUserDataOnUninstall := ResolveRemoveUserDataChoiceForSetup();
+  ExplorerRestartRequired := False;
 
   if not ExistingInstallDetected then
     exit;
@@ -405,42 +478,58 @@ begin
   if not ExistingInstallDetected then
     exit;
 
-  if SelectedReinstallMode <> 'clean' then
-    exit;
-
-  if Trim(ExistingUninstallerPath) = '' then
+  if SelectedReinstallMode = 'clean' then
   begin
-    Result := CustomMessage('ReinstallUninstallerMissing');
-    exit;
+    if Trim(ExistingUninstallerPath) = '' then
+    begin
+      Result := CustomMessage('ReinstallUninstallerMissing');
+      exit;
+    end;
+
+    LaunchParams := ExistingUninstallArgs;
+
+    if WizardSilent then
+      LaunchParams := AppendArgument(LaunchParams, '/VERYSILENT')
+    else
+      LaunchParams := AppendArgument(LaunchParams, '/SILENT');
+
+    LaunchParams := AppendArgument(LaunchParams, '/SUPPRESSMSGBOXES');
+    LaunchParams := AppendArgument(LaunchParams, '/NORESTART');
+
+    if RemoveUserDataOnUninstall then
+      LaunchParams := AppendArgument(LaunchParams, '/REMOVEUSERDATA=1');
+
+    if not Exec(ExistingUninstallerPath, LaunchParams, '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
+    begin
+      Result := FmtMessage(CustomMessage('ReinstallUninstallLaunchFailed'), [SysErrorMessage(ResultCode)]);
+      exit;
+    end;
+
+    if ResultCode <> 0 then
+    begin
+      Result := FmtMessage(CustomMessage('ReinstallUninstallFailed'), [IntToStr(ResultCode)]);
+      exit;
+    end;
+
+    if not WaitForExistingInstallRemoval(20000) then
+      Result := CustomMessage('ReinstallUninstallIncomplete');
   end;
 
-  LaunchParams := ExistingUninstallArgs;
-
-  if WizardSilent then
-    LaunchParams := AppendArgument(LaunchParams, '/VERYSILENT')
-  else
-    LaunchParams := AppendArgument(LaunchParams, '/SILENT');
-
-  LaunchParams := AppendArgument(LaunchParams, '/SUPPRESSMSGBOXES');
-  LaunchParams := AppendArgument(LaunchParams, '/NORESTART');
-
-  if RemoveUserDataOnUninstall then
-    LaunchParams := AppendArgument(LaunchParams, '/REMOVEUSERDATA=1');
-
-  if not Exec(ExistingUninstallerPath, LaunchParams, '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
-  begin
-    Result := FmtMessage(CustomMessage('ReinstallUninstallLaunchFailed'), [SysErrorMessage(ResultCode)]);
+  if Result <> '' then
     exit;
-  end;
 
-  if ResultCode <> 0 then
-  begin
-    Result := FmtMessage(CustomMessage('ReinstallUninstallFailed'), [IntToStr(ResultCode)]);
-    exit;
-  end;
+  StopExistingShellBridgeHostsForUpgrade();
+end;
 
-  if not WaitForExistingInstallRemoval(20000) then
-    Result := CustomMessage('ReinstallUninstallIncomplete');
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RestartExplorerShellIfNeeded();
+end;
+
+procedure DeinitializeSetup();
+begin
+  RestartExplorerShellIfNeeded();
 end;
 
 function ShouldRemoveUserData(): Boolean;

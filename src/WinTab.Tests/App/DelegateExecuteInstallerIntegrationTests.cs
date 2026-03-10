@@ -46,6 +46,38 @@ public sealed class DelegateExecuteInstallerIntegrationTests
             "runtime metadata files must be copied during publish");
     }
 
+    [Fact]
+    public void InstallerScript_ShouldRestartExplorerWhenUpdatingShellBridge()
+    {
+        string scriptPath = GetRepoFilePath("installers", "WinTab.iss");
+        string script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("taskkill.exe",
+            "updating the Explorer-loaded ShellBridge requires stopping the owning process");
+        script.Should().Contain("/IM explorer.exe /F",
+            "installer must forcibly stop Explorer so the ShellBridge DLL is not left stale in Program Files");
+        script.Should().Contain("explorer.exe",
+            "installer must restart Explorer after the shell bridge files are updated");
+        script.Should().Contain("DeinitializeSetup",
+            "Explorer must still be restarted if setup exits early after stopping the shell");
+    }
+
+    [Fact]
+    public void InstallerScript_ShouldRunAppCleanupBeforeUpdatingExistingInstallation()
+    {
+        string scriptPath = GetRepoFilePath("installers", "WinTab.iss");
+        string script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("StopExistingShellBridgeHostsForUpgrade",
+            "the installer should centralize shell bridge upgrade cleanup in one place");
+        script.Should().Contain("PrepareToInstall",
+            "existing-installation cleanup must happen before file copy starts");
+        script.Should().Contain("--wintab-cleanup",
+            "the installer should disable interception before replacing shell bridge files in an existing installation");
+        script.Should().Contain("ExistingInstallDetected",
+            "the cleanup and Explorer restart flow should only run when replacing an existing installation");
+    }
+
     private static string GetRepoFilePath(params string[] parts)
     {
         string current = AppContext.BaseDirectory;

@@ -113,10 +113,11 @@ public sealed class ExplorerOpenVerbHandlerTests
     }
 
     [Fact]
-    public void TryHandleOpenFolderInvocation_WhenShellNamespacePath_ShouldForwardRequest()
+    public void TryHandleOpenFolderInvocation_WhenRecycleBinNamespace_ShouldBypassPipeAndUseNativeLaunch()
     {
         const string shellNamespace = "::{645FF040-5081-101B-9F08-00AA002F954E}";
         int sendAttempts = 0;
+        int fallbackCalls = 0;
 
         var originalSend = ExplorerOpenVerbHandler.SendOpenFolderRequest;
         var originalDelay = ExplorerOpenVerbHandler.DelayBetweenRetries;
@@ -131,14 +132,20 @@ public sealed class ExplorerOpenVerbHandlerTests
                 return true;
             };
             ExplorerOpenVerbHandler.DelayBetweenRetries = static _ => { };
-            ExplorerOpenVerbHandler.OpenFolderFallback = (_, _) => throw new InvalidOperationException("Fallback should not run.");
+            ExplorerOpenVerbHandler.OpenFolderFallback = (path, _) =>
+            {
+                fallbackCalls++;
+                path.Should().Be(shellNamespace);
+            };
 
             bool handled = ExplorerOpenVerbHandler.TryHandleOpenFolderInvocation(
                 [RegistryOpenVerbInterceptor.HandlerArgument, shellNamespace],
                 logger: null);
 
             handled.Should().BeTrue();
-            sendAttempts.Should().Be(1);
+            sendAttempts.Should().Be(0,
+                "Recycle Bin must bypass WinTab pipe/tab routing and use the native shell open path directly");
+            fallbackCalls.Should().Be(1);
         }
         finally
         {

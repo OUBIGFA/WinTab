@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using FluentAssertions;
 using WinTab.App.Services;
 using Xunit;
@@ -74,5 +75,88 @@ public sealed class AppEnvironmentTests
         ok.Should().BeTrue();
         Assert.Equal("::" + bareGuid, normalized);
         reason.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TryOpenTargetFallback_WhenRecycleBinTarget_ShouldUseNativeShellLauncherInsteadOfExplorerProcess()
+    {
+        Type appEnvironmentType = typeof(AppEnvironment);
+        FieldInfo nativeField = appEnvironmentType.GetField("TryOpenNativeShellTarget", BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("TryOpenNativeShellTarget hook not found.");
+        FieldInfo processField = appEnvironmentType.GetField("StartExplorerProcess", BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("StartExplorerProcess hook not found.");
+
+        object? originalNative = nativeField.GetValue(null);
+        object? originalProcess = processField.GetValue(null);
+        int nativeCalls = 0;
+        int processCalls = 0;
+
+        try
+        {
+            nativeField.SetValue(null, (Func<string, bool>)(target =>
+            {
+                nativeCalls++;
+                target.Should().Be("::{645FF040-5081-101B-9F08-00AA002F954E}");
+                return true;
+            }));
+            processField.SetValue(null, (Func<string, bool>)(_ =>
+            {
+                processCalls++;
+                return true;
+            }));
+
+            bool opened = AppEnvironment.TryOpenTargetFallback("::{645FF040-5081-101B-9F08-00AA002F954E}", logger: null);
+
+            opened.Should().BeTrue();
+            nativeCalls.Should().Be(1);
+            processCalls.Should().Be(0,
+                "Recycle Bin fallback must stay on the native shell path and must not devolve to raw explorer.exe launching");
+        }
+        finally
+        {
+            nativeField.SetValue(null, originalNative);
+            processField.SetValue(null, originalProcess);
+        }
+    }
+
+    [Fact]
+    public void TryOpenTargetFallback_WhenPhysicalFolderTarget_ShouldUseExplorerProcess()
+    {
+        Type appEnvironmentType = typeof(AppEnvironment);
+        FieldInfo nativeField = appEnvironmentType.GetField("TryOpenNativeShellTarget", BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("TryOpenNativeShellTarget hook not found.");
+        FieldInfo processField = appEnvironmentType.GetField("StartExplorerProcess", BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("StartExplorerProcess hook not found.");
+
+        object? originalNative = nativeField.GetValue(null);
+        object? originalProcess = processField.GetValue(null);
+        int nativeCalls = 0;
+        int processCalls = 0;
+
+        try
+        {
+            nativeField.SetValue(null, (Func<string, bool>)(_ =>
+            {
+                nativeCalls++;
+                return true;
+            }));
+            processField.SetValue(null, (Func<string, bool>)(target =>
+            {
+                processCalls++;
+                target.Should().Be(@"C:\Windows");
+                return true;
+            }));
+
+            bool opened = AppEnvironment.TryOpenTargetFallback(@"C:\Windows", logger: null);
+
+            opened.Should().BeTrue();
+            nativeCalls.Should().Be(0);
+            processCalls.Should().Be(1);
+        }
+        finally
+        {
+            nativeField.SetValue(null, originalNative);
+            processField.SetValue(null, originalProcess);
+        }
     }
 }

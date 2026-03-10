@@ -221,13 +221,7 @@ public sealed class ShellComNavigator
         if (token.Contains('#'))
             return true;
 
-        if (token.StartsWith("::", StringComparison.Ordinal))
-            return true;
-
-        if (token.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return IsBracedGuid(token);
+        return ShellNamespacePath.IsShellNamespace(token);
     }
 
     private static object? TryResolveNamespaceFolder(object shell, string location)
@@ -255,65 +249,7 @@ public sealed class ShellComNavigator
 
     private static IReadOnlyList<string> BuildNamespaceCandidates(string location)
     {
-        string token = location.Trim();
-        var candidates = new List<string>(4);
-
-        void addCandidate(string candidate)
-        {
-            if (string.IsNullOrWhiteSpace(candidate))
-                return;
-
-            if (!candidates.Contains(candidate, StringComparer.OrdinalIgnoreCase))
-                candidates.Add(candidate);
-        }
-
-        addCandidate(token);
-
-        if (IsBracedGuid(token))
-        {
-            addCandidate("::" + token);
-            addCandidate("shell:::" + token);
-            return candidates;
-        }
-
-        if (token.StartsWith("::", StringComparison.Ordinal))
-        {
-            addCandidate("shell:::" + token[2..]);
-            return candidates;
-        }
-
-        if (token.StartsWith("shell:::", StringComparison.OrdinalIgnoreCase))
-        {
-            addCandidate("::" + token[8..]);
-            return candidates;
-        }
-
-        if (token.StartsWith("shell::", StringComparison.OrdinalIgnoreCase))
-        {
-            string remainder = token[7..].TrimStart(':');
-            addCandidate("shell:" + remainder);
-            return candidates;
-        }
-
-        if (token.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
-        {
-            string remainder = token[6..].TrimStart(':');
-            if (IsBracedGuid(remainder))
-            {
-                addCandidate("::" + remainder);
-                addCandidate("shell:::" + remainder);
-            }
-        }
-
-        return candidates;
-    }
-
-    private static bool IsBracedGuid(string value)
-    {
-        if (value.Length < 2 || value[0] != '{' || value[^1] != '}')
-            return false;
-
-        return Guid.TryParse(value, out _);
+        return ShellNamespacePath.BuildNamespaceCandidates(location);
     }
 
     private static bool IsComOrRpcException(Exception ex)

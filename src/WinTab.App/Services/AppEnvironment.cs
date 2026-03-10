@@ -1,12 +1,25 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Diagnostics;
+using WinTab.Platform.Win32;
 
 namespace WinTab.App.Services;
 
 public static class AppEnvironment
 {
     private const int MaxOpenPathLength = 2048;
+    internal static Func<string, bool> TryOpenNativeShellTarget = static target => NativeShellLauncher.TryOpen(target);
+    internal static Func<string, bool> StartExplorerProcess = static normalizedPath =>
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"\"{normalizedPath}\"",
+            UseShellExecute = true,
+        });
+        return true;
+    };
 
     public static string ResolveLaunchExecutablePath()
     {
@@ -34,24 +47,35 @@ public static class AppEnvironment
 
     public static void TryOpenFolderFallback(string path, WinTab.Diagnostics.Logger? logger)
     {
+        _ = TryOpenTargetFallback(path, logger);
+    }
+
+    public static bool TryOpenTargetFallback(string path, WinTab.Diagnostics.Logger? logger)
+    {
         if (!TryNormalizeExistingDirectoryPath(path, out string normalizedPath, out string reason))
         {
             logger?.Warn($"Skipped Explorer fallback launch: invalid path ({reason}). Raw='{path}'");
-            return;
+            return false;
+        }
+
+        OpenTargetInfo targetInfo = OpenTargetClassifier.Classify(normalizedPath);
+        if (targetInfo.RequiresNativeShellLaunch)
+        {
+            bool openedNatively = TryOpenNativeShellTarget(normalizedPath);
+            if (!openedNatively)
+                logger?.Warn($"Failed native shell launch for target: {normalizedPath}");
+
+            return openedNatively;
         }
 
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"\"{normalizedPath}\"",
-                UseShellExecute = true,
-            });
+            return StartExplorerProcess(normalizedPath);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
         {
             logger?.Error($"Failed to fallback open-folder launch for path: {normalizedPath}", ex);
+            return false;
         }
     }
 
@@ -134,45 +158,6 @@ public static class AppEnvironment
 
     private static bool TryNormalizeShellNamespaceToken(string value, out string normalized)
     {
-        normalized = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        string token = value.Trim();
-
-        if (token.StartsWith("::", StringComparison.Ordinal))
-        {
-            normalized = token;
-            return true;
-        }
-
-        if (token.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
-        {
-            if (token.StartsWith("shell::", StringComparison.OrdinalIgnoreCase) &&
-                !token.StartsWith("shell:::", StringComparison.OrdinalIgnoreCase))
-            {
-                string remainder = token[7..].TrimStart(':');
-                if (!string.IsNullOrWhiteSpace(remainder))
-                {
-                    normalized = "shell:" + remainder;
-                    return true;
-                }
-            }
-
-            normalized = token;
-            return true;
-        }
-
-        if (token.Length >= 2 &&
-            token[0] == '{' &&
-            token[^1] == '}' &&
-            Guid.TryParse(token, out _))
-        {
-            normalized = "::" + token;
-            return true;
-        }
-
-        return false;
+        return ShellNamespacePath.TryNormalizeToken(value, out normalized);
     }
 }

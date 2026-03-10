@@ -9,65 +9,80 @@
       mc:Ignorable="d"
       Title="GeneralPage">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
-        <StackPanel Margin="0,0,24,24" MaxWidth="840">
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/WinTab.UI;component/Themes/DesignPrimitives.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
 
-            <!-- Startup Section -->
-            <TextBlock Text="{DynamicResource General_Startup}"
-                       FontSize="21" FontWeight="SemiBold"
-                       Margin="0,0,0,14" />
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,28,28,36">
+        <StackPanel Margin="0,0,24,0" MaxWidth="880">
 
-            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
+            <Border Style="{StaticResource AppPanelBorderStyle}"
+                    Background="{DynamicResource AppSurfaceStrongBrush}"
+                    Margin="0,0,0,24">
+                <StackPanel>
+                    <TextBlock Text="{DynamicResource Nav_General}"
+                               Style="{StaticResource PageEyebrowStyle}" />
+                    <TextBlock Text="{DynamicResource General_Title}"
+                               Style="{StaticResource PageHeaderTitleStyle}" />
+                    <TextBlock Text="{DynamicResource General_Lead}"
+                               Style="{StaticResource PageHeaderDescriptionStyle}" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="{DynamicResource General_SectionStartup}"
+                       Style="{StaticResource PageSectionTitleStyle}" />
+            <TextBlock Text="{DynamicResource General_SectionStartup_Desc}"
+                       Style="{StaticResource SectionDescriptionStyle}" />
+
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource General_RunAtStartup}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource General_RunAtStartup}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource General_RunAtStartup_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
+                                   Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding RunAtStartup, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource General_StartMinimized}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource General_StartMinimized}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource General_StartMinimized_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
+                                   Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding StartMinimized, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}"
+                            Margin="0,0,0,24">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource General_ShowTrayIcon}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource General_ShowTrayIcon}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource General_ShowTrayIcon_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
+                                   Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding ShowTrayIcon, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <!-- Language Section -->
-            <Border BorderThickness="0,0,0,1"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    Margin="0,8,0,18" />
-            <TextBlock Text="{DynamicResource General_Language}"
-                       FontSize="21" FontWeight="SemiBold"
-                       Margin="0,0,0,14" />
+            <TextBlock Text="{DynamicResource General_SectionExperience}"
+                       Style="{StaticResource PageSectionTitleStyle}" />
+            <TextBlock Text="{DynamicResource General_SectionExperience_Desc}"
+                       Style="{StaticResource SectionDescriptionStyle}" />
 
-            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource General_LanguageLabel}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource General_LanguageLabel}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource General_LanguageLabel_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
+                                   Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ComboBox SelectedIndex="{Binding SelectedLanguageIndex, Mode=TwoWay}"
@@ -77,31 +92,25 @@
                 </ComboBox>
             </ui:CardControl>
 
-            <!-- Theme Section -->
-            <Border BorderThickness="0,0,0,1"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    Margin="0,10,0,18" />
-            <TextBlock Text="{DynamicResource Appearance_Theme}"
-                       FontSize="21" FontWeight="SemiBold"
-                       Margin="0,0,0,14" />
-
-            <ui:CardControl Margin="0,0,0,26" Padding="18,14">
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}"
+                            Margin="0,0,0,8">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource Appearance_Theme}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource Appearance_Theme}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Appearance_Theme_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
+                                   Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <StackPanel Orientation="Horizontal">
                     <RadioButton Content="{DynamicResource Appearance_ThemeLight}"
                                  IsChecked="{Binding IsThemeLight, Mode=TwoWay}"
-                                 GroupName="Theme" />
+                                 GroupName="Theme"
+                                 MinWidth="96" />
                     <RadioButton Content="{DynamicResource Appearance_ThemeDark}"
                                  IsChecked="{Binding IsThemeDark, Mode=TwoWay}"
                                  GroupName="Theme"
-                                 Margin="20,0,0,0" />
+                                 MinWidth="96"
+                                 Margin="16,0,0,0" />
                 </StackPanel>
             </ui:CardControl>
 

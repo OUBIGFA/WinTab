@@ -240,6 +240,13 @@ public static class NativeMethods
         out uint psfgaoOut);
 
     [DllImport("shell32.dll", PreserveSig = true)]
+    public static extern int SHOpenFolderAndSelectItems(
+        IntPtr pidlFolder,
+        uint cidl,
+        IntPtr apidl,
+        uint dwFlags);
+
+    [DllImport("shell32.dll", PreserveSig = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool ILIsEqual(IntPtr pidl1, IntPtr pidl2);
 

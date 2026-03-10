@@ -26,8 +26,8 @@ public class SettingsPagesDesignRefinementTests
             .First(e => e.Name.LocalName == "StackPanel" && e.Attribute("MaxWidth") is not null)
             .Attribute("MaxWidth")?.Value;
 
-        generalMaxWidth.Should().Be("840", "General page should keep widened content rhythm");
-        behaviorMaxWidth.Should().Be("840", "Behavior page should keep widened content rhythm");
+        generalMaxWidth.Should().Be("880", "General page should use the wider polished settings rhythm");
+        behaviorMaxWidth.Should().Be("880", "Behavior page should use the wider polished settings rhythm");
 
         var generalCards = generalPage.Descendants().Where(e => e.Name.LocalName == "CardControl").ToList();
         var behaviorCards = behaviorPage.Descendants().Where(e => e.Name.LocalName == "CardControl").ToList();
@@ -37,12 +37,12 @@ public class SettingsPagesDesignRefinementTests
 
         foreach (XElement card in generalCards)
         {
-            card.Attribute("Padding")?.Value.Should().Be("18,14", "General cards should use explicit refined inner spacing");
+            card.Attribute("Style")?.Value.Should().Be("{StaticResource SettingsCardStyle}", "General cards should share the polished card style token");
         }
 
         foreach (XElement card in behaviorCards)
         {
-            card.Attribute("Padding")?.Value.Should().Be("18,14", "Behavior cards should use explicit refined inner spacing");
+            card.Attribute("Style")?.Value.Should().Be("{StaticResource SettingsCardStyle}", "Behavior cards should share the polished card style token");
         }
     }
 

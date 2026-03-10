@@ -9,70 +9,89 @@
       mc:Ignorable="d"
       Title="BehaviorPage">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
-        <StackPanel Margin="0,0,24,24" MaxWidth="840">
+    <Page.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/WinTab.UI;component/Themes/DesignPrimitives.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Page.Resources>
 
-            <!-- Interception & Interaction (Merges to System Hook) -->
-            <TextBlock Text="{DynamicResource Behavior_Group_Interception}"
-                       FontSize="13" FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,10" />
-                       
-            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="28,28,28,36">
+        <StackPanel Margin="0,0,24,0" MaxWidth="880">
+
+            <Border Style="{StaticResource AppPanelBorderStyle}"
+                    Margin="0,0,0,24">
+                <StackPanel>
+                    <TextBlock Text="{DynamicResource Nav_Behavior}"
+                               Style="{StaticResource PageEyebrowStyle}" />
+                    <TextBlock Text="{DynamicResource Behavior_Title}"
+                               Style="{StaticResource PageHeaderTitleStyle}" />
+                    <TextBlock Text="{DynamicResource Behavior_Lead}"
+                               Style="{StaticResource PageHeaderDescriptionStyle}" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="{DynamicResource Behavior_SectionCapture}"
+                       Style="{StaticResource PageSectionTitleStyle}" />
+            <TextBlock Text="{DynamicResource Behavior_SectionCapture_Desc}"
+                       Style="{StaticResource SectionDescriptionStyle}" />
+
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
+                                   Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding EnableAutoConvertExplorerWindows, Mode=TwoWay}" />
             </ui:CardControl>
-            
-            <ui:CardControl Margin="0,0,0,24" Padding="18,14">
-                <ui:CardControl.Header>
-                    <StackPanel>
-                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick}" FontWeight="Medium" />
-                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
-                    </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}" />
-            </ui:CardControl>
 
-            <!-- Rules -->
-            <Border BorderThickness="0,0,0,1"
-                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-                    Margin="0,6,0,16" />
-            <TextBlock Text="{DynamicResource Behavior_Group_Tabs}"
-                       FontSize="13" FontWeight="SemiBold"
-                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                       Margin="0,0,0,10" />
-            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
+            <Border Style="{StaticResource AppPanelBorderStyle}"
+                    Background="{DynamicResource AppSurfaceSubtleBrush}"
+                    Margin="0,0,0,24">
+                <TextBlock Text="{DynamicResource Behavior_RestartHint}"
+                           Style="{StaticResource PageHeaderDescriptionStyle}" />
+            </Border>
+
+            <TextBlock Text="{DynamicResource Behavior_SectionTabs}"
+                       Style="{StaticResource PageSectionTitleStyle}" />
+            <TextBlock Text="{DynamicResource Behavior_SectionTabs_Desc}"
+                       Style="{StaticResource SectionDescriptionStyle}" />
+
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
+                                   Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding OpenNewTabFromActiveTabPath, Mode=TwoWay}" />
             </ui:CardControl>
 
-            <ui:CardControl Margin="0,0,0,10" Padding="18,14">
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
                 <ui:CardControl.Header>
                     <StackPanel>
-                        <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab}" FontWeight="Medium" />
+                        <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab_Desc}"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   FontSize="12" Margin="0,2,0,0" />
+                                   Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
                 </ui:CardControl.Header>
                 <ui:ToggleSwitch IsChecked="{Binding OpenChildFolderInNewTabFromActiveTab, Mode=TwoWay}"
                                  IsEnabled="{Binding IsOpenChildFolderInNewTabOptionEnabled}" />
+            </ui:CardControl>
+
+            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
+                <ui:CardControl.Header>
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick}" Style="{StaticResource SettingTitleStyle}" />
+                        <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick_Desc}"
+                                   Style="{StaticResource SettingDescriptionStyle}" />
+                    </StackPanel>
+                </ui:CardControl.Header>
+                <ui:ToggleSwitch IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}" />
             </ui:CardControl>
 
         </StackPanel>
