@@ -5,7 +5,7 @@
     <!-- Application -->
     <system:String x:Key="App_Name">WinTab</system:String>
     <system:String x:Key="App_Description">Open-source window tab manager</system:String>
-    <system:String x:Key="Shell_Tagline">Keep more Explorer navigation inside one window by folding new folder opens back into tabs whenever possible.</system:String>
+    <system:String x:Key="Shell_Tagline">Merge newly opened Explorer folders into tabs whenever possible to reduce window switching.</system:String>
     <system:String x:Key="Shell_StatusPrimary">Windows 10 / 11</system:String>
     <system:String x:Key="Shell_StatusSecondary">Light / Dark · Chinese / English</system:String>
 
@@ -17,98 +17,101 @@
 
     <!-- General Page -->
     <system:String x:Key="General_Title">Startup and appearance</system:String>
-    <system:String x:Key="General_Lead">Choose how WinTab launches, stays available, and presents itself throughout the day.</system:String>
+    <system:String x:Key="General_Lead">Configure how WinTab starts, stays available, and applies language and theme settings.</system:String>
     <system:String x:Key="General_Startup">Startup</system:String>
     <system:String x:Key="General_SectionStartup">Launch and availability</system:String>
-    <system:String x:Key="General_SectionStartup_Desc">These settings control when WinTab starts, whether the main window stays hidden, and if the tray icon remains available.</system:String>
+    <system:String x:Key="General_SectionStartup_Desc">Control when WinTab starts, whether the main window is shown, and whether the tray entry remains available.</system:String>
     <system:String x:Key="General_SectionExperience">Appearance and language</system:String>
-    <system:String x:Key="General_SectionExperience_Desc">Keep the interface aligned with your system theme and the language you want to work in every day.</system:String>
+    <system:String x:Key="General_SectionExperience_Desc">Keep language and theme settings consistent with daily use.</system:String>
     <system:String x:Key="General_RunAtStartup">Run at Windows startup</system:String>
-    <system:String x:Key="General_RunAtStartup_Desc">Automatically launch WinTab after signing in to Windows</system:String>
-    <system:String x:Key="General_StartMinimized">Start hidden in tray</system:String>
-    <system:String x:Key="General_StartMinimized_Desc">Don't pop up the main window at launch (Requires Tray Icon)</system:String>
-    <system:String x:Key="General_ShowTrayIcon">Tray icon</system:String>
-    <system:String x:Key="General_ShowTrayIcon_Desc">Keep the WinTab app running in the bottom-right taskbar corner</system:String>
+    <system:String x:Key="General_RunAtStartup_Desc">Start WinTab automatically after you sign in to Windows.</system:String>
+    <system:String x:Key="General_StartMinimized">Start with the main window hidden</system:String>
+    <system:String x:Key="General_StartMinimized_Desc">Do not show the main window on launch; requires the tray icon to remain enabled.</system:String>
+    <system:String x:Key="General_ShowTrayIcon">Show tray icon</system:String>
+    <system:String x:Key="General_ShowTrayIcon_Desc">Display the WinTab icon in the taskbar notification area.</system:String>
     <system:String x:Key="General_Language">Language</system:String>
-    <system:String x:Key="General_LanguageLabel">Language</system:String>
-    <system:String x:Key="General_LanguageLabel_Desc">Takes effect immediately without restarting the app</system:String>
-    <system:String x:Key="General_Chinese">简体中文</system:String>
+    <system:String x:Key="General_LanguageLabel">Interface language</system:String>
+    <system:String x:Key="General_LanguageLabel_Desc">Takes effect immediately without restarting the app.</system:String>
+    <system:String x:Key="General_Chinese">Simplified Chinese</system:String>
     <system:String x:Key="General_English">English</system:String>
-    <system:String x:Key="Behavior_Group_Interception">System Hook</system:String>
-    <system:String x:Key="Behavior_Group_Tabs">Rules</system:String>
-    <system:String x:Key="Behavior_Title">Explorer behavior</system:String>
-    <system:String x:Key="Behavior_Lead">These settings shape how WinTab captures Explorer windows and how new tabs behave once they are created.</system:String>
-    <system:String x:Key="Behavior_SectionCapture">Window capture</system:String>
-    <system:String x:Key="Behavior_SectionCapture_Desc">Control whether WinTab should fold newly opened Explorer windows back into your existing workflow.</system:String>
-    <system:String x:Key="Behavior_SectionTabs">Tab rules</system:String>
-    <system:String x:Key="Behavior_SectionTabs_Desc">Decide where new tabs open from and how quickly you can close the ones you no longer need.</system:String>
-    <system:String x:Key="Behavior_RestartHint">Some Explorer capture changes apply fully only after WinTab restarts. If behavior feels unchanged, close the app and open it again.</system:String>
-    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">Catch external folders</system:String>
-    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">Force folders opened from other apps to join existing WinTab windows as tabs</system:String>
-    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows">Intercept all Explorer windows</system:String>
-    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows_Desc">Auto-convert new Explorer windows from third-party apps or command line into tabs (restart required)</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">Clone current path</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">New tabs inherit the current location instead of defaulting to 'This PC'</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab">Open subfolders in new tabs</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">Entering a subfolder won't overwrite the current view; it spawns a fresh tab alongside it</system:String>
-    <system:String x:Key="Behavior_CloseTabOnDoubleClick">Double-click title to close</system:String>
-    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">Skip the little 'x'—just double-click the tab block itself to kill it</system:String>
 
-    <!-- Appearance Page -->
+    <!-- Behavior Page -->
+    <system:String x:Key="Behavior_Group_Interception">System integration</system:String>
+    <system:String x:Key="Behavior_Group_Tabs">Tab rules</system:String>
+    <system:String x:Key="Behavior_Title">Explorer interaction</system:String>
+    <system:String x:Key="Behavior_Lead">Configure how WinTab captures Explorer windows and applies tab behavior. Enable items gradually based on your workflow.</system:String>
+    <system:String x:Key="Behavior_SectionCapture">Window capture</system:String>
+    <system:String x:Key="Behavior_SectionCapture_Desc">Control whether externally opened Explorer windows are merged into an existing WinTab window.</system:String>
+    <system:String x:Key="Behavior_SectionTabs">Tab rules</system:String>
+    <system:String x:Key="Behavior_SectionTabs_Desc">Choose where new tabs open and how tabs can be closed quickly.</system:String>
+    <system:String x:Key="Behavior_RestartHint">Some capture settings apply fully only after WinTab restarts. If behavior does not change, close the app and open it again.</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">Intercept external folder open requests</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">Route folder open requests from Windows or other apps into a new tab in the current WinTab window.</system:String>
+    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows">Intercept all Explorer windows</system:String>
+    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows_Desc">Convert Explorer windows launched by third-party apps or command line into tabs; requires restart.</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">Use the current path for new tabs</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">Open new tabs in the active tab's folder instead of defaulting to This PC.</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab">Open subfolders in new tabs</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">Open subfolders in a new tab while keeping the current view unchanged.</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick">Double-click a tab title to close it</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">Double-click the tab title area to close that tab.</system:String>
+
+    <!-- Appearance -->
     <system:String x:Key="Appearance_Theme">Theme</system:String>
-    <system:String x:Key="Appearance_Theme_Desc">Choose between light and dark appearance</system:String>
+    <system:String x:Key="Appearance_Theme_Desc">Choose a light or dark interface appearance.</system:String>
     <system:String x:Key="Appearance_ThemeLight">Light</system:String>
     <system:String x:Key="Appearance_ThemeDark">Dark</system:String>
 
     <!-- About Page -->
     <system:String x:Key="About_Title">About WinTab</system:String>
-    <system:String x:Key="About_Lead">WinTab is an open-source companion for Explorer that tries to keep file browsing inside a calmer, tab-first workflow.</system:String>
+    <system:String x:Key="About_Lead">WinTab is an open-source tool for tab-oriented Explorer management, designed to reduce window switching without forcing a new workflow.</system:String>
     <system:String x:Key="About_Version">Version</system:String>
-    <system:String x:Key="About_Description">WinTab is an open-source Windows window tab tool that gives Explorer a browser-like tab experience</system:String>
+    <system:String x:Key="About_Description">An open-source tab utility for Windows Explorer that keeps file browsing organized in fewer windows.</system:String>
     <system:String x:Key="About_License">License: MIT</system:String>
     <system:String x:Key="About_GitHub">GitHub</system:String>
-    <system:String x:Key="About_GitHub_Desc">Open the public repository to review source code, releases, and issue history.</system:String>
+    <system:String x:Key="About_GitHub_Desc">Review source code, release history, and public issue tracking.</system:String>
     <system:String x:Key="About_SectionProject">Project</system:String>
-    <system:String x:Key="About_SectionProject_Desc">See where this build comes from and where future updates and discussions are tracked.</system:String>
+    <system:String x:Key="About_SectionProject_Desc">See where this build comes from and where future updates are published.</system:String>
     <system:String x:Key="About_SectionDiagnostics">Diagnostics and logs</system:String>
-    <system:String x:Key="About_SectionDiagnostics_Desc">If Explorer capture or navigation behaves unexpectedly, the log is the fastest place to start.</system:String>
+    <system:String x:Key="About_SectionDiagnostics_Desc">Check the log first when capture, navigation, or flicker behavior looks wrong.</system:String>
     <system:String x:Key="About_ModeInstalled">Installed build</system:String>
     <system:String x:Key="About_ModePortable">Portable build</system:String>
     <system:String x:Key="About_LogLocation">Log file location</system:String>
-    <system:String x:Key="About_OpenLog">Open Log</system:String>
-    <system:String x:Key="About_OpenLogFolder">Open Log Folder</system:String>
+    <system:String x:Key="About_OpenLog">Open log</system:String>
+    <system:String x:Key="About_OpenLogFolder">Open log folder</system:String>
 
     <!-- Uninstall Page -->
     <system:String x:Key="Uninstall_Title">Uninstall WinTab</system:String>
-    <system:String x:Key="Uninstall_Lead">Remove the app, keep or delete local data, or just restore the system-level changes WinTab made.</system:String>
+    <system:String x:Key="Uninstall_Lead">Uninstall WinTab, decide whether to remove local data, or restore only the system configuration written by WinTab.</system:String>
     <system:String x:Key="Uninstall_SectionRemoval">Removal and cleanup</system:String>
-    <system:String x:Key="Uninstall_SectionRemoval_Desc">This is the main uninstall path. By default it removes only program files; local data stays unless you explicitly choose full cleanup.</system:String>
+    <system:String x:Key="Uninstall_SectionRemoval_Desc">This is the main uninstall path. By default only program files are removed; delete local configuration and logs only when full cleanup is required.</system:String>
     <system:String x:Key="Uninstall_SectionMaintenance">System restore and manual handling</system:String>
-    <system:String x:Key="Uninstall_SectionMaintenance_Desc">If you are not uninstalling yet, you can still restore WinTab's system changes or open the app folder for manual cleanup.</system:String>
-    <system:String x:Key="Uninstall_DefaultBehavior">Tip: by default only app files are removed; enable "Remove user data" to also delete settings and logs</system:String>
+    <system:String x:Key="Uninstall_SectionMaintenance_Desc">If you are not uninstalling yet, you can restore WinTab system changes or open the app directory and logs for manual inspection.</system:String>
+    <system:String x:Key="Uninstall_DefaultBehavior">By default only app files are removed. Enable Remove user data to also delete settings and logs.</system:String>
     <system:String x:Key="Uninstall_ModeLabel">Run mode</system:String>
     <system:String x:Key="Uninstall_ModeInstalled">Installed</system:String>
     <system:String x:Key="Uninstall_ModePortable">Portable</system:String>
     <system:String x:Key="Uninstall_PathLabel">Uninstaller</system:String>
-    <system:String x:Key="Uninstall_PathMissing">Uninstaller not found (use "Open system uninstall settings")</system:String>
+    <system:String x:Key="Uninstall_PathMissing">Uninstaller not found. Use Open system uninstall settings instead.</system:String>
     <system:String x:Key="Uninstall_Button">Uninstall WinTab</system:String>
     <system:String x:Key="Uninstall_OpenSystem">Open system uninstall settings</system:String>
     <system:String x:Key="Uninstall_OpenFolder">Open app directory</system:String>
+    <system:String x:Key="Uninstall_OpenLog">Open log</system:String>
     <system:String x:Key="Uninstall_RemoveUserData">Remove user data</system:String>
-    <system:String x:Key="Uninstall_RemoveUserData_Desc">Off by default. Enable only if you want full cleanup (delete AppData\Roaming\WinTab)</system:String>
-    <system:String x:Key="Uninstall_ConfirmTitle">Confirm Uninstall</system:String>
+    <system:String x:Key="Uninstall_RemoveUserData_Desc">Disabled by default. Use only for full cleanup; this deletes AppData\Roaming\WinTab.</system:String>
+    <system:String x:Key="Uninstall_ConfirmTitle">Confirm uninstall</system:String>
     <system:String x:Key="Uninstall_Confirm">WinTab uninstaller will be started. Continue?</system:String>
-    <system:String x:Key="Uninstall_LaunchFailed">Unable to start uninstaller. Please use system uninstall settings</system:String>
-    <system:String x:Key="Uninstall_PortableHint">Portable mode detected. Close WinTab and delete the app directory to uninstall</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig">Restore system config</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig_Desc">Remove all traces WinTab left on the system: startup registration, Explorer open-verb interception, and the HKCU\Software\WinTab registry tree</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig_Confirm">This will remove all WinTab system changes (startup entry, registry interception, WinTab registry tree). Continue?</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig_Success">System configuration restored successfully</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig_Partial">Some restore operations failed. Check the log for details</system:String>
+    <system:String x:Key="Uninstall_LaunchFailed">Unable to start the uninstaller. Use system uninstall settings instead.</system:String>
+    <system:String x:Key="Uninstall_PortableHint">Portable mode detected. Close WinTab and delete the app directory to uninstall.</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig">Restore system configuration</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Desc">Remove system changes written by WinTab, including startup registration, Explorer interception, and the HKCU\Software\WinTab registry tree.</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Confirm">This will remove WinTab system changes, including startup registration, Explorer interception, and WinTab registry entries. Continue?</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Success">System configuration restored.</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Partial">Some restore operations failed. Check the log for details.</system:String>
 
     <!-- Tray Icon -->
-    <system:String x:Key="Tray_Open">Show Main Window</system:String>
-    <system:String x:Key="Tray_Exit">Exit App</system:String>
+    <system:String x:Key="Tray_Open">Show main window</system:String>
+    <system:String x:Key="Tray_Exit">Exit app</system:String>
     <system:String x:Key="Tray_Tooltip">WinTab - Window Tab Manager</system:String>
 
     <!-- Common -->

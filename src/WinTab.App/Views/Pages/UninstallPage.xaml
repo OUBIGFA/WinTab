@@ -43,8 +43,8 @@
                 <TextBlock Text="{DynamicResource Uninstall_SectionRemoval_Desc}"
                            Style="{StaticResource SectionDescriptionStyle}" />
 
-                <ui:CardControl Style="{StaticResource SettingsCardStyle}"
-                                Margin="0,0,0,20">
+                <Border Style="{StaticResource SettingRowBorderStyle}"
+                        Margin="0,0,0,20">
                     <StackPanel Margin="4">
                         <Grid Margin="0,0,0,20">
                             <Grid.ColumnDefinitions>
@@ -99,6 +99,34 @@
                                        Padding="16,10"
                                        Command="{Binding OpenSystemUninstallCommand}"
                                        Margin="0,0,12,12" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="{DynamicResource Uninstall_SectionMaintenance}"
+                           Style="{StaticResource PageSectionTitleStyle}" />
+                <TextBlock Text="{DynamicResource Uninstall_SectionMaintenance_Desc}"
+                           Style="{StaticResource SectionDescriptionStyle}" />
+
+                <Border Style="{StaticResource SettingRowBorderStyle}">
+                    <StackPanel>
+                        <TextBlock Text="{DynamicResource Uninstall_RestoreSystemConfig}"
+                                   Style="{StaticResource SettingTitleStyle}" />
+                        <TextBlock Text="{DynamicResource Uninstall_RestoreSystemConfig_Desc}"
+                                   Style="{StaticResource SettingDescriptionStyle}"
+                                   Margin="0,2,0,14" />
+                        <WrapPanel Orientation="Horizontal">
+                            <ui:Button Content="{DynamicResource Uninstall_RestoreSystemConfig}"
+                                       Icon="{ui:SymbolIcon ArrowCounterclockwise24}"
+                                       Appearance="Secondary"
+                                       Padding="24,10"
+                                       Margin="0,0,12,12"
+                                       Command="{Binding RestoreSystemConfigCommand}" />
+                            <ui:Button Content="{DynamicResource Uninstall_OpenLog}"
+                                       Icon="{ui:SymbolIcon Document24}"
+                                       Padding="16,10"
+                                       Margin="0,0,12,12"
+                                       Command="{Binding OpenLogCommand}" />
                             <ui:Button Content="{DynamicResource Uninstall_OpenFolder}"
                                        Icon="{ui:SymbolIcon Folder24}"
                                        Padding="16,10"
@@ -106,37 +134,7 @@
                                        Margin="0,0,0,12" />
                         </WrapPanel>
                     </StackPanel>
-                </ui:CardControl>
-
-                <TextBlock Text="{DynamicResource Uninstall_SectionMaintenance}"
-                           Style="{StaticResource PageSectionTitleStyle}" />
-                <TextBlock Text="{DynamicResource Uninstall_SectionMaintenance_Desc}"
-                           Style="{StaticResource SectionDescriptionStyle}" />
-
-                <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                    <ui:CardControl.Header>
-                        <StackPanel>
-                            <TextBlock Text="{DynamicResource Uninstall_RestoreSystemConfig}"
-                                       Style="{StaticResource SettingTitleStyle}" />
-                            <TextBlock Text="{DynamicResource Uninstall_RestoreSystemConfig_Desc}"
-                                       Style="{StaticResource SettingDescriptionStyle}" />
-                        </StackPanel>
-                    </ui:CardControl.Header>
-
-                    <WrapPanel Orientation="Horizontal">
-                        <ui:Button Content="{DynamicResource Uninstall_RestoreSystemConfig}"
-                                   Icon="{ui:SymbolIcon ArrowCounterclockwise24}"
-                                   Appearance="Secondary"
-                                   Padding="24,10"
-                                   Margin="0,0,12,12"
-                                   Command="{Binding RestoreSystemConfigCommand}" />
-                        <ui:Button Content="{DynamicResource Uninstall_OpenFolder}"
-                                   Icon="{ui:SymbolIcon Folder24}"
-                                   Padding="16,10"
-                                   Command="{Binding OpenAppDirectoryCommand}"
-                                   Margin="0,0,0,12" />
-                    </WrapPanel>
-                </ui:CardControl>
+                </Border>
 
                 <TextBlock Text="{DynamicResource Uninstall_PortableHint}"
                            HorizontalAlignment="Center" TextAlignment="Center" LineHeight="20"

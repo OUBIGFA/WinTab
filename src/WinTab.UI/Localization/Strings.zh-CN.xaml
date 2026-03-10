@@ -4,8 +4,8 @@
 
     <!-- Application -->
     <system:String x:Key="App_Name">WinTab</system:String>
-    <system:String x:Key="App_Description">开源窗口标签管理器</system:String>
-    <system:String x:Key="Shell_Tagline">把资源管理器的新窗口尽量收拢成标签页，让日常浏览保持在一个工作流里。</system:String>
+    <system:String x:Key="App_Description">开源窗口标签管理工具</system:String>
+    <system:String x:Key="Shell_Tagline">尽量将资源管理器中新打开的文件夹并入标签页，减少窗口切换。</system:String>
     <system:String x:Key="Shell_StatusPrimary">Windows 10 / 11</system:String>
     <system:String x:Key="Shell_StatusSecondary">浅色 / 深色 · 中英双语</system:String>
 
@@ -17,61 +17,63 @@
 
     <!-- General Page -->
     <system:String x:Key="General_Title">启动与界面</system:String>
-    <system:String x:Key="General_Lead">管理 WinTab 的启动方式、常驻方式，以及你每天看到的语言和主题。</system:String>
+    <system:String x:Key="General_Lead">设置 WinTab 的启动方式、驻留方式，以及界面语言和主题。</system:String>
     <system:String x:Key="General_Startup">启动</system:String>
     <system:String x:Key="General_SectionStartup">启动与常驻</system:String>
-    <system:String x:Key="General_SectionStartup_Desc">这些选项决定 WinTab 何时出现、是否显示主窗口，以及是否持续留在托盘里。</system:String>
+    <system:String x:Key="General_SectionStartup_Desc">控制 WinTab 何时启动、是否显示主窗口，以及是否保留托盘入口。</system:String>
     <system:String x:Key="General_SectionExperience">外观与语言</system:String>
-    <system:String x:Key="General_SectionExperience_Desc">保持界面语言和主题与你的使用习惯一致，减少切换和干扰。</system:String>
-    <system:String x:Key="General_RunAtStartup">开机自启动</system:String>
-    <system:String x:Key="General_RunAtStartup_Desc">登录 Windows 后自动启动 WinTab</system:String>
+    <system:String x:Key="General_SectionExperience_Desc">设置界面语言和主题，保持日常使用一致性。</system:String>
+    <system:String x:Key="General_RunAtStartup">开机自动启动</system:String>
+    <system:String x:Key="General_RunAtStartup_Desc">登录 Windows 后自动启动 WinTab。</system:String>
     <system:String x:Key="General_StartMinimized">启动时隐藏主窗口</system:String>
-    <system:String x:Key="General_StartMinimized_Desc">应用启动后将自动隐藏主界面，仅驻留在系统托盘（需开启“显示托盘图标”）</system:String>
+    <system:String x:Key="General_StartMinimized_Desc">应用启动后不显示主窗口，仅保留托盘入口；需先启用“显示托盘图标”。</system:String>
     <system:String x:Key="General_ShowTrayIcon">显示托盘图标</system:String>
-    <system:String x:Key="General_ShowTrayIcon_Desc">在系统任务栏的通知区域显示本应用的图标</system:String>
+    <system:String x:Key="General_ShowTrayIcon_Desc">在任务栏通知区域显示 WinTab 图标。</system:String>
     <system:String x:Key="General_Language">语言</system:String>
     <system:String x:Key="General_LanguageLabel">界面语言</system:String>
-    <system:String x:Key="General_LanguageLabel_Desc">切换后立即生效，无需重启应用</system:String>
+    <system:String x:Key="General_LanguageLabel_Desc">修改后立即生效，无需重启应用。</system:String>
     <system:String x:Key="General_Chinese">简体中文</system:String>
     <system:String x:Key="General_English">English</system:String>
+
+    <!-- Behavior Page -->
     <system:String x:Key="Behavior_Group_Interception">系统集成</system:String>
     <system:String x:Key="Behavior_Group_Tabs">标签页规则</system:String>
     <system:String x:Key="Behavior_Title">资源管理器交互</system:String>
-    <system:String x:Key="Behavior_Lead">这些设置会影响 WinTab 接管资源管理器窗口与标签页的方式，建议按你的日常使用场景逐步开启。</system:String>
+    <system:String x:Key="Behavior_Lead">设置 WinTab 接管资源管理器窗口和标签页的方式。建议按使用场景逐项启用。</system:String>
     <system:String x:Key="Behavior_SectionCapture">窗口接管</system:String>
-    <system:String x:Key="Behavior_SectionCapture_Desc">控制 WinTab 是否把外部打开的资源管理器窗口尽量折叠回已有窗口中。</system:String>
+    <system:String x:Key="Behavior_SectionCapture_Desc">控制外部打开的资源管理器窗口是否并入现有 WinTab 窗口。</system:String>
     <system:String x:Key="Behavior_SectionTabs">标签页规则</system:String>
-    <system:String x:Key="Behavior_SectionTabs_Desc">决定新标签页从哪里打开，以及你如何快速关闭不需要的标签页。</system:String>
-    <system:String x:Key="Behavior_RestartHint">部分接管行为需要在重新启动 WinTab 后完全生效；如果你刚改完设置，建议退出并重新打开应用。</system:String>
+    <system:String x:Key="Behavior_SectionTabs_Desc">设置新标签页的打开位置，以及标签页的快捷关闭方式。</system:String>
+    <system:String x:Key="Behavior_RestartHint">部分接管设置需要在重启 WinTab 后才会完全生效。修改后如未见变化，请退出并重新打开应用。</system:String>
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception">接管外部文件夹打开请求</system:String>
-    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">拦截由系统或其他应用发出的文件夹打开请求，并作为新标签页加入到当前的 WinTab 窗口</system:String>
+    <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">将系统或其他应用发起的文件夹打开请求并入当前 WinTab 窗口中的新标签页。</system:String>
     <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows">拦截所有资源管理器窗口</system:String>
-    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows_Desc">自动将第三方应用或命令行启动的新资源管理器窗口转换为标签页（需重启生效）</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">继承当前标签页路径</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">新建标签页时，默认打开当前活动标签页所在的目录，而非系统默认的“此电脑”</system:String>
+    <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows_Desc">将第三方应用或命令行新打开的资源管理器窗口自动转换为标签页；需重启后生效。</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">新标签页沿用当前路径</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">新建标签页时默认打开当前活动标签页所在目录，而不是“此电脑”。</system:String>
     <system:String x:Key="Behavior_OpenChildFolderInNewTab">在新标签页中打开子文件夹</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">点击文件夹时，自动创建并跳转至新的标签页，当前视图将不被覆盖</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">点击子文件夹时创建并切换到新标签页，当前视图保持不变。</system:String>
     <system:String x:Key="Behavior_CloseTabOnDoubleClick">双击标签页标题关闭</system:String>
-    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">双击标签页的标题区域即可快速将其关闭</system:String>
+    <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">双击标签页标题区域即可关闭该标签页。</system:String>
 
-    <!-- Appearance Page -->
+    <!-- Appearance -->
     <system:String x:Key="Appearance_Theme">主题</system:String>
-    <system:String x:Key="Appearance_Theme_Desc">选择浅色或深色界面外观</system:String>
+    <system:String x:Key="Appearance_Theme_Desc">选择浅色或深色界面外观。</system:String>
     <system:String x:Key="Appearance_ThemeLight">浅色</system:String>
     <system:String x:Key="Appearance_ThemeDark">深色</system:String>
 
     <!-- About Page -->
     <system:String x:Key="About_Title">关于 WinTab</system:String>
-    <system:String x:Key="About_Lead">WinTab 是一个面向 Explorer 的开源辅助工具，目标是在不打断原生工作流的前提下，把更多浏览动作留在标签页里。</system:String>
+    <system:String x:Key="About_Lead">WinTab 是用于资源管理器标签化管理的开源工具，尽量在不改变原有操作习惯的前提下减少窗口切换。</system:String>
     <system:String x:Key="About_Version">版本</system:String>
-    <system:String x:Key="About_Description">本软件是开源的 Windows 窗口标签工具，让资源管理器拥有类似浏览器的标签页体验</system:String>
-    <system:String x:Key="About_License">开源协议: MIT</system:String>
+    <system:String x:Key="About_Description">开源 Windows 资源管理器标签页工具，为文件浏览提供更集中的窗口组织方式。</system:String>
+    <system:String x:Key="About_License">开源协议：MIT</system:String>
     <system:String x:Key="About_GitHub">GitHub</system:String>
-    <system:String x:Key="About_GitHub_Desc">查看源代码、版本发布记录，以及项目的公开问题反馈。</system:String>
+    <system:String x:Key="About_GitHub_Desc">查看源代码、版本发布记录和公开问题反馈。</system:String>
     <system:String x:Key="About_SectionProject">项目</system:String>
-    <system:String x:Key="About_SectionProject_Desc">了解 WinTab 的版本来源、开源仓库与后续更新路径。</system:String>
+    <system:String x:Key="About_SectionProject_Desc">了解当前版本来源、开源仓库及后续更新信息。</system:String>
     <system:String x:Key="About_SectionDiagnostics">诊断与日志</system:String>
-    <system:String x:Key="About_SectionDiagnostics_Desc">当接管、导航或闪烁行为出现异常时，可以先从日志开始定位。</system:String>
+    <system:String x:Key="About_SectionDiagnostics_Desc">当接管、导航或闪烁行为异常时，可先查看日志定位问题。</system:String>
     <system:String x:Key="About_ModeInstalled">安装版</system:String>
     <system:String x:Key="About_ModePortable">便携版</system:String>
     <system:String x:Key="About_LogLocation">日志文件位置</system:String>
@@ -80,35 +82,36 @@
 
     <!-- Uninstall Page -->
     <system:String x:Key="Uninstall_Title">卸载 WinTab</system:String>
-    <system:String x:Key="Uninstall_Lead">你可以卸载程序、保留或删除本地数据，也可以只恢复 WinTab 写入系统的配置。</system:String>
+    <system:String x:Key="Uninstall_Lead">可在此卸载 WinTab、决定是否删除本地数据，或仅恢复 WinTab 写入系统的配置。</system:String>
     <system:String x:Key="Uninstall_SectionRemoval">卸载与清理</system:String>
-    <system:String x:Key="Uninstall_SectionRemoval_Desc">这是主卸载入口。默认只移除程序文件；只有在你明确需要彻底清理时，才删除本地配置和日志。</system:String>
+    <system:String x:Key="Uninstall_SectionRemoval_Desc">这是主卸载入口。默认仅移除程序文件；只有在明确需要彻底清理时，才建议删除本地配置和日志。</system:String>
     <system:String x:Key="Uninstall_SectionMaintenance">系统恢复与手动处理</system:String>
-    <system:String x:Key="Uninstall_SectionMaintenance_Desc">如果你暂时不想卸载，也可以只恢复 WinTab 留下的系统配置，或直接打开程序目录手动处理。</system:String>
-    <system:String x:Key="Uninstall_DefaultBehavior">提示：默认仅卸载程序文件；若勾选“删除用户数据”，会同时删除配置与日志目录</system:String>
+    <system:String x:Key="Uninstall_SectionMaintenance_Desc">如果暂时不卸载，也可以恢复 WinTab 写入系统的配置，或打开程序目录和日志进行手动检查。</system:String>
+    <system:String x:Key="Uninstall_DefaultBehavior">提示：默认仅卸载程序文件；勾选“删除用户数据”后，会同时删除配置和日志目录。</system:String>
     <system:String x:Key="Uninstall_ModeLabel">运行模式</system:String>
     <system:String x:Key="Uninstall_ModeInstalled">安装版</system:String>
     <system:String x:Key="Uninstall_ModePortable">便携版</system:String>
     <system:String x:Key="Uninstall_PathLabel">卸载程序</system:String>
-    <system:String x:Key="Uninstall_PathMissing">未检测到卸载程序（可使用“打开系统卸载设置”）</system:String>
+    <system:String x:Key="Uninstall_PathMissing">未检测到卸载程序，可改用“打开系统卸载设置”。</system:String>
     <system:String x:Key="Uninstall_Button">卸载 WinTab</system:String>
     <system:String x:Key="Uninstall_OpenSystem">打开系统卸载设置</system:String>
     <system:String x:Key="Uninstall_OpenFolder">打开程序目录</system:String>
+    <system:String x:Key="Uninstall_OpenLog">打开日志</system:String>
     <system:String x:Key="Uninstall_RemoveUserData">删除用户数据</system:String>
-    <system:String x:Key="Uninstall_RemoveUserData_Desc">默认不勾选，仅在需要彻底清理时勾选（删除 AppData\Roaming\WinTab）</system:String>
+    <system:String x:Key="Uninstall_RemoveUserData_Desc">默认不勾选，仅在需要彻底清理时启用；将删除 AppData\Roaming\WinTab。</system:String>
     <system:String x:Key="Uninstall_ConfirmTitle">确认卸载</system:String>
     <system:String x:Key="Uninstall_Confirm">即将启动 WinTab 卸载程序，是否继续？</system:String>
-    <system:String x:Key="Uninstall_LaunchFailed">无法启动卸载程序，请改用系统卸载设置</system:String>
-    <system:String x:Key="Uninstall_PortableHint">当前为便携版，关闭 WinTab 后删除程序目录即可完成卸载</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig">还原系统配置</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig_Desc">清除 WinTab 在系统中留下的所有痕迹：开机自启动注册、资源管理器打开动作拦截，以及 HKCU\Software\WinTab 注册表项</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig_Confirm">即将清除 WinTab 对系统的所有更改（开机自启动、注册表拦截、WinTab 注册表项），是否继续？</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig_Success">系统配置已成功还原</system:String>
-    <system:String x:Key="Uninstall_RestoreSystemConfig_Partial">部分还原操作失败，请查看日志，建议手动检查注册表或重新运行</system:String>
+    <system:String x:Key="Uninstall_LaunchFailed">无法启动卸载程序，请改用系统卸载设置。</system:String>
+    <system:String x:Key="Uninstall_PortableHint">当前为便携版。关闭 WinTab 后删除程序目录即可完成卸载。</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig">恢复系统配置</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Desc">清理 WinTab 写入系统的配置，包括开机启动项、资源管理器打开拦截，以及 HKCU\Software\WinTab 注册表项。</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Confirm">即将清理 WinTab 写入系统的配置，包括开机启动项、打开拦截和 WinTab 注册表项。是否继续？</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Success">系统配置已恢复。</system:String>
+    <system:String x:Key="Uninstall_RestoreSystemConfig_Partial">部分恢复操作失败。请查看日志，并按需要手动检查相关注册表项。</system:String>
 
     <!-- Tray Icon -->
     <system:String x:Key="Tray_Open">显示主界面</system:String>
-    <system:String x:Key="Tray_Exit">退出软件</system:String>
+    <system:String x:Key="Tray_Exit">退出应用</system:String>
     <system:String x:Key="Tray_Tooltip">WinTab - 窗口标签管理器</system:String>
 
     <!-- Common -->

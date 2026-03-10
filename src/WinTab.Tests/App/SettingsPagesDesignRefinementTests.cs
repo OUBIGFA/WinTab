@@ -29,20 +29,26 @@ public class SettingsPagesDesignRefinementTests
         generalMaxWidth.Should().Be("880", "General page should use the wider polished settings rhythm");
         behaviorMaxWidth.Should().Be("880", "Behavior page should use the wider polished settings rhythm");
 
-        var generalCards = generalPage.Descendants().Where(e => e.Name.LocalName == "CardControl").ToList();
-        var behaviorCards = behaviorPage.Descendants().Where(e => e.Name.LocalName == "CardControl").ToList();
+        var generalRows = generalPage
+            .Descendants()
+            .Where(e => e.Name.LocalName == "Border" && (string?)e.Attribute("Style") == "{StaticResource SettingRowBorderStyle}")
+            .ToList();
+        var behaviorRows = behaviorPage
+            .Descendants()
+            .Where(e => e.Name.LocalName == "Border" && (string?)e.Attribute("Style") == "{StaticResource SettingRowBorderStyle}")
+            .ToList();
 
-        generalCards.Should().NotBeEmpty();
-        behaviorCards.Should().NotBeEmpty();
+        generalRows.Should().HaveCount(5, "General page should render five dedicated setting rows");
+        behaviorRows.Should().HaveCount(4, "Behavior page should render four dedicated setting rows");
 
-        foreach (XElement card in generalCards)
+        foreach (XElement row in generalRows)
         {
-            card.Attribute("Style")?.Value.Should().Be("{StaticResource SettingsCardStyle}", "General cards should share the polished card style token");
+            row.Attribute("Style")?.Value.Should().Be("{StaticResource SettingRowBorderStyle}", "General rows should share the dedicated setting row style");
         }
 
-        foreach (XElement card in behaviorCards)
+        foreach (XElement row in behaviorRows)
         {
-            card.Attribute("Style")?.Value.Should().Be("{StaticResource SettingsCardStyle}", "Behavior cards should share the polished card style token");
+            row.Attribute("Style")?.Value.Should().Be("{StaticResource SettingRowBorderStyle}", "Behavior rows should share the dedicated setting row style");
         }
     }
 

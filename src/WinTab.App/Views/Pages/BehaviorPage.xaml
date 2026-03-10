@@ -37,16 +37,25 @@
             <TextBlock Text="{DynamicResource Behavior_SectionCapture_Desc}"
                        Style="{StaticResource SectionDescriptionStyle}" />
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                <ui:CardControl.Header>
-                    <StackPanel>
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Behavior_EnableAutoConvertExplorerWindows_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding EnableAutoConvertExplorerWindows, Mode=TwoWay}" />
-            </ui:CardControl>
+
+                    <ui:ToggleSwitch Grid.Column="1"
+                                     IsChecked="{Binding EnableAutoConvertExplorerWindows, Mode=TwoWay}"
+                                     VerticalAlignment="Center"
+                                     Margin="20,0,0,0" />
+                </Grid>
+            </Border>
 
             <Border Style="{StaticResource AppPanelBorderStyle}"
                     Background="{DynamicResource AppSurfaceSubtleBrush}"
@@ -60,39 +69,66 @@
             <TextBlock Text="{DynamicResource Behavior_SectionTabs_Desc}"
                        Style="{StaticResource SectionDescriptionStyle}" />
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                <ui:CardControl.Header>
-                    <StackPanel>
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Behavior_OpenNewTabFromActiveTabPath_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding OpenNewTabFromActiveTabPath, Mode=TwoWay}" />
-            </ui:CardControl>
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                <ui:CardControl.Header>
-                    <StackPanel>
+                    <ui:ToggleSwitch Grid.Column="1"
+                                     IsChecked="{Binding OpenNewTabFromActiveTabPath, Mode=TwoWay}"
+                                     VerticalAlignment="Center"
+                                     Margin="20,0,0,0" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Behavior_OpenChildFolderInNewTab_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding OpenChildFolderInNewTabFromActiveTab, Mode=TwoWay}"
-                                 IsEnabled="{Binding IsOpenChildFolderInNewTabOptionEnabled}" />
-            </ui:CardControl>
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                <ui:CardControl.Header>
-                    <StackPanel>
+                    <ui:ToggleSwitch Grid.Column="1"
+                                     IsChecked="{Binding OpenChildFolderInNewTabFromActiveTab, Mode=TwoWay}"
+                                     IsEnabled="{Binding IsOpenChildFolderInNewTabOptionEnabled}"
+                                     VerticalAlignment="Center"
+                                     Margin="20,0,0,0" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Behavior_CloseTabOnDoubleClick_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}" />
-            </ui:CardControl>
+
+                    <ui:ToggleSwitch Grid.Column="1"
+                                     IsChecked="{Binding CloseTabOnDoubleClick, Mode=TwoWay}"
+                                     VerticalAlignment="Center"
+                                     Margin="20,0,0,0" />
+                </Grid>
+            </Border>
 
         </StackPanel>
     </ScrollViewer>

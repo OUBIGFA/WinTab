@@ -58,7 +58,7 @@
                             <TextBlock Text="{DynamicResource About_Lead}"
                                        Style="{StaticResource PageHeaderDescriptionStyle}"
                                        Margin="0,0,0,14" />
-                            <WrapPanel>
+                            <WrapPanel Margin="0,2,0,0">
                                 <Border Style="{StaticResource InfoPillStyle}">
                                     <TextBlock Style="{StaticResource InfoPillTextStyle}">
                                         <Run Text="{DynamicResource About_Version}" />
@@ -80,19 +80,28 @@
                 <TextBlock Text="{DynamicResource About_SectionProject_Desc}"
                            Style="{StaticResource SectionDescriptionStyle}" />
 
-                <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                    <ui:CardControl.Header>
-                        <StackPanel>
+                <Border Style="{StaticResource SettingRowBorderStyle}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel MaxWidth="560">
                             <TextBlock Text="{DynamicResource About_GitHub}"
                                        Style="{StaticResource SettingTitleStyle}" />
                             <TextBlock Text="{DynamicResource About_GitHub_Desc}"
                                        Style="{StaticResource SettingDescriptionStyle}" />
                         </StackPanel>
-                    </ui:CardControl.Header>
-                    <ui:Button Content="{DynamicResource About_GitHub}"
-                               Icon="{ui:SymbolIcon Link24}"
-                               Command="{Binding OpenGitHubCommand}" />
-                </ui:CardControl>
+
+                        <ui:Button Grid.Column="1"
+                                   Content="{DynamicResource About_GitHub}"
+                                   Icon="{ui:SymbolIcon Link24}"
+                                   Command="{Binding OpenGitHubCommand}"
+                                   VerticalAlignment="Center"
+                                   Margin="20,0,0,0" />
+                    </Grid>
+                </Border>
 
                 <TextBlock Text="{DynamicResource About_SectionDiagnostics}"
                            Style="{StaticResource PageSectionTitleStyle}"
@@ -100,9 +109,14 @@
                 <TextBlock Text="{DynamicResource About_SectionDiagnostics_Desc}"
                            Style="{StaticResource SectionDescriptionStyle}" />
 
-                <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                    <ui:CardControl.Header>
-                        <StackPanel>
+                <Border Style="{StaticResource SettingRowBorderStyle}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel MaxWidth="560">
                             <TextBlock Text="{DynamicResource About_LogLocation}"
                                        Style="{StaticResource SettingTitleStyle}" />
                             <TextBlock Text="{Binding LogPath}"
@@ -110,17 +124,21 @@
                                        MaxWidth="540"
                                        Style="{StaticResource SettingDescriptionStyle}" />
                         </StackPanel>
-                    </ui:CardControl.Header>
-                    <StackPanel Orientation="Horizontal">
-                        <ui:Button Content="{DynamicResource About_OpenLog}"
-                                   Icon="{ui:SymbolIcon Document24}"
-                                   Command="{Binding OpenLogCommand}" />
-                        <ui:Button Content="{DynamicResource About_OpenLogFolder}"
-                                   Icon="{ui:SymbolIcon Folder24}"
-                                   Command="{Binding OpenLogFolderCommand}"
-                                   Margin="8,0,0,0" />
-                    </StackPanel>
-                </ui:CardControl>
+
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center"
+                                    Margin="20,0,0,0">
+                            <ui:Button Content="{DynamicResource About_OpenLog}"
+                                       Icon="{ui:SymbolIcon Document24}"
+                                       Command="{Binding OpenLogCommand}" />
+                            <ui:Button Content="{DynamicResource About_OpenLogFolder}"
+                                       Icon="{ui:SymbolIcon Folder24}"
+                                       Command="{Binding OpenLogFolderCommand}"
+                                       Margin="8,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

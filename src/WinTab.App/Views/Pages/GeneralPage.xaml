@@ -38,81 +38,126 @@
             <TextBlock Text="{DynamicResource General_SectionStartup_Desc}"
                        Style="{StaticResource SectionDescriptionStyle}" />
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                <ui:CardControl.Header>
-                    <StackPanel>
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource General_RunAtStartup}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource General_RunAtStartup_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding RunAtStartup, Mode=TwoWay}" />
-            </ui:CardControl>
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                <ui:CardControl.Header>
-                    <StackPanel>
+                    <ui:ToggleSwitch Grid.Column="1"
+                                     IsChecked="{Binding RunAtStartup, Mode=TwoWay}"
+                                     VerticalAlignment="Center"
+                                     Margin="20,0,0,0" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource General_StartMinimized}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource General_StartMinimized_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding StartMinimized, Mode=TwoWay}" />
-            </ui:CardControl>
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}"
-                            Margin="0,0,0,24">
-                <ui:CardControl.Header>
-                    <StackPanel>
+                    <ui:ToggleSwitch Grid.Column="1"
+                                     IsChecked="{Binding StartMinimized, Mode=TwoWay}"
+                                     VerticalAlignment="Center"
+                                     Margin="20,0,0,0" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingRowBorderStyle}"
+                    Margin="0,0,0,24">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource General_ShowTrayIcon}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource General_ShowTrayIcon_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <ui:ToggleSwitch IsChecked="{Binding ShowTrayIcon, Mode=TwoWay}" />
-            </ui:CardControl>
+
+                    <ui:ToggleSwitch Grid.Column="1"
+                                     IsChecked="{Binding ShowTrayIcon, Mode=TwoWay}"
+                                     VerticalAlignment="Center"
+                                     Margin="20,0,0,0" />
+                </Grid>
+            </Border>
 
             <TextBlock Text="{DynamicResource General_SectionExperience}"
                        Style="{StaticResource PageSectionTitleStyle}" />
             <TextBlock Text="{DynamicResource General_SectionExperience_Desc}"
                        Style="{StaticResource SectionDescriptionStyle}" />
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}">
-                <ui:CardControl.Header>
-                    <StackPanel>
+            <Border Style="{StaticResource SettingRowBorderStyle}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource General_LanguageLabel}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource General_LanguageLabel_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <ComboBox SelectedIndex="{Binding SelectedLanguageIndex, Mode=TwoWay}"
-                          MinWidth="160">
-                    <ComboBoxItem Content="{DynamicResource General_Chinese}" />
-                    <ComboBoxItem Content="{DynamicResource General_English}" />
-                </ComboBox>
-            </ui:CardControl>
 
-            <ui:CardControl Style="{StaticResource SettingsCardStyle}"
-                            Margin="0,0,0,8">
-                <ui:CardControl.Header>
-                    <StackPanel>
+                    <ComboBox Grid.Column="1"
+                              SelectedIndex="{Binding SelectedLanguageIndex, Mode=TwoWay}"
+                              MinWidth="180"
+                              VerticalAlignment="Center"
+                              Margin="20,0,0,0">
+                        <ComboBoxItem Content="{DynamicResource General_Chinese}" />
+                        <ComboBoxItem Content="{DynamicResource General_English}" />
+                    </ComboBox>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingRowBorderStyle}"
+                    Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel MaxWidth="560">
                         <TextBlock Text="{DynamicResource Appearance_Theme}" Style="{StaticResource SettingTitleStyle}" />
                         <TextBlock Text="{DynamicResource Appearance_Theme_Desc}"
                                    Style="{StaticResource SettingDescriptionStyle}" />
                     </StackPanel>
-                </ui:CardControl.Header>
-                <StackPanel Orientation="Horizontal">
-                    <RadioButton Content="{DynamicResource Appearance_ThemeLight}"
-                                 IsChecked="{Binding IsThemeLight, Mode=TwoWay}"
-                                 GroupName="Theme"
-                                 MinWidth="96" />
-                    <RadioButton Content="{DynamicResource Appearance_ThemeDark}"
-                                 IsChecked="{Binding IsThemeDark, Mode=TwoWay}"
-                                 GroupName="Theme"
-                                 MinWidth="96"
-                                 Margin="16,0,0,0" />
-                </StackPanel>
-            </ui:CardControl>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Margin="20,0,0,0">
+                        <RadioButton Content="{DynamicResource Appearance_ThemeLight}"
+                                     IsChecked="{Binding IsThemeLight, Mode=TwoWay}"
+                                     GroupName="Theme"
+                                     MinWidth="96" />
+                        <RadioButton Content="{DynamicResource Appearance_ThemeDark}"
+                                     IsChecked="{Binding IsThemeDark, Mode=TwoWay}"
+                                     GroupName="Theme"
+                                     MinWidth="96"
+                                     Margin="16,0,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
 
         </StackPanel>
     </ScrollViewer>

@@ -66,6 +66,25 @@ public class UninstallPageRegressionTests
             "delete-user-data guidance should only appear once to avoid duplicate copy");
     }
 
+    [Fact]
+    public void UninstallPage_ShouldExposeLogAccessAndOnlyOneAppDirectoryAction()
+    {
+        string pagePath = GetProjectFilePath("WinTab.App", "Views", "Pages", "UninstallPage.xaml");
+        XDocument page = XDocument.Load(pagePath);
+
+        var buttonContents = page
+            .Descendants()
+            .Where(e => e.Name.LocalName == "Button")
+            .Select(e => (string?)e.Attribute("Content"))
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .ToList();
+
+        buttonContents.Count(v => v == "{DynamicResource Uninstall_OpenFolder}").Should().Be(1,
+            "the uninstall flow should not duplicate the app directory action");
+        buttonContents.Should().Contain("{DynamicResource Uninstall_OpenLog}",
+            "the uninstall flow should provide direct log access for troubleshooting");
+    }
+
     private static int RenderAndCountNonEmptyTextBlocks(Page page)
     {
         var host = new Window

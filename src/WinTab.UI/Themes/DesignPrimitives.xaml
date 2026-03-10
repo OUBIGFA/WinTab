@@ -102,8 +102,9 @@
         <Setter Property="Background" Value="{DynamicResource AppSurfaceStrongBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource AppInfoBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="999" />
-        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="MinHeight" Value="32" />
         <Setter Property="Margin" Value="0,0,8,8" />
     </Style>
 
@@ -113,6 +114,14 @@
         <Setter Property="FontSize" Value="12" />
         <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <Style x:Key="SettingRowBorderStyle"
+           TargetType="Border"
+           BasedOn="{StaticResource AppPanelBorderStyle}">
+        <Setter Property="Margin" Value="0,0,0,12" />
+        <Setter Property="Padding" Value="18,16" />
+        <Setter Property="Background" Value="{DynamicResource AppSurfaceElevatedBrush}" />
     </Style>
 
     <Style x:Key="SettingsCardStyle"

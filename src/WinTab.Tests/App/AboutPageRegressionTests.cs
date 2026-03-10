@@ -69,6 +69,25 @@ public class AboutPageRegressionTests
         hasProjectSection.Should().BeTrue("About page should expose a dedicated project section in the polished layout");
     }
 
+    [Fact]
+    public void AboutPage_InfoPills_ShouldUseCompactRoundedBadgeStyle()
+    {
+        string primitivesPath = GetProjectFilePath("WinTab.UI", "Themes", "DesignPrimitives.xaml");
+        XDocument primitives = XDocument.Load(primitivesPath);
+
+        XElement pillStyle = primitives
+            .Descendants()
+            .First(e => e.Name.LocalName == "Style"
+                && (string?)e.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml")) == "InfoPillStyle");
+
+        string? cornerRadius = pillStyle
+            .Descendants()
+            .First(e => e.Name.LocalName == "Setter" && (string?)e.Attribute("Property") == "CornerRadius")
+            .Attribute("Value")?.Value;
+
+        cornerRadius.Should().Be("12", "About badges should use a stable compact radius instead of an exaggerated pill radius");
+    }
+
     private static int RenderAndCountNonEmptyTextBlocks(Page page)
     {
         var host = new Window

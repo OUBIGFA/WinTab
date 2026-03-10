@@ -226,6 +226,30 @@ public sealed partial class UninstallViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private void OpenLog()
+    {
+        try
+        {
+            if (File.Exists(AppPaths.LogPath))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = AppPaths.LogPath,
+                    UseShellExecute = true,
+                });
+
+                return;
+            }
+
+            _logger.Warn($"Log file not found: {AppPaths.LogPath}");
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or FileNotFoundException)
+        {
+            _logger.Error("Failed to open log file from uninstall page.", ex);
+        }
+    }
+
     private static string? ResolveUninstallerPath(string appDirectory)
     {
         string newStyle = Path.Combine(appDirectory, "UninsWinTab.exe");

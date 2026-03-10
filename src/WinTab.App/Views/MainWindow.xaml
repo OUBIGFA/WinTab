@@ -51,18 +51,7 @@
                     <TextBlock Text="{DynamicResource App_Name}"
                                Style="{StaticResource PageSectionTitleStyle}" />
                     <TextBlock Text="{DynamicResource Shell_Tagline}"
-                               Style="{StaticResource PageHeaderDescriptionStyle}"
-                               Margin="0,0,0,12" />
-                    <WrapPanel>
-                        <Border Style="{StaticResource InfoPillStyle}">
-                            <TextBlock Text="{DynamicResource Shell_StatusPrimary}"
-                                       Style="{StaticResource InfoPillTextStyle}" />
-                        </Border>
-                        <Border Style="{StaticResource InfoPillStyle}">
-                            <TextBlock Text="{DynamicResource Shell_StatusSecondary}"
-                                       Style="{StaticResource InfoPillTextStyle}" />
-                        </Border>
-                    </WrapPanel>
+                               Style="{StaticResource PageHeaderDescriptionStyle}" />
                 </StackPanel>
             </Grid>
         </Border>
