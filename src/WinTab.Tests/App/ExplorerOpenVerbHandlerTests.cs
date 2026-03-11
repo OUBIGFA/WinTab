@@ -113,7 +113,7 @@ public sealed class ExplorerOpenVerbHandlerTests
     }
 
     [Fact]
-    public void TryHandleOpenFolderInvocation_WhenRecycleBinNamespace_ShouldBypassPipeAndUseNativeLaunch()
+    public void TryHandleOpenFolderInvocation_WhenRecycleBinNamespace_ShouldKeepPipeRouting()
     {
         const string shellNamespace = "::{645FF040-5081-101B-9F08-00AA002F954E}";
         int sendAttempts = 0;
@@ -143,9 +143,9 @@ public sealed class ExplorerOpenVerbHandlerTests
                 logger: null);
 
             handled.Should().BeTrue();
-            sendAttempts.Should().Be(0,
-                "Recycle Bin must bypass WinTab pipe/tab routing and use the native shell open path directly");
-            fallbackCalls.Should().Be(1);
+            sendAttempts.Should().Be(1,
+                "shell namespace targets should stay on the direct WinTab pipe path so the running app can reuse or activate Explorer tabs");
+            fallbackCalls.Should().Be(0);
         }
         finally
         {

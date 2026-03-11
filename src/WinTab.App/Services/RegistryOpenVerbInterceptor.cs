@@ -271,9 +271,16 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private void WriteOverride()
     {
-        bool preferDelegateExecute = File.Exists(_comHostPath);
+        bool comHostExists = File.Exists(_comHostPath);
+        bool preferDelegateExecute = ShouldPreferDelegateExecuteOverride(comHostExists);
         if (preferDelegateExecute)
+        {
             RegisterDelegateExecuteComServer();
+        }
+        else
+        {
+            RemoveDelegateExecuteComServerRegistration();
+        }
 
         foreach (string cls in TargetClasses)
         {
@@ -310,8 +317,15 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
         else
         {
-            _logger.Warn($"DelegateExecute COM host is missing, using legacy command override: {_comHostPath}");
-            _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU).");
+            if (comHostExists)
+            {
+                _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU) for shell-host compatibility.");
+            }
+            else
+            {
+                _logger.Warn($"DelegateExecute COM host is missing, using legacy command override: {_comHostPath}");
+                _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU).");
+            }
         }
     }
 
@@ -597,6 +611,17 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
     {
         // Marker argument distinguishes handler invocation from normal startup.
         return $"\"{_exePath}\" {HandlerArgNew} \"%1\"";
+    }
+
+    private bool ShouldPreferDelegateExecuteOverride(bool comHostExists)
+    {
+        if (!comHostExists)
+            return false;
+
+        // Keep the override command-based even when the COM host is available.
+        // InProc DelegateExecute bridges are architecture-specific and can break
+        // 32-bit third-party shell hosts with "class not registered".
+        return false;
     }
 
     private static string ComputeSha256(string text)

@@ -14,9 +14,6 @@ public static class OpenTargetClassifier
         if (string.IsNullOrWhiteSpace(normalizedTarget))
             return new OpenTargetInfo(rawTarget, normalizedTarget, OpenTargetKind.Invalid);
 
-        if (IsRecycleBin(normalizedTarget))
-            return new OpenTargetInfo(rawTarget, normalizedTarget, OpenTargetKind.NativeShellNamespace);
-
         if (IsPhysicalFileSystemPath(normalizedTarget))
             return new OpenTargetInfo(rawTarget, normalizedTarget, OpenTargetKind.PhysicalFileSystem);
 
@@ -39,11 +36,5 @@ public static class OpenTargetClassifier
                char.IsLetter(value[0]) &&
                value[1] == ':' &&
                (value[2] == '\\' || value[2] == '/');
-    }
-
-    private static bool IsRecycleBin(string target)
-    {
-        return LocationIdentity.AreEquivalent(target, ShellNamespacePath.RecycleBinShellAlias) ||
-               LocationIdentity.AreEquivalent(target, ShellNamespacePath.RecycleBinGuidPath);
     }
 }

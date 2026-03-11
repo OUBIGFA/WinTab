@@ -78,7 +78,7 @@ public sealed class AppEnvironmentTests
     }
 
     [Fact]
-    public void TryOpenTargetFallback_WhenRecycleBinTarget_ShouldUseNativeShellLauncherInsteadOfExplorerProcess()
+    public void TryOpenTargetFallback_WhenRecycleBinTarget_ShouldUseExplorerProcessInsteadOfNativeShellLauncher()
     {
         Type appEnvironmentType = typeof(AppEnvironment);
         FieldInfo nativeField = appEnvironmentType.GetField("TryOpenNativeShellTarget", BindingFlags.Static | BindingFlags.NonPublic)
@@ -108,9 +108,9 @@ public sealed class AppEnvironmentTests
             bool opened = AppEnvironment.TryOpenTargetFallback("::{645FF040-5081-101B-9F08-00AA002F954E}", logger: null);
 
             opened.Should().BeTrue();
-            nativeCalls.Should().Be(1);
-            processCalls.Should().Be(0,
-                "Recycle Bin fallback must stay on the native shell path and must not devolve to raw explorer.exe launching");
+            nativeCalls.Should().Be(0);
+            processCalls.Should().Be(1,
+                "shell namespace fallback should stay on the standard explorer.exe launch path when WinTab cannot reuse an existing tab");
         }
         finally
         {

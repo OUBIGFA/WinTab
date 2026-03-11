@@ -13,7 +13,7 @@ public sealed class OpenTargetRoutingTests
         object result = InvokeClassify("shell:RecycleBinFolder");
         string kind = ReadKind(result);
 
-        kind.Should().Be("NativeShellNamespace");
+        kind.Should().Be("ShellNamespace");
     }
 
     [Fact]

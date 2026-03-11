@@ -21,7 +21,7 @@ public static class NativeShellLauncher
     public static bool TryOpen(string? target)
     {
         OpenTargetInfo targetInfo = OpenTargetClassifier.Classify(target);
-        if (!targetInfo.RequiresNativeShellLaunch)
+        if (!targetInfo.IsShellNamespace)
             return false;
 
         nint pidl = IntPtr.Zero;

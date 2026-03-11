@@ -9,7 +9,7 @@ namespace WinTab.Tests.App;
 public sealed class WinTabOpenFolderDelegateExecuteTests
 {
     [Fact]
-    public void Execute_WhenRecycleBinParameter_ShouldBypassPipeAndUseNativeFallback()
+    public void Execute_WhenRecycleBinParameter_ShouldKeepPipeRouting()
     {
         Type delegateType = typeof(WinTabOpenFolderDelegateExecute);
         FieldInfo sendField = delegateType.GetField("SendOpenFolderRequest", BindingFlags.Static | BindingFlags.NonPublic)
@@ -41,9 +41,9 @@ public sealed class WinTabOpenFolderDelegateExecuteTests
             int hr = command.Execute();
 
             hr.Should().Be(0);
-            sendCalls.Should().Be(0,
-                "Recycle Bin should no longer be forwarded through the installed DelegateExecute pipe path");
-            fallbackCalls.Should().Be(1);
+            sendCalls.Should().Be(1,
+                "shell namespace targets should stay on the installed pipe path so the running app can reuse Explorer tabs");
+            fallbackCalls.Should().Be(0);
         }
         finally
         {
