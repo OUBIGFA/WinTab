@@ -21,14 +21,14 @@ public sealed class RegistryOpenVerbCompatibilityPolicyTests : IDisposable
     }
 
     [Fact]
-    public void ShouldPreferDelegateExecuteOverride_WhenComHostExists_ShouldRemainDisabledForCompatibility()
+    public void ShouldPreferDelegateExecuteOverride_WhenComHostExists_ShouldPreferNativeExplorerBridge()
     {
         var interceptor = new RegistryOpenVerbInterceptor(@"C:\Program Files\WinTab\WinTab.exe", _logger);
 
         bool preferDelegateExecute = InvokeShouldPreferDelegateExecuteOverride(interceptor, comHostExists: true);
 
-        preferDelegateExecute.Should().BeFalse(
-            "the open verb override must stay command-based so 32-bit third-party shell hosts do not fail with COM class registration errors");
+        preferDelegateExecute.Should().BeTrue(
+            "when the COM host is available, Explorer browsing should stay on the DelegateExecute bridge to avoid the legacy helper-process startup path");
     }
 
     public void Dispose()

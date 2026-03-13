@@ -615,13 +615,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private bool ShouldPreferDelegateExecuteOverride(bool comHostExists)
     {
-        if (!comHostExists)
-            return false;
-
-        // Keep the override command-based even when the COM host is available.
-        // InProc DelegateExecute bridges are architecture-specific and can break
-        // 32-bit third-party shell hosts with "class not registered".
-        return false;
+        return comHostExists;
     }
 
     private static string ComputeSha256(string text)
