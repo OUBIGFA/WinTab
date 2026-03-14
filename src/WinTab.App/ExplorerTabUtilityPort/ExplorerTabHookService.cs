@@ -1766,7 +1766,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         if (clickTimeForeground != IntPtr.Zero)
         {
             IntPtr clickRoot = NativeMethods.GetAncestor(clickTimeForeground, NativeConstants.GA_ROOT);
-            if (clickRoot != IntPtr.Zero && IsUsableTargetExplorerWindow(clickRoot))
+            if (clickRoot != IntPtr.Zero && IsUsableTargetExplorerWindow(clickRoot, allowMinimized: true))
                 return clickRoot;
         }
 
@@ -1774,43 +1774,25 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         if (currentForeground != IntPtr.Zero)
         {
             IntPtr currentRoot = NativeMethods.GetAncestor(currentForeground, NativeConstants.GA_ROOT);
-            if (currentRoot != IntPtr.Zero && IsUsableTargetExplorerWindow(currentRoot))
+            if (currentRoot != IntPtr.Zero && IsUsableTargetExplorerWindow(currentRoot, allowMinimized: true))
                 return currentRoot;
 
-            if (IsUsableTargetExplorerWindow(currentForeground))
+            if (IsUsableTargetExplorerWindow(currentForeground, allowMinimized: true))
                 return currentForeground;
         }
 
-        if (_lastExplorerForeground != IntPtr.Zero && IsUsableTargetExplorerWindow(_lastExplorerForeground))
+        if (_lastExplorerForeground != IntPtr.Zero && IsUsableTargetExplorerWindow(_lastExplorerForeground, allowMinimized: true))
             return _lastExplorerForeground;
 
-        return PickTargetExplorerWindow(exclude: IntPtr.Zero);
+        return PickTargetExplorerWindow(exclude: IntPtr.Zero, allowMinimizedFallback: true);
     }
 
-    private IntPtr PickTargetExplorerWindow(IntPtr exclude)
+    private IntPtr PickTargetExplorerWindow(IntPtr exclude, bool allowMinimizedFallback = false)
     {
-        // Prefer current foreground Explorer window if it isn't the excluded one.
         IntPtr foreground = NativeMethods.GetForegroundWindow();
-        if (foreground != IntPtr.Zero && foreground != exclude && IsUsableTargetExplorerWindow(foreground))
-            return foreground;
-
-        // Otherwise prefer the last active Explorer window to preserve user's context.
         IntPtr lastForeground = _lastExplorerForeground;
-        if (lastForeground != IntPtr.Zero && lastForeground != exclude && IsUsableTargetExplorerWindow(lastForeground))
-            return lastForeground;
-
-        // Otherwise pick a visible, non-minimized Explorer window with most tabs.
-        // Do not fall back to hidden windows, which makes conversion look like a no-op.
-        var candidates = EnumerateExplorerTopLevelWindows(includeInvisible: false)
-            .Where(h => h != exclude && IsUsableTargetExplorerWindow(h))
-            .ToList();
-
-        if (candidates.Count == 0)
-            return IntPtr.Zero;
-
-        return candidates
-            .OrderByDescending(CountTabs)
-            .FirstOrDefault();
+        List<(IntPtr Hwnd, bool IsMinimized, int TabCount)> candidates = CollectReusableExplorerCandidates(exclude, allowMinimizedFallback);
+        return SelectBestExplorerTargetCandidate(candidates, foreground, lastForeground, allowMinimizedFallback);
     }
 
     private IntPtr PickEtuTargetExplorerWindow(IntPtr exclude)
@@ -1821,35 +1803,135 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         if (main != IntPtr.Zero && main != exclude && IsUsableTargetExplorerWindow(main))
             return main;
 
-        List<IntPtr> candidates = EnumerateExplorerTopLevelWindows(includeInvisible: false)
-            .Where(h => h != exclude && IsUsableTargetExplorerWindow(h))
-            .ToList();
+        List<(IntPtr Hwnd, bool IsMinimized, int TabCount)> candidates = CollectReusableExplorerCandidates(exclude, allowMinimizedFallback: true);
+        candidates.Reverse();
 
-        if (candidates.Count == 0)
-            return IntPtr.Zero;
-
-        // Match ETU selection tendency: reversed enumeration order, then most tabs.
-        int bestTabCount = -1;
-        IntPtr picked = IntPtr.Zero;
-        for (int i = candidates.Count - 1; i >= 0; i--)
-        {
-            IntPtr candidate = candidates[i];
-            int tabCount = CountTabs(candidate);
-            if (tabCount > bestTabCount)
-            {
-                bestTabCount = tabCount;
-                picked = candidate;
-            }
-        }
-
+        IntPtr picked = SelectBestExplorerTargetCandidate(
+            candidates,
+            preferredForeground: main,
+            preferredLastForeground: _lastExplorerForeground,
+            allowMinimizedFallback: true);
         if (picked == IntPtr.Zero)
-            picked = candidates[0];
+            return IntPtr.Zero;
 
         _mainExplorerTopLevel = picked;
         return picked;
     }
 
-    private bool IsUsableTargetExplorerWindow(IntPtr hwnd)
+    private List<(IntPtr Hwnd, bool IsMinimized, int TabCount)> CollectReusableExplorerCandidates(IntPtr exclude, bool allowMinimizedFallback)
+    {
+        var windows = new List<(IntPtr Hwnd, bool IsVisible, bool IsMinimized, int TabCount)>();
+
+        foreach (IntPtr hwnd in EnumerateExplorerTopLevelWindows(includeInvisible: allowMinimizedFallback))
+        {
+            if (hwnd == IntPtr.Zero || hwnd == exclude || !NativeMethods.IsWindow(hwnd))
+                continue;
+
+            bool isMinimized = IsWindowMinimized(hwnd);
+            windows.Add((hwnd, NativeMethods.IsWindowVisible(hwnd), isMinimized, CountTabs(hwnd)));
+        }
+
+        return BuildReusableExplorerCandidates(windows, exclude, allowMinimizedFallback);
+    }
+
+    private static List<(IntPtr Hwnd, bool IsMinimized, int TabCount)> BuildReusableExplorerCandidates(
+        IReadOnlyList<(IntPtr Hwnd, bool IsVisible, bool IsMinimized, int TabCount)> windows,
+        IntPtr exclude,
+        bool allowMinimizedFallback)
+    {
+        var candidates = new List<(IntPtr Hwnd, bool IsMinimized, int TabCount)>();
+
+        foreach ((IntPtr Hwnd, bool IsVisible, bool IsMinimized, int TabCount) window in windows)
+        {
+            if (window.Hwnd == IntPtr.Zero || window.Hwnd == exclude)
+                continue;
+
+            bool keepInvisibleMinimized = allowMinimizedFallback && window.IsMinimized;
+            if (!window.IsVisible && !keepInvisibleMinimized)
+                continue;
+
+            candidates.Add((window.Hwnd, window.IsMinimized, window.TabCount));
+        }
+
+        return candidates;
+    }
+
+    private static IntPtr SelectBestExplorerTargetCandidate(
+        IReadOnlyList<(IntPtr Hwnd, bool IsMinimized, int TabCount)> candidates,
+        IntPtr preferredForeground,
+        IntPtr preferredLastForeground,
+        bool allowMinimizedFallback)
+    {
+        if (candidates.Count == 0)
+            return IntPtr.Zero;
+
+        static bool MatchesPreferred(
+            (IntPtr Hwnd, bool IsMinimized, int TabCount) candidate,
+            IntPtr preferredHwnd,
+            bool allowMinimized)
+        {
+            if (preferredHwnd == IntPtr.Zero || candidate.Hwnd != preferredHwnd)
+                return false;
+
+            return allowMinimized || !candidate.IsMinimized;
+        }
+
+        foreach ((IntPtr Hwnd, bool IsMinimized, int TabCount) candidate in candidates)
+        {
+            if (MatchesPreferred(candidate, preferredForeground, allowMinimized: false))
+                return candidate.Hwnd;
+        }
+
+        foreach ((IntPtr Hwnd, bool IsMinimized, int TabCount) candidate in candidates)
+        {
+            if (MatchesPreferred(candidate, preferredLastForeground, allowMinimized: false))
+                return candidate.Hwnd;
+        }
+
+        IntPtr bestNonMinimized = IntPtr.Zero;
+        int bestNonMinimizedTabs = -1;
+        foreach ((IntPtr Hwnd, bool IsMinimized, int TabCount) candidate in candidates)
+        {
+            if (candidate.IsMinimized)
+                continue;
+
+            if (candidate.TabCount > bestNonMinimizedTabs)
+            {
+                bestNonMinimizedTabs = candidate.TabCount;
+                bestNonMinimized = candidate.Hwnd;
+            }
+        }
+
+        if (bestNonMinimized != IntPtr.Zero || !allowMinimizedFallback)
+            return bestNonMinimized;
+
+        foreach ((IntPtr Hwnd, bool IsMinimized, int TabCount) candidate in candidates)
+        {
+            if (MatchesPreferred(candidate, preferredForeground, allowMinimized: true))
+                return candidate.Hwnd;
+        }
+
+        foreach ((IntPtr Hwnd, bool IsMinimized, int TabCount) candidate in candidates)
+        {
+            if (MatchesPreferred(candidate, preferredLastForeground, allowMinimized: true))
+                return candidate.Hwnd;
+        }
+
+        IntPtr bestAny = IntPtr.Zero;
+        int bestAnyTabs = -1;
+        foreach ((IntPtr Hwnd, bool IsMinimized, int TabCount) candidate in candidates)
+        {
+            if (candidate.TabCount > bestAnyTabs)
+            {
+                bestAnyTabs = candidate.TabCount;
+                bestAny = candidate.Hwnd;
+            }
+        }
+
+        return bestAny;
+    }
+
+    private bool IsUsableTargetExplorerWindow(IntPtr hwnd, bool allowMinimized = false)
     {
         if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
             return false;
@@ -1857,18 +1939,24 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         if (!NativeMethods.IsWindowVisible(hwnd))
             return false;
 
+        if (!allowMinimized && IsWindowMinimized(hwnd))
+            return false;
+
+        return IsExplorerTopLevelWindow(hwnd);
+    }
+
+    private static bool IsWindowMinimized(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
+            return false;
+
         var placement = new NativeStructs.WINDOWPLACEMENT
         {
             length = (uint)Marshal.SizeOf<NativeStructs.WINDOWPLACEMENT>()
         };
 
-        if (NativeMethods.GetWindowPlacement(hwnd, ref placement) &&
-            placement.showCmd == (uint)NativeConstants.SW_SHOWMINIMIZED)
-        {
-            return false;
-        }
-
-        return IsExplorerTopLevelWindow(hwnd);
+        return NativeMethods.GetWindowPlacement(hwnd, ref placement) &&
+               placement.showCmd == (uint)NativeConstants.SW_SHOWMINIMIZED;
     }
 
     private IEnumerable<IntPtr> EnumerateExplorerTopLevelWindows(bool includeInvisible)

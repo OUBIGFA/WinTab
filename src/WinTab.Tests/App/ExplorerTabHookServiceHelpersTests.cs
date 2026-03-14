@@ -215,6 +215,125 @@ public sealed class ExplorerTabHookServiceHelpersTests
             "close-tab UI churn must not be treated as a real new-tab creation for inherit-current-path alignment");
     }
 
+    [Fact]
+    public void SelectBestExplorerTargetCandidate_WhenOnlyMinimizedWindowAndFallbackEnabled_ShouldReuseMinimizedWindow()
+    {
+        IntPtr minimized = new(0x216D6);
+        (IntPtr Hwnd, bool IsMinimized, int TabCount)[] candidates =
+        [
+            (minimized, true, 1)
+        ];
+
+        IntPtr picked = InvokePrivateStatic<IntPtr>(
+            "SelectBestExplorerTargetCandidate",
+            candidates,
+            IntPtr.Zero,
+            minimized,
+            true);
+
+        picked.Should().Be(minimized,
+            "when all Explorer windows are minimized, interception should still pick one for reuse instead of forcing standalone launch");
+    }
+
+    [Fact]
+    public void SelectBestExplorerTargetCandidate_WhenOnlyMinimizedWindowAndFallbackDisabled_ShouldReturnZero()
+    {
+        IntPtr minimized = new(0x216D6);
+        (IntPtr Hwnd, bool IsMinimized, int TabCount)[] candidates =
+        [
+            (minimized, true, 1)
+        ];
+
+        IntPtr picked = InvokePrivateStatic<IntPtr>(
+            "SelectBestExplorerTargetCandidate",
+            candidates,
+            IntPtr.Zero,
+            minimized,
+            false);
+
+        picked.Should().Be(IntPtr.Zero);
+    }
+
+    [Fact]
+    public void SelectBestExplorerTargetCandidate_WhenNonMinimizedCandidateExists_ShouldPreferItEvenWithFallbackEnabled()
+    {
+        IntPtr minimized = new(0x216D6);
+        IntPtr normal = new(0x40240);
+
+        (IntPtr Hwnd, bool IsMinimized, int TabCount)[] candidates =
+        [
+            (minimized, true, 6),
+            (normal, false, 1)
+        ];
+
+        IntPtr picked = InvokePrivateStatic<IntPtr>(
+            "SelectBestExplorerTargetCandidate",
+            candidates,
+            IntPtr.Zero,
+            minimized,
+            true);
+
+        picked.Should().Be(normal,
+            "minimized fallback should only kick in when no non-minimized reusable Explorer target exists");
+    }
+
+    [Fact]
+    public void BuildReusableExplorerCandidates_WhenOnlyInvisibleMinimizedWindowAndFallbackEnabled_ShouldKeepCandidate()
+    {
+        IntPtr minimized = new(0x3104C);
+        (IntPtr Hwnd, bool IsVisible, bool IsMinimized, int TabCount)[] windows =
+        [
+            (minimized, false, true, 1)
+        ];
+
+        List<(IntPtr Hwnd, bool IsMinimized, int TabCount)> candidates = InvokePrivateStatic<List<(IntPtr Hwnd, bool IsMinimized, int TabCount)>>(
+            "BuildReusableExplorerCandidates",
+            windows,
+            IntPtr.Zero,
+            true);
+
+        candidates.Should().ContainSingle();
+        candidates[0].Hwnd.Should().Be(minimized,
+            "minimized Explorer windows can be invisible in EnumWindows results but still must remain eligible for reuse fallback");
+    }
+
+    [Fact]
+    public void BuildReusableExplorerCandidates_WhenOnlyInvisibleMinimizedWindowAndFallbackDisabled_ShouldDropCandidate()
+    {
+        IntPtr minimized = new(0x3104C);
+        (IntPtr Hwnd, bool IsVisible, bool IsMinimized, int TabCount)[] windows =
+        [
+            (minimized, false, true, 1)
+        ];
+
+        List<(IntPtr Hwnd, bool IsMinimized, int TabCount)> candidates = InvokePrivateStatic<List<(IntPtr Hwnd, bool IsMinimized, int TabCount)>>(
+            "BuildReusableExplorerCandidates",
+            windows,
+            IntPtr.Zero,
+            false);
+
+        candidates.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildReusableExplorerCandidates_WhenInvisibleNonMinimizedWindowAndFallbackEnabled_ShouldStillDropCandidate()
+    {
+        IntPtr hidden = new(0x40240);
+        (IntPtr Hwnd, bool IsVisible, bool IsMinimized, int TabCount)[] windows =
+        [
+            (hidden, false, false, 2)
+        ];
+
+        List<(IntPtr Hwnd, bool IsMinimized, int TabCount)> candidates = InvokePrivateStatic<List<(IntPtr Hwnd, bool IsMinimized, int TabCount)>>(
+            "BuildReusableExplorerCandidates",
+            windows,
+            IntPtr.Zero,
+            true);
+
+        candidates.Should().BeEmpty(
+            "fallback should reuse minimized Explorer windows, not arbitrary hidden windows");
+    }
+
     private static T InvokePrivateStatic<T>(string methodName, params object?[] args)
     {
         MethodInfo method = typeof(ExplorerTabHookService).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
