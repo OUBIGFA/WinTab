@@ -91,10 +91,13 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; F
 [Registry]
 ; Add startup entry if task selected
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
-; Register DelegateExecute COM host for Explorer open verb interception (HKCU only).
-Root: HKCU; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
+; Register DelegateExecute COM host for Explorer open verb interception in both registry views.
+Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
+Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
+Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
+Root: HKCU32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
+Root: HKCU32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\x86\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
+Root: HKCU32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
@@ -106,7 +109,8 @@ Filename: "{app}\{#AppExeName}"; Parameters: "--wintab-cleanup"; Flags: runhidde
 ; Remove startup registry entry on uninstall
 Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v ""{#AppName}"" /f"; Flags: runhidden; RunOnceId: "WinTabStartupRunCleanup"
 ; Redundant cleanup in case uninstall registry flags were not applied.
-Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanup"
+Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f /reg:64"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanup64"
+Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanup32"
 
 [Code]
 var

@@ -7,6 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
+    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
     <RootNamespace>WinTab.App</RootNamespace>
     <AssemblyName>WinTab</AssemblyName>
     <Version>1.0.0</Version>
@@ -59,6 +60,13 @@
       SourceFiles="@(ShellBridgeComMetadata)"
       DestinationFolder="$(PublishDir)"
       SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="PublishShellBridgeX86ForDelegateExecute" AfterTargets="CopyShellBridgeComMetadataToPublish">
+    <MSBuild
+      Projects="..\WinTab.ShellBridge\WinTab.ShellBridge.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=net8.0-windows;RuntimeIdentifier=win-x86;SelfContained=false;PublishDir=$(PublishDir)x86\" />
   </Target>
 
 </Project>

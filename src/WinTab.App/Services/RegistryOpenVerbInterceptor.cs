@@ -37,13 +37,20 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private readonly string _exePath;
     private readonly string _comHostPath;
+    private readonly string _comHost32Path;
+    private readonly string _comRuntimeConfigPath;
+    private readonly string _com32RuntimeConfigPath;
     private readonly Logger _logger;
 
     public RegistryOpenVerbInterceptor(string exePath, Logger logger)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exePath);
         _exePath = exePath;
-        _comHostPath = Path.Combine(Path.GetDirectoryName(_exePath) ?? string.Empty, "WinTab.ShellBridge.comhost.dll");
+        string baseDirectory = Path.GetDirectoryName(_exePath) ?? string.Empty;
+        _comHostPath = Path.Combine(baseDirectory, "WinTab.ShellBridge.comhost.dll");
+        _comHost32Path = Path.Combine(baseDirectory, "x86", "WinTab.ShellBridge.comhost.dll");
+        _comRuntimeConfigPath = Path.Combine(baseDirectory, "WinTab.ShellBridge.runtimeconfig.json");
+        _com32RuntimeConfigPath = Path.Combine(baseDirectory, "x86", "WinTab.ShellBridge.runtimeconfig.json");
         _logger = logger;
     }
 
@@ -272,7 +279,14 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
     private void WriteOverride()
     {
         bool comHostExists = File.Exists(_comHostPath);
-        bool preferDelegateExecute = ShouldPreferDelegateExecuteOverride(comHostExists);
+        bool comHost32Exists = File.Exists(_comHost32Path);
+        bool x64RuntimeCompatible = HasCompatibleRuntimeForHost(_comRuntimeConfigPath, RegistryView.Registry64);
+        bool x86RuntimeCompatible = HasCompatibleRuntimeForHost(_com32RuntimeConfigPath, RegistryView.Registry32);
+        bool preferDelegateExecute = ShouldPreferDelegateExecuteOverride(
+            comHostExists,
+            comHost32Exists,
+            x64RuntimeCompatible,
+            x86RuntimeCompatible);
         if (preferDelegateExecute)
         {
             RegisterDelegateExecuteComServer();
@@ -313,19 +327,40 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
         if (preferDelegateExecute)
         {
-            _logger.Info("Enabled Explorer open-verb interception via DelegateExecute COM bridge (HKCU).");
+            _logger.Info("Enabled Explorer open-verb interception via DelegateExecute COM bridge (HKCU, x64+x86).");
         }
         else
         {
-            if (comHostExists)
+            if (comHostExists && !comHost32Exists)
             {
-                _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU) for shell-host compatibility.");
+                _logger.Warn($"DelegateExecute x86 COM host is missing, using legacy command override: {_comHost32Path}");
+            }
+            else if (!comHostExists && comHost32Exists)
+            {
+                _logger.Warn($"DelegateExecute x64 COM host is missing, using legacy command override: {_comHostPath}");
+            }
+            else if (!comHostExists && !comHost32Exists)
+            {
+                _logger.Warn($"DelegateExecute COM hosts are missing, using legacy command override: {_comHostPath} | {_comHost32Path}");
+            }
+            else if (!x64RuntimeCompatible && !x86RuntimeCompatible)
+            {
+                _logger.Warn($"DelegateExecute bridge runtimes are incompatible for both architectures, using legacy command override: {_comRuntimeConfigPath} | {_com32RuntimeConfigPath}");
+            }
+            else if (!x64RuntimeCompatible)
+            {
+                _logger.Warn($"DelegateExecute x64 runtime is incompatible, using legacy command override: {_comRuntimeConfigPath}");
+            }
+            else if (!x86RuntimeCompatible)
+            {
+                _logger.Warn($"DelegateExecute x86 runtime is incompatible, using legacy command override: {_com32RuntimeConfigPath}");
             }
             else
             {
-                _logger.Warn($"DelegateExecute COM host is missing, using legacy command override: {_comHostPath}");
-                _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU).");
+                _logger.Warn("DelegateExecute bridge registration is incomplete, using legacy command override for shell-host compatibility.");
             }
+
+            _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU).");
         }
     }
 
@@ -559,29 +594,49 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private string DelegateExecuteClsidKeyPath => $@"Software\Classes\CLSID\{DelegateExecuteClsidBraced}";
 
+    private static RegistryView[] GetDelegateExecuteRegistryViews()
+    {
+        return Environment.Is64BitOperatingSystem
+            ? [RegistryView.Registry64, RegistryView.Registry32]
+            : [RegistryView.Registry32];
+    }
+
+    private string GetComHostPathForView(RegistryView view)
+    {
+        return view == RegistryView.Registry32 ? _comHost32Path : _comHostPath;
+    }
+
     private bool IsDelegateExecuteComServerRegistered()
     {
         try
         {
-            using RegistryKey? inproc = Registry.CurrentUser.OpenSubKey($@"{DelegateExecuteClsidKeyPath}\InProcServer32", writable: false);
-            if (inproc is null)
-                return false;
+            foreach (RegistryView view in GetDelegateExecuteRegistryViews())
+            {
+                using RegistryKey? inproc = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+                    .OpenSubKey($@"{DelegateExecuteClsidKeyPath}\InProcServer32", writable: false);
+                if (inproc is null)
+                    return false;
 
-            string? registeredPath = inproc.GetValue(string.Empty) as string;
-            if (string.IsNullOrWhiteSpace(registeredPath))
-                return false;
+                string? registeredPath = inproc.GetValue(string.Empty) as string;
+                if (string.IsNullOrWhiteSpace(registeredPath))
+                    return false;
 
-            string normalizedRegistered = Path.GetFullPath(registeredPath).Replace('/', '\\');
-            string normalizedExpected = Path.GetFullPath(_comHostPath).Replace('/', '\\');
+                string expectedPath = GetComHostPathForView(view);
+                string normalizedRegistered = Path.GetFullPath(registeredPath).Replace('/', '\\');
+                string normalizedExpected = Path.GetFullPath(expectedPath).Replace('/', '\\');
 
-            if (!string.Equals(normalizedRegistered, normalizedExpected, StringComparison.OrdinalIgnoreCase))
-                return false;
+                if (!string.Equals(normalizedRegistered, normalizedExpected, StringComparison.OrdinalIgnoreCase))
+                    return false;
 
-            string? threadingModel = inproc.GetValue("ThreadingModel") as string;
-            if (!string.Equals(threadingModel, "Apartment", StringComparison.OrdinalIgnoreCase))
-                return false;
+                string? threadingModel = inproc.GetValue("ThreadingModel") as string;
+                if (!string.Equals(threadingModel, "Apartment", StringComparison.OrdinalIgnoreCase))
+                    return false;
 
-            return File.Exists(normalizedExpected);
+                if (!File.Exists(normalizedExpected))
+                    return false;
+            }
+
+            return true;
         }
         catch
         {
@@ -591,20 +646,29 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private void RegisterDelegateExecuteComServer()
     {
-        using RegistryKey clsidKey = Registry.CurrentUser.CreateSubKey(DelegateExecuteClsidKeyPath, writable: true)
-            ?? throw new InvalidOperationException("Failed to create DelegateExecute CLSID key.");
-        clsidKey.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
+        foreach (RegistryView view in GetDelegateExecuteRegistryViews())
+        {
+            string comHostPath = GetComHostPathForView(view);
+            using RegistryKey clsidKey = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+                .CreateSubKey(DelegateExecuteClsidKeyPath, writable: true)
+                ?? throw new InvalidOperationException("Failed to create DelegateExecute CLSID key.");
+            clsidKey.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
 
-        using RegistryKey inproc = clsidKey.CreateSubKey("InProcServer32", writable: true)
-            ?? throw new InvalidOperationException("Failed to create DelegateExecute InProcServer32 key.");
-        inproc.SetValue(string.Empty, _comHostPath, RegistryValueKind.String);
-        inproc.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
+            using RegistryKey inproc = clsidKey.CreateSubKey("InProcServer32", writable: true)
+                ?? throw new InvalidOperationException("Failed to create DelegateExecute InProcServer32 key.");
+            inproc.SetValue(string.Empty, comHostPath, RegistryValueKind.String);
+            inproc.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
+        }
     }
 
     private void RemoveDelegateExecuteComServerRegistration()
     {
-        using RegistryKey? root = Registry.CurrentUser.OpenSubKey(@"Software\Classes\CLSID", writable: true);
-        root?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+        foreach (RegistryView view in GetDelegateExecuteRegistryViews())
+        {
+            using RegistryKey? root = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+                .OpenSubKey(@"Software\Classes\CLSID", writable: true);
+            root?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+        }
     }
 
     private string BuildOverrideCommand()
@@ -613,9 +677,91 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         return $"\"{_exePath}\" {HandlerArgNew} \"%1\"";
     }
 
-    private bool ShouldPreferDelegateExecuteOverride(bool comHostExists)
+    private static bool HasCompatibleRuntimeForHost(string runtimeConfigPath, RegistryView view)
     {
-        return comHostExists;
+        if (!File.Exists(runtimeConfigPath))
+            return false;
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(runtimeConfigPath));
+            JsonElement runtimeOptions = document.RootElement.GetProperty("runtimeOptions");
+            string rollForward = runtimeOptions.TryGetProperty("rollForward", out JsonElement rollForwardElement)
+                ? rollForwardElement.GetString() ?? "LatestMinor"
+                : "LatestMinor";
+
+            if (!runtimeOptions.TryGetProperty("frameworks", out JsonElement frameworks) || frameworks.ValueKind != JsonValueKind.Array)
+                return false;
+
+            foreach (JsonElement framework in frameworks.EnumerateArray())
+            {
+                string? name = framework.GetProperty("name").GetString();
+                string? versionText = framework.GetProperty("version").GetString();
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(versionText))
+                    return false;
+
+                if (!Version.TryParse(versionText, out Version? requestedVersion))
+                    return false;
+
+                IReadOnlyList<Version> installedVersions = GetInstalledFrameworkVersions(name, view);
+                if (!IsFrameworkRuntimeCompatible(requestedVersion, installedVersions, rollForward))
+                    return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static IReadOnlyList<Version> GetInstalledFrameworkVersions(string frameworkName, RegistryView view)
+    {
+        string root = view == RegistryView.Registry32
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "dotnet", "shared", frameworkName)
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "dotnet", "shared", frameworkName);
+
+        if (!Directory.Exists(root))
+            return [];
+
+        return Directory.GetDirectories(root)
+            .Select(Path.GetFileName)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .Select(static name => Version.TryParse(name, out Version? version) ? version : null)
+            .OfType<Version>()
+            .OrderBy(static version => version)
+            .ToArray();
+    }
+
+    private static bool IsFrameworkRuntimeCompatible(Version requestedVersion, IReadOnlyList<Version> installedVersions, string rollForward)
+    {
+        return NormalizeRollForward(rollForward) switch
+        {
+            "major" or "latestmajor" => installedVersions.Any(version =>
+                version.Major > requestedVersion.Major ||
+                (version.Major == requestedVersion.Major && version >= requestedVersion)),
+            _ => installedVersions.Any(version =>
+                version.Major == requestedVersion.Major &&
+                version.Minor == requestedVersion.Minor &&
+                version >= requestedVersion),
+        };
+    }
+
+    private static string NormalizeRollForward(string? rollForward)
+    {
+        return string.IsNullOrWhiteSpace(rollForward)
+            ? "latestminor"
+            : rollForward.Trim().ToLowerInvariant();
+    }
+
+    private bool ShouldPreferDelegateExecuteOverride(
+        bool comHostExists,
+        bool comHost32Exists,
+        bool x64RuntimeCompatible,
+        bool x86RuntimeCompatible)
+    {
+        return comHostExists && comHost32Exists && x64RuntimeCompatible && x86RuntimeCompatible;
     }
 
     private static string ComputeSha256(string text)

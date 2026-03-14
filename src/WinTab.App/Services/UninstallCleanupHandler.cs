@@ -80,8 +80,13 @@ public static class UninstallCleanupHandler
                         classesRoot.DeleteSubKeyTree($@"{cls}\shell\{verb}\command", throwOnMissingSubKey: false);
                     }
                 }
+            }
 
-                classesRoot.DeleteSubKeyTree($@"CLSID\{DelegateExecuteClsidBraced}", throwOnMissingSubKey: false);
+            foreach (RegistryView view in GetRegistryViews())
+            {
+                using RegistryKey? clsidRoot = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+                    .OpenSubKey(@"Software\Classes\CLSID", writable: true);
+                clsidRoot?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
             }
 
             using RegistryKey? folderShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Folder\shell", writable: true);
@@ -98,6 +103,13 @@ public static class UninstallCleanupHandler
         {
             logger?.Error("Failed to restore Explorer open-verb defaults.", ex);
         }
+    }
+
+    private static RegistryView[] GetRegistryViews()
+    {
+        return Environment.Is64BitOperatingSystem
+            ? [RegistryView.Registry64, RegistryView.Registry32]
+            : [RegistryView.Registry32];
     }
 
     private static void TryDeleteExplorerOpenVerbBackupRegistryCache()

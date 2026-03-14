@@ -1,10 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFrameworks>net8.0-windows;net9.0-windows</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableComHosting>true</EnableComHosting>
+    <RollForward>LatestMajor</RollForward>
+    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
     <AssemblyName>WinTab.ShellBridge</AssemblyName>
     <RootNamespace>WinTab.ShellBridge</RootNamespace>
   </PropertyGroup>

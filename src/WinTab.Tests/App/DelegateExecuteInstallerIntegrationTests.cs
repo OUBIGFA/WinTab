@@ -33,6 +33,22 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     }
 
     [Fact]
+    public void InstallerScript_ShouldRegisterDelegateExecuteForBothRegistryViews()
+    {
+        string scriptPath = GetRepoFilePath("installers", "WinTab.iss");
+        string script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("Root: HKCU64",
+            "64-bit Explorer must resolve the DelegateExecute bridge from the 64-bit registry view");
+        script.Should().Contain("Root: HKCU32",
+            "32-bit third-party shell hosts must resolve the DelegateExecute bridge from the 32-bit registry view");
+        script.Should().Contain(@"{app}\x86\WinTab.ShellBridge.comhost.dll",
+            "the installer must deploy and register an x86 ShellBridge sidecar for 32-bit shell hosts");
+        script.Should().Contain("/reg:32",
+            "uninstall cleanup should explicitly remove the 32-bit DelegateExecute registration too");
+    }
+
+    [Fact]
     public void AppProject_ShouldPublishShellBridgeRuntimeConfigAndDeps()
     {
         string projectPath = GetRepoFilePath("src", "WinTab.App", "WinTab.App.csproj");
@@ -44,6 +60,51 @@ public sealed class DelegateExecuteInstallerIntegrationTests
             "COM host activation requires component deps metadata at runtime");
         project.Should().Contain("CopyToPublishDirectory",
             "runtime metadata files must be copied during publish");
+    }
+
+    [Fact]
+    public void AppProject_ShouldPublishShellBridgeX86SidecarFor32BitShellHosts()
+    {
+        string projectPath = GetRepoFilePath("src", "WinTab.App", "WinTab.App.csproj");
+        string project = File.ReadAllText(projectPath);
+
+        project.Should().Contain("win-x86",
+            "the app publish pipeline must produce an x86 ShellBridge sidecar so 32-bit shell hosts can activate DelegateExecute");
+        project.Should().Contain("TargetFramework=net8.0-windows",
+            "the x86 ShellBridge sidecar must target a runtime family that is broadly available on 32-bit hosts instead of hard-requiring x86 .NET 9");
+        project.Should().Contain("$(PublishDir)x86\\",
+            "the x86 ShellBridge publish output should live under a dedicated x86 subfolder next to the main app payload");
+        project.Should().Contain("PublishShellBridgeX86ForDelegateExecute",
+            "publishing the app should automatically include the x86 ShellBridge sidecar required for shell-host compatibility");
+    }
+
+    [Fact]
+    public void ShellBridgeProject_ShouldDeclareBothRuntimeIdentifiersForDelegateExecute()
+    {
+        string projectPath = GetRepoFilePath("src", "WinTab.ShellBridge", "WinTab.ShellBridge.csproj");
+        string project = File.ReadAllText(projectPath);
+
+        project.Should().Contain("<RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>",
+            "the ShellBridge project must restore assets for both architectures before the app publish target requests the x86 sidecar");
+        project.Should().Contain("<TargetFrameworks>net8.0-windows;net9.0-windows</TargetFrameworks>",
+            "the ShellBridge must multi-target so the x86 sidecar can avoid depending on x86 .NET 9 while the main app remains on net9");
+        project.Should().Contain("<RollForward>LatestMajor</RollForward>",
+            "the DelegateExecute bridge should accept newer installed runtimes instead of failing when the exact x86 runtime patch line is absent");
+    }
+
+    [Fact]
+    public void ShellBridgeDependencies_ShouldMultiTargetForNet8CompatibleX86Sidecar()
+    {
+        string coreProjectPath = GetRepoFilePath("src", "WinTab.Core", "WinTab.Core.csproj");
+        string diagnosticsProjectPath = GetRepoFilePath("src", "WinTab.Diagnostics", "WinTab.Diagnostics.csproj");
+        string win32ProjectPath = GetRepoFilePath("src", "WinTab.Platform.Win32", "WinTab.Platform.Win32.csproj");
+
+        File.ReadAllText(coreProjectPath).Should().Contain("<TargetFrameworks>net8.0;net9.0</TargetFrameworks>",
+            "the x86 ShellBridge cannot target net8 unless its shared core dependency also multi-targets");
+        File.ReadAllText(diagnosticsProjectPath).Should().Contain("<TargetFrameworks>net8.0;net9.0</TargetFrameworks>",
+            "the Win32 shell interop layer depends on diagnostics and must stay buildable for the net8 x86 sidecar");
+        File.ReadAllText(win32ProjectPath).Should().Contain("<TargetFrameworks>net8.0-windows;net9.0-windows</TargetFrameworks>",
+            "the platform interop layer must multi-target so the x86 ShellBridge can build against net8 while the app stays on net9");
     }
 
     [Fact]
