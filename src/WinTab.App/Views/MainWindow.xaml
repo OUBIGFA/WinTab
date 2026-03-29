@@ -23,38 +23,37 @@
             Title="{DynamicResource App_Name}"
             Icon="pack://application:,,,/Assets/wintab.ico" />
 
-        <Border Grid.Row="1"
-                Margin="18,8,18,0"
-                Style="{StaticResource AppPanelBorderStyle}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
+        <Grid Grid.Row="1" Margin="32,10,32,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-                <Border Width="52"
-                        Height="52"
-                        CornerRadius="14"
-                        Background="{DynamicResource AppSurfaceStrongBrush}"
-                        BorderBrush="{DynamicResource AppInfoBorderBrush}"
-                        BorderThickness="1"
-                        VerticalAlignment="Top">
-                    <Image Source="pack://siteoforigin:,,,/Assets/logo.png"
-                           Width="32"
-                           Height="32"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           RenderOptions.BitmapScalingMode="HighQuality" />
-                </Border>
+            <Border Width="40"
+                    Height="40"
+                    CornerRadius="10"
+                    Background="{DynamicResource AppSurfaceStrongBrush}"
+                    BorderBrush="{DynamicResource AppInfoBorderBrush}"
+                    BorderThickness="1"
+                    VerticalAlignment="Center">
+                <Image Source="pack://siteoforigin:,,,/Assets/logo.png"
+                       Width="24"
+                       Height="24"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+            </Border>
 
-                <StackPanel Grid.Column="1" Margin="16,0,0,0">
-                    <TextBlock Text="{DynamicResource App_Name}"
-                               Style="{StaticResource PageSectionTitleStyle}" />
-                    <TextBlock Text="{DynamicResource Shell_Tagline}"
-                               Style="{StaticResource PageHeaderDescriptionStyle}" />
-                </StackPanel>
-            </Grid>
-        </Border>
+            <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                <TextBlock Text="{DynamicResource App_Name}"
+                           FontSize="15" FontWeight="SemiBold" />
+                <TextBlock Text="{DynamicResource Shell_Tagline}"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Opacity="0.7"
+                           Margin="0,2,0,0" />
+            </StackPanel>
+        </Grid>
 
         <ui:NavigationView x:Name="RootNavigation"
                            Grid.Row="2"
@@ -63,7 +62,7 @@
                            IsBackButtonVisible="Collapsed"
                            IsPaneToggleVisible="True"
                            OpenPaneLength="228"
-                           Margin="18,10,18,18"
+                           Margin="20,12,20,20"
                            Padding="10">
 
 

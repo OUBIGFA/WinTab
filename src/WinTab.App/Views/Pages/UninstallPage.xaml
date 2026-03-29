@@ -61,10 +61,10 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
-                            
+
                             <TextBlock Text="{DynamicResource Uninstall_ModeLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Grid.Row="0" Grid.Column="0" Margin="0,0,24,16" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding ModeText}" Grid.Row="0" Grid.Column="1" Margin="0,0,0,16" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                            
+
                             <!-- Uninstaller path row: installed mode only -->
                             <TextBlock Text="{DynamicResource Uninstall_PathLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Grid.Row="1" Grid.Column="0" Margin="0,0,24,0" VerticalAlignment="Top"
                                        Visibility="{Binding IsInstalled, Converter={StaticResource BooleanToVisibilityConverter}}"/>

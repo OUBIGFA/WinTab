@@ -49,10 +49,10 @@
     <system:String x:Key="Behavior_EnableExplorerOpenVerbInterception_Desc">将系统或其他应用发起的文件夹打开请求并入当前 WinTab 窗口中的新标签页。</system:String>
     <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows">拦截所有资源管理器窗口</system:String>
     <system:String x:Key="Behavior_EnableAutoConvertExplorerWindows_Desc">将第三方应用或命令行新打开的资源管理器窗口自动转换为标签页；需重启后生效。</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">新标签页沿用当前路径</system:String>
-    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">新建标签页时默认打开当前活动标签页所在目录，而不是“此电脑”。</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab">在新标签页中打开子文件夹</system:String>
-    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">点击子文件夹时创建并切换到新标签页，当前视图保持不变。</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath">新建标签页时打开当前文件夹</system:String>
+    <system:String x:Key="Behavior_OpenNewTabFromActiveTabPath_Desc">点击“新建标签页”后，会直接打开当前标签页所在的文件夹，而不是默认进入“此电脑”。</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab">点击子文件夹时在新标签页打开</system:String>
+    <system:String x:Key="Behavior_OpenChildFolderInNewTab_Desc">在当前标签页中点击子文件夹后，会新建并切换到对应标签页打开该文件夹，当前标签页仍停留在原位置。</system:String>
     <system:String x:Key="Behavior_CloseTabOnDoubleClick">双击标签页标题关闭</system:String>
     <system:String x:Key="Behavior_CloseTabOnDoubleClick_Desc">双击标签页标题区域即可关闭该标签页。</system:String>
 

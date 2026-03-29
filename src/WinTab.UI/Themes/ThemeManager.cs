@@ -13,6 +13,9 @@ public static class ThemeManager
 
     private static readonly object ThemeApplyLock = new();
 
+    private const string LightColorsUri = "pack://application:,,,/WinTab.UI;component/Themes/DesignColors.Light.xaml";
+    private const string DarkColorsUri = "pack://application:,,,/WinTab.UI;component/Themes/DesignColors.Dark.xaml";
+
     public static AppThemeMode CurrentMode => _currentMode;
 
     public static bool IsDarkMode => _currentMode switch
@@ -36,8 +39,37 @@ public static class ThemeManager
             RunOnUiThread(() =>
             {
                 ApplicationThemeManager.Apply(theme, WindowBackdropType.None, updateAccent: true);
+                SwapDesignColorDictionary(mode);
             });
         }
+    }
+
+    private static void SwapDesignColorDictionary(AppThemeMode mode)
+    {
+        Application? app = Application.Current;
+        if (app?.Resources?.MergedDictionaries is null)
+            return;
+
+        var mergedDictionaries = app.Resources.MergedDictionaries;
+        var targetUri = new System.Uri(mode == AppThemeMode.Dark ? DarkColorsUri : LightColorsUri);
+
+        // Find and remove the existing DesignColors dictionary.
+        ResourceDictionary? existing = null;
+        foreach (var dict in mergedDictionaries)
+        {
+            if (dict.Source is not null &&
+                (dict.Source.OriginalString.Contains("DesignColors.Light") ||
+                 dict.Source.OriginalString.Contains("DesignColors.Dark")))
+            {
+                existing = dict;
+                break;
+            }
+        }
+
+        if (existing is not null)
+            mergedDictionaries.Remove(existing);
+
+        mergedDictionaries.Add(new ResourceDictionary { Source = targetUri });
     }
 
     private static void RunOnUiThread(Action action)

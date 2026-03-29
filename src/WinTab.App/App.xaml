@@ -8,9 +8,9 @@
             <ResourceDictionary.MergedDictionaries>
                 <ui:ThemesDictionary Theme="Light" />
                 <ui:ControlsDictionary />
+                <ResourceDictionary Source="pack://application:,,,/WinTab.UI;component/Themes/DesignColors.Light.xaml" />
                 <ResourceDictionary Source="pack://application:,,,/WinTab.UI;component/Themes/DesignPrimitives.xaml" />
             </ResourceDictionary.MergedDictionaries>
-
         </ResourceDictionary>
     </Application.Resources>
 </Application>
