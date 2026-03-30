@@ -91,7 +91,17 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; F
 [Registry]
 ; Add startup entry if task selected
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
-; Register DelegateExecute COM host for Explorer open verb interception in both registry views.
+
+; Register DelegateExecute COM host for Explorer open verb interception
+; HKLM (machine-wide) - REQUIRED for Windows 11 Start Menu and third-party apps
+Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
+Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
+Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\x86\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
+Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
+
+; HKCU (user-only) - for legacy single-user scenarios and same-user Explorer
 Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
 Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
 Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
@@ -108,7 +118,10 @@ Type: filesandordirs; Name: "{userappdata}\WinTab"; Check: ShouldRemoveUserData
 Filename: "{app}\{#AppExeName}"; Parameters: "--wintab-cleanup"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "WinTabCleanup"
 ; Remove startup registry entry on uninstall
 Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\CurrentVersion\Run"" /v ""{#AppName}"" /f"; Flags: runhidden; RunOnceId: "WinTabStartupRunCleanup"
-; Redundant cleanup in case uninstall registry flags were not applied.
+; Remove HKLM COM registration (machine-wide) - 64-bit and 32-bit
+Filename: "reg.exe"; Parameters: "delete ""HKLM\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanupHKLM64"
+Filename: "reg.exe"; Parameters: "delete ""HKLM\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanupHKLM32"
+; Remove HKCU COM registration (user-only) - 64-bit and 32-bit
 Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f /reg:64"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanup64"
 Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanup32"
 

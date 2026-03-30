@@ -78,7 +78,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 }
             }
 
-            if (allVerbsDelegateExecute && IsDelegateExecuteComServerRegistered())
+            if (allVerbsDelegateExecute && IsDelegateExecuteComServerRegistered(requireMachineWideRegistration: true))
                 return true;
 
             return allVerbsLegacyCommand;
@@ -160,11 +160,14 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
             if (settingEnabled)
             {
-                // Unsafe state: override exists but no valid backup source.
+                // Unsafe state: a WinTab override exists but no valid backup source.
                 // Reset override first to avoid backing up already-hijacked values.
-                if (registryPointsToUs && !hasAnyBackup)
+                if (ShouldResetOverrideBeforeRepair(registryPointsToUs, registryPointsToAnyWinTabHandler, hasAnyBackup))
                 {
-                    _logger.Warn("Explorer open-verb points to WinTab but no backup exists; resetting override before repair.");
+                    string warning = registryPointsToUs
+                        ? "Explorer open-verb points to WinTab but no backup exists; resetting override before repair."
+                        : "Explorer open-verb points to an incomplete WinTab override but no backup exists; resetting override before repair.";
+                    _logger.Warn(warning);
                     DisableAndRestore();
                     EnableOrRepair();
                     return;
@@ -282,19 +285,32 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         bool comHost32Exists = File.Exists(_comHost32Path);
         bool x64RuntimeCompatible = HasCompatibleRuntimeForHost(_comRuntimeConfigPath, RegistryView.Registry64);
         bool x86RuntimeCompatible = HasCompatibleRuntimeForHost(_com32RuntimeConfigPath, RegistryView.Registry32);
-        bool preferDelegateExecute = ShouldPreferDelegateExecuteOverride(
+        bool delegateExecutePrerequisitesSatisfied = ShouldPreferDelegateExecuteOverride(
             comHostExists,
             comHost32Exists,
             x64RuntimeCompatible,
             x86RuntimeCompatible);
-        if (preferDelegateExecute)
+        bool machineWideRegistrationReady = false;
+
+        if (delegateExecutePrerequisitesSatisfied)
         {
             RegisterDelegateExecuteComServer();
+            machineWideRegistrationReady = IsDelegateExecuteComServerRegistered(requireMachineWideRegistration: true);
+
+            if (!machineWideRegistrationReady)
+            {
+                _logger.Warn("DelegateExecute machine-wide COM registration is unavailable, using legacy command override for shell-host compatibility.");
+                RemoveDelegateExecuteComServerRegistration();
+            }
         }
         else
         {
             RemoveDelegateExecuteComServerRegistration();
         }
+
+        bool preferDelegateExecute = ShouldUseDelegateExecuteOverride(
+            delegateExecutePrerequisitesSatisfied,
+            machineWideRegistrationReady);
 
         foreach (string cls in TargetClasses)
         {
@@ -608,11 +624,28 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private bool IsDelegateExecuteComServerRegistered()
     {
+        return IsDelegateExecuteComServerRegistered(requireMachineWideRegistration: false);
+    }
+
+    private bool IsDelegateExecuteComServerRegistered(bool requireMachineWideRegistration)
+    {
+        bool currentUserRegistered = IsDelegateExecuteComServerRegistered(RegistryHive.CurrentUser);
+        if (!currentUserRegistered)
+            return false;
+
+        if (!requireMachineWideRegistration)
+            return true;
+
+        return IsDelegateExecuteComServerRegistered(RegistryHive.LocalMachine);
+    }
+
+    private bool IsDelegateExecuteComServerRegistered(RegistryHive hive)
+    {
         try
         {
             foreach (RegistryView view in GetDelegateExecuteRegistryViews())
             {
-                using RegistryKey? inproc = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+                using RegistryKey? inproc = RegistryKey.OpenBaseKey(hive, view)
                     .OpenSubKey($@"{DelegateExecuteClsidKeyPath}\InProcServer32", writable: false);
                 if (inproc is null)
                     return false;
@@ -649,15 +682,35 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         foreach (RegistryView view in GetDelegateExecuteRegistryViews())
         {
             string comHostPath = GetComHostPathForView(view);
-            using RegistryKey clsidKey = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
-                .CreateSubKey(DelegateExecuteClsidKeyPath, writable: true)
-                ?? throw new InvalidOperationException("Failed to create DelegateExecute CLSID key.");
-            clsidKey.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
 
-            using RegistryKey inproc = clsidKey.CreateSubKey("InProcServer32", writable: true)
-                ?? throw new InvalidOperationException("Failed to create DelegateExecute InProcServer32 key.");
-            inproc.SetValue(string.Empty, comHostPath, RegistryValueKind.String);
-            inproc.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
+            // Register in HKLM (machine-wide) - for Windows 11 Start Menu and third-party apps
+            try
+            {
+                using RegistryKey clsidKeyLm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view)
+                    .CreateSubKey(DelegateExecuteClsidKeyPath, writable: true)
+                    ?? throw new InvalidOperationException("Failed to create DelegateExecute CLSID key in HKLM.");
+                clsidKeyLm.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
+
+                using RegistryKey inprocLm = clsidKeyLm.CreateSubKey("InProcServer32", writable: true)
+                    ?? throw new InvalidOperationException("Failed to create DelegateExecute InProcServer32 key in HKLM.");
+                inprocLm.SetValue(string.Empty, comHostPath, RegistryValueKind.String);
+                inprocLm.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                _logger.Warn($"Failed to register DelegateExecute COM server in HKLM (view {view}): {ex.Message}");
+            }
+
+            // Register in HKCU (user-only) - for same-user Explorer
+            using RegistryKey clsidKeyCu = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+                .CreateSubKey(DelegateExecuteClsidKeyPath, writable: true)
+                ?? throw new InvalidOperationException("Failed to create DelegateExecute CLSID key in HKCU.");
+            clsidKeyCu.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
+
+            using RegistryKey inprocCu = clsidKeyCu.CreateSubKey("InProcServer32", writable: true)
+                ?? throw new InvalidOperationException("Failed to create DelegateExecute InProcServer32 key in HKCU.");
+            inprocCu.SetValue(string.Empty, comHostPath, RegistryValueKind.String);
+            inprocCu.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
         }
     }
 
@@ -665,9 +718,22 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
     {
         foreach (RegistryView view in GetDelegateExecuteRegistryViews())
         {
-            using RegistryKey? root = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+            // Clean up HKLM COM registration (machine-wide)
+            try
+            {
+                using RegistryKey? rootLm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view)
+                    .OpenSubKey(@"Software\Classes\CLSID", writable: true);
+                rootLm?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                _logger.Warn($"Failed to remove DelegateExecute COM registration from HKLM (view {view}): {ex.Message}");
+            }
+
+            // Clean up HKCU COM registration (user-only)
+            using RegistryKey? rootCu = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
                 .OpenSubKey(@"Software\Classes\CLSID", writable: true);
-            root?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+            rootCu?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
         }
     }
 
@@ -762,6 +828,21 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         bool x86RuntimeCompatible)
     {
         return comHostExists && comHost32Exists && x64RuntimeCompatible && x86RuntimeCompatible;
+    }
+
+    private static bool ShouldUseDelegateExecuteOverride(
+        bool delegateExecutePrerequisitesSatisfied,
+        bool machineWideRegistrationReady)
+    {
+        return delegateExecutePrerequisitesSatisfied && machineWideRegistrationReady;
+    }
+
+    private static bool ShouldResetOverrideBeforeRepair(
+        bool registryPointsToUs,
+        bool registryPointsToAnyWinTabHandler,
+        bool hasAnyBackup)
+    {
+        return registryPointsToAnyWinTabHandler && !hasAnyBackup;
     }
 
     private static string ComputeSha256(string text)

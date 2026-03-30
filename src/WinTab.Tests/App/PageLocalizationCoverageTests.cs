@@ -13,7 +13,7 @@ public class PageLocalizationCoverageTests
     [Fact]
     public void GeneralAndBehaviorPages_DynamicResourceKeys_ShouldExistInAllLocalizationFiles()
     {
-        string srcRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src"));
+        string srcRoot = TestRepoPaths.GetFile(["src"]);
 
         string generalPagePath = Path.Combine(srcRoot, "WinTab.App", "Views", "Pages", "GeneralPage.xaml");
         string behaviorPagePath = Path.Combine(srcRoot, "WinTab.App", "Views", "Pages", "BehaviorPage.xaml");
@@ -40,10 +40,8 @@ public class PageLocalizationCoverageTests
     [Fact]
     public void DesignPrimitives_TextBlockStyles_ShouldBeBasedOnDefaultTextBlockStyle()
     {
-        string appXamlPath = Path.GetFullPath(
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WinTab.App", "App.xaml"));
-        string primitivesPath = Path.GetFullPath(
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "src", "WinTab.UI", "Themes", "DesignPrimitives.xaml"));
+        string appXamlPath = TestRepoPaths.GetFile(["src", "WinTab.App", "App.xaml"]);
+        string primitivesPath = TestRepoPaths.GetFile(["src", "WinTab.UI", "Themes", "DesignPrimitives.xaml"]);
 
         XDocument appXaml = XDocument.Load(appXamlPath);
         XDocument primitives = XDocument.Load(primitivesPath);

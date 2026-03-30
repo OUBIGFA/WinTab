@@ -82,11 +82,28 @@ public static class UninstallCleanupHandler
                 }
             }
 
+            // Clean up HKCU COM registration (user-only)
             foreach (RegistryView view in GetRegistryViews())
             {
                 using RegistryKey? clsidRoot = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
                     .OpenSubKey(@"Software\Classes\CLSID", writable: true);
                 clsidRoot?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+            }
+
+            // Clean up HKLM COM registration (machine-wide) - added for Windows 11 Start Menu support
+            foreach (RegistryView view in GetRegistryViews())
+            {
+                try
+                {
+                    using RegistryKey? clsidRoot = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view)
+                        .OpenSubKey(@"Software\Classes\CLSID", writable: true);
+                    clsidRoot?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+                {
+                    // HKLM cleanup may fail without admin rights - this is expected during uninstall
+                    logger?.Warn($"Failed to clean up HKLM COM registration (view {view}): {ex.Message}");
+                }
             }
 
             using RegistryKey? folderShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Folder\shell", writable: true);

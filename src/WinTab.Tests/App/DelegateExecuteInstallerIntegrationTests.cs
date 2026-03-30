@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using FluentAssertions;
 using Xunit;
 
@@ -11,7 +11,7 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     [Fact]
     public void InstallerScript_ShouldRegisterAndUnregisterDelegateExecuteComServer()
     {
-        string scriptPath = GetRepoFilePath("installers", "WinTab.iss");
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
         script.Should().Contain("#define DelegateExecuteClsid",
@@ -35,9 +35,13 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     [Fact]
     public void InstallerScript_ShouldRegisterDelegateExecuteForBothRegistryViews()
     {
-        string scriptPath = GetRepoFilePath("installers", "WinTab.iss");
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
+        script.Should().Contain("Root: HKLM",
+            "Windows 11 Start Menu and elevated shell hosts require machine-wide COM registration");
+        script.Should().Contain("Root: HKLM32",
+            "32-bit third-party shell hosts require machine-wide COM registration in the 32-bit registry view");
         script.Should().Contain("Root: HKCU64",
             "64-bit Explorer must resolve the DelegateExecute bridge from the 64-bit registry view");
         script.Should().Contain("Root: HKCU32",
@@ -49,9 +53,25 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     }
 
     [Fact]
+    public void InstallerScript_ShouldCleanupMachineWideDelegateExecuteRegistrationOnUninstall()
+    {
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
+        string script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain("WinTabDelegateExecuteCleanupHKLM64",
+            "uninstall must include a dedicated cleanup step for the machine-wide 64-bit COM registration");
+        script.Should().Contain("WinTabDelegateExecuteCleanupHKLM32",
+            "uninstall must include a dedicated cleanup step for the machine-wide 32-bit COM registration");
+        script.Should().Contain(@"HKLM\Software\Classes\CLSID\{#DelegateExecuteClsid}",
+            "uninstall must target the machine-wide DelegateExecute CLSID path");
+        script.Should().Contain(@"/reg:32",
+            "uninstall must explicitly clean up the 32-bit machine-wide registration too");
+    }
+
+    [Fact]
     public void AppProject_ShouldPublishShellBridgeRuntimeConfigAndDeps()
     {
-        string projectPath = GetRepoFilePath("src", "WinTab.App", "WinTab.App.csproj");
+        string projectPath = TestRepoPaths.GetFile(["src", "WinTab.App", "WinTab.App.csproj"]);
         string project = File.ReadAllText(projectPath);
 
         project.Should().Contain("WinTab.ShellBridge.runtimeconfig.json",
@@ -65,7 +85,7 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     [Fact]
     public void AppProject_ShouldPublishShellBridgeX86SidecarFor32BitShellHosts()
     {
-        string projectPath = GetRepoFilePath("src", "WinTab.App", "WinTab.App.csproj");
+        string projectPath = TestRepoPaths.GetFile(["src", "WinTab.App", "WinTab.App.csproj"]);
         string project = File.ReadAllText(projectPath);
 
         project.Should().Contain("win-x86",
@@ -81,7 +101,7 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     [Fact]
     public void ShellBridgeProject_ShouldDeclareBothRuntimeIdentifiersForDelegateExecute()
     {
-        string projectPath = GetRepoFilePath("src", "WinTab.ShellBridge", "WinTab.ShellBridge.csproj");
+        string projectPath = TestRepoPaths.GetFile(["src", "WinTab.ShellBridge", "WinTab.ShellBridge.csproj"]);
         string project = File.ReadAllText(projectPath);
 
         project.Should().Contain("<RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>",
@@ -95,9 +115,9 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     [Fact]
     public void ShellBridgeDependencies_ShouldMultiTargetForNet8CompatibleX86Sidecar()
     {
-        string coreProjectPath = GetRepoFilePath("src", "WinTab.Core", "WinTab.Core.csproj");
-        string diagnosticsProjectPath = GetRepoFilePath("src", "WinTab.Diagnostics", "WinTab.Diagnostics.csproj");
-        string win32ProjectPath = GetRepoFilePath("src", "WinTab.Platform.Win32", "WinTab.Platform.Win32.csproj");
+        string coreProjectPath = TestRepoPaths.GetFile(["src", "WinTab.Core", "WinTab.Core.csproj"]);
+        string diagnosticsProjectPath = TestRepoPaths.GetFile(["src", "WinTab.Diagnostics", "WinTab.Diagnostics.csproj"]);
+        string win32ProjectPath = TestRepoPaths.GetFile(["src", "WinTab.Platform.Win32", "WinTab.Platform.Win32.csproj"]);
 
         File.ReadAllText(coreProjectPath).Should().Contain("<TargetFrameworks>net8.0;net9.0</TargetFrameworks>",
             "the x86 ShellBridge cannot target net8 unless its shared core dependency also multi-targets");
@@ -110,7 +130,7 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     [Fact]
     public void InstallerScript_ShouldRestartExplorerWhenUpdatingShellBridge()
     {
-        string scriptPath = GetRepoFilePath("installers", "WinTab.iss");
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
         script.Should().Contain("taskkill.exe",
@@ -126,7 +146,7 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     [Fact]
     public void InstallerScript_ShouldRunAppCleanupBeforeUpdatingExistingInstallation()
     {
-        string scriptPath = GetRepoFilePath("installers", "WinTab.iss");
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
         script.Should().Contain("StopExistingShellBridgeHostsForUpgrade",
@@ -137,25 +157,5 @@ public sealed class DelegateExecuteInstallerIntegrationTests
             "the installer should disable interception before replacing shell bridge files in an existing installation");
         script.Should().Contain("ExistingInstallDetected",
             "the cleanup and Explorer restart flow should only run when replacing an existing installation");
-    }
-
-    private static string GetRepoFilePath(params string[] parts)
-    {
-        string current = AppContext.BaseDirectory;
-
-        for (int i = 0; i < 10; i++)
-        {
-            string candidate = Path.Combine(current, Path.Combine(parts));
-            if (File.Exists(candidate))
-                return candidate;
-
-            string? parent = Directory.GetParent(current)?.FullName;
-            if (string.IsNullOrWhiteSpace(parent))
-                break;
-
-            current = parent;
-        }
-
-        return Path.Combine(AppContext.BaseDirectory, Path.Combine(parts));
     }
 }

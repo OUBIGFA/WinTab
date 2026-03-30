@@ -234,25 +234,7 @@ public class AboutPageRegressionTests
 
     private static string GetProjectFilePath(string projectFolder, params string[] parts)
     {
-        string current = AppContext.BaseDirectory;
-
-        for (int i = 0; i < 8; i++)
-        {
-            string candidate = Path.Combine(current, "src", projectFolder);
-            if (Directory.Exists(candidate))
-            {
-                return Path.Combine(candidate, Path.Combine(parts));
-            }
-
-            string? parent = Directory.GetParent(current)?.FullName;
-            if (string.IsNullOrWhiteSpace(parent))
-            {
-                break;
-            }
-
-            current = parent;
-        }
-
-        return Path.Combine(AppContext.BaseDirectory, Path.Combine(parts));
+        string[] allParts = ["src", projectFolder, .. parts];
+        return TestRepoPaths.GetFile(allParts);
     }
 }

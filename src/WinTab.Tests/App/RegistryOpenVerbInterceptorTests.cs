@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -125,6 +125,30 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
         shouldDelete.Should().BeOfType<bool>();
         ((bool)shouldDelete!).Should().BeFalse(
             "when DelegateExecute is present, restore must not drop the shell handler");
+    }
+
+    [Fact]
+    public void RuntimeInterceptorSource_ShouldRegisterDelegateExecuteInLocalMachineAndCurrentUserHives()
+    {
+        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
+
+        source.Should().Contain("RegistryHive.LocalMachine",
+            "runtime repair must create machine-wide COM registration so Windows 11 Start Menu and elevated shell hosts do not fail with class-not-registered");
+        source.Should().Contain("RegistryHive.CurrentUser",
+            "runtime repair should still preserve user-scope registration for same-user Explorer scenarios");
+    }
+
+    [Fact]
+    public void RuntimeInterceptorSource_ShouldRemoveDelegateExecuteFromLocalMachineAndCurrentUserHives()
+    {
+        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
+
+        source.Should().Contain("Failed to remove DelegateExecute COM registration from HKLM",
+            "cleanup logging should explicitly cover machine-wide registration removal failures");
+        source.Should().Contain("rootLm?.DeleteSubKeyTree",
+            "runtime cleanup must attempt to delete the machine-wide COM registration");
+        source.Should().Contain("rootCu?.DeleteSubKeyTree",
+            "runtime cleanup must still delete the user-scope COM registration");
     }
 
     public void Dispose()

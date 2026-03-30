@@ -68,6 +68,52 @@ public sealed class RegistryOpenVerbCompatibilityPolicyTests : IDisposable
             "global DelegateExecute registration is only safe when the 32-bit shell host can activate a compatible bridge runtime instead of failing with class-not-registered");
     }
 
+    [Fact]
+    public void ShouldUseDelegateExecuteOverride_WhenMachineWideRegistrationIsUnavailable_ShouldStayInLegacyMode()
+    {
+        bool useDelegateExecute = InvokeShouldUseDelegateExecuteOverride(
+            delegateExecutePrerequisitesSatisfied: true,
+            machineWideRegistrationReady: false);
+
+        useDelegateExecute.Should().BeFalse(
+            "a HKCU-only DelegateExecute registration recreates the class-not-registered failure for Windows 11 Start Menu and some third-party shell hosts");
+    }
+
+    [Fact]
+    public void ShouldUseDelegateExecuteOverride_WhenMachineWideRegistrationIsReady_ShouldKeepDelegateExecuteMode()
+    {
+        bool useDelegateExecute = InvokeShouldUseDelegateExecuteOverride(
+            delegateExecutePrerequisitesSatisfied: true,
+            machineWideRegistrationReady: true);
+
+        useDelegateExecute.Should().BeTrue(
+            "a complete machine-wide registration should preserve the native DelegateExecute path for the full WinTab experience");
+    }
+
+    [Fact]
+    public void ShouldResetOverrideBeforeRepair_WhenIncompleteOverrideExistsWithoutBackup_ShouldResetBeforeTakingNewBackup()
+    {
+        bool shouldReset = InvokeShouldResetOverrideBeforeRepair(
+            registryPointsToUs: false,
+            registryPointsToAnyWinTabHandler: true,
+            hasAnyBackup: false);
+
+        shouldReset.Should().BeTrue(
+            "an incomplete HKCU-only WinTab override must not be captured as the new baseline backup");
+    }
+
+    [Fact]
+    public void ShouldResetOverrideBeforeRepair_WhenBackupAlreadyExists_ShouldNotResetSolelyForRepair()
+    {
+        bool shouldReset = InvokeShouldResetOverrideBeforeRepair(
+            registryPointsToUs: false,
+            registryPointsToAnyWinTabHandler: true,
+            hasAnyBackup: true);
+
+        shouldReset.Should().BeFalse(
+            "once a valid backup exists, repair can use it instead of forcing a pre-emptive reset");
+    }
+
     public void Dispose()
     {
         _logger.Dispose();
@@ -95,6 +141,33 @@ public sealed class RegistryOpenVerbCompatibilityPolicyTests : IDisposable
             ?? throw new InvalidOperationException("Method not found: ShouldPreferDelegateExecuteOverride");
 
         object? result = method.Invoke(interceptor, [comHostExists, comHost32Exists, x64RuntimeCompatible, x86RuntimeCompatible]);
+        return result is bool value && value;
+    }
+
+    private static bool InvokeShouldUseDelegateExecuteOverride(
+        bool delegateExecutePrerequisitesSatisfied,
+        bool machineWideRegistrationReady)
+    {
+        MethodInfo method = typeof(RegistryOpenVerbInterceptor).GetMethod(
+            "ShouldUseDelegateExecuteOverride",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Method not found: ShouldUseDelegateExecuteOverride");
+
+        object? result = method.Invoke(null, [delegateExecutePrerequisitesSatisfied, machineWideRegistrationReady]);
+        return result is bool value && value;
+    }
+
+    private static bool InvokeShouldResetOverrideBeforeRepair(
+        bool registryPointsToUs,
+        bool registryPointsToAnyWinTabHandler,
+        bool hasAnyBackup)
+    {
+        MethodInfo method = typeof(RegistryOpenVerbInterceptor).GetMethod(
+            "ShouldResetOverrideBeforeRepair",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Method not found: ShouldResetOverrideBeforeRepair");
+
+        object? result = method.Invoke(null, [registryPointsToUs, registryPointsToAnyWinTabHandler, hasAnyBackup]);
         return result is bool value && value;
     }
 }
