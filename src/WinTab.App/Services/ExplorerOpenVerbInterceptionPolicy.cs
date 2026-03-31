@@ -14,4 +14,10 @@ internal static class ExplorerOpenVerbInterceptionPolicy
     {
         return settings.EnableExplorerOpenVerbInterception && hasStableOpenVerbHandlerPath;
     }
+
+    public static bool ShouldPersistAcrossReboot(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.PersistExplorerOpenVerbInterceptionAcrossExit || settings.RunAtStartup;
+    }
 }

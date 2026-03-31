@@ -2574,7 +2574,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
 
     private static bool ShouldBypassAutoConvertForLocation(string? location)
     {
-        return IsShellNamespaceLocation(location);
+        return OpenTargetClassifier.Classify(location).RequiresNativeShellLaunch;
     }
 
     private static bool ShouldConvertWindowLocationToTab(string? location)

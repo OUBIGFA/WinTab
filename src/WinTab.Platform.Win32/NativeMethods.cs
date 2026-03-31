@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Win32.SafeHandles;
 using static WinTab.Platform.Win32.NativeStructs;
 
 namespace WinTab.Platform.Win32;
@@ -352,4 +353,16 @@ public static class NativeMethods
     public static extern IntPtr DispatchMessage(ref MSG lpMsg);
 
     public const uint PM_REMOVE = 0x0001;
+
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern int RegCreateKeyEx(
+        SafeRegistryHandle hKey,
+        string lpSubKey,
+        int Reserved,
+        string? lpClass,
+        int dwOptions,
+        int samDesired,
+        IntPtr lpSecurityAttributes,
+        out SafeRegistryHandle phkResult,
+        out int lpdwDisposition);
 }

@@ -34,6 +34,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
             interceptor,
             _logger,
             isWindows11: static () => true,
+            isRegisteredForStartup: static () => true,
             resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
             isStableOpenVerbHandlerPath: static _ => true,
             runInBackground: work => Task.Run(work));
@@ -42,6 +43,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
         {
             EnableExplorerOpenVerbInterception = true,
             OpenChildFolderInNewTabFromActiveTab = true,
+            RunAtStartup = true,
         };
 
         var sw = Stopwatch.StartNew();
@@ -51,7 +53,10 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         await interceptor.WaitForCompletionAsync(TimeSpan.FromSeconds(3));
         interceptor.StartupSelfCheckCalls.Should().Be(1);
+        interceptor.StartupSelfCheckArguments.Should().ContainSingle().Which.Should().BeTrue();
+        interceptor.StartupSelfCheckPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeTrue();
         interceptor.EnableOrRepairCalls.Should().Be(1);
+        interceptor.EnableOrRepairPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeTrue();
         interceptor.DisableAndRestoreCalls.Should().Be(0);
     }
 
@@ -66,6 +71,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
             interceptor,
             _logger,
             isWindows11: static () => true,
+            isRegisteredForStartup: static () => false,
             resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
             isStableOpenVerbHandlerPath: static _ => true,
             runInBackground: work => Task.Run(work));
@@ -74,6 +80,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
         {
             EnableExplorerOpenVerbInterception = false,
             OpenChildFolderInNewTabFromActiveTab = true,
+            RunAtStartup = false,
         };
 
         var sw = Stopwatch.StartNew();
@@ -82,6 +89,8 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
             "disable path should complete synchronously so the shell is not left hijacked while a background task is pending");
 
         interceptor.StartupSelfCheckCalls.Should().Be(1);
+        interceptor.StartupSelfCheckArguments.Should().ContainSingle().Which.Should().BeFalse();
+        interceptor.StartupSelfCheckPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeFalse();
         interceptor.DisableAndRestoreCalls.Should().Be(1);
         interceptor.EnableOrRepairCalls.Should().Be(0);
     }
@@ -97,6 +106,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
             interceptor,
             _logger,
             isWindows11: static () => true,
+            isRegisteredForStartup: static () => true,
             resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
             isStableOpenVerbHandlerPath: static _ => true,
             runInBackground: work => Task.Run(work));
@@ -105,6 +115,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
         {
             EnableExplorerOpenVerbInterception = true,
             OpenChildFolderInNewTabFromActiveTab = true,
+            RunAtStartup = true,
         };
 
         service.Start(settings);
@@ -112,15 +123,18 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         await interceptor.WaitForCompletionAsync(TimeSpan.FromMilliseconds(100));
         interceptor.EnableOrRepairCalls.Should().Be(1);
+        interceptor.EnableOrRepairPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeTrue();
     }
+
     [Fact]
-    public async Task Start_WhenChildFolderNewTabDisabled_ShouldKeepInterceptionEnabledForDirectReuse()
+    public async Task Start_WhenRunAtStartupDisabled_ShouldEnableSessionOnlyInterceptionAfterManualLaunch()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor();
         var service = new ExplorerOpenVerbStartupService(
             interceptor,
             _logger,
             isWindows11: static () => true,
+            isRegisteredForStartup: static () => false,
             resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
             isStableOpenVerbHandlerPath: static _ => true,
             runInBackground: work => Task.Run(work));
@@ -129,14 +143,103 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
         {
             EnableExplorerOpenVerbInterception = true,
             OpenChildFolderInNewTabFromActiveTab = false,
+            RunAtStartup = false,
+            PersistExplorerOpenVerbInterceptionAcrossExit = false,
         };
 
         service.Start(settings);
         await interceptor.WaitForCompletionAsync(TimeSpan.FromSeconds(2));
 
         interceptor.StartupSelfCheckArguments.Should().ContainSingle().Which.Should().BeTrue();
+        interceptor.StartupSelfCheckPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeFalse();
         interceptor.DisableAndRestoreCalls.Should().Be(0);
         interceptor.EnableOrRepairCalls.Should().Be(1);
+        interceptor.EnableOrRepairPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Start_WhenRunAtStartupDisabled_ShouldNotPersistInterceptionAcrossReboot()
+    {
+        var interceptor = new FakeExplorerOpenVerbInterceptor();
+        var service = new ExplorerOpenVerbStartupService(
+            interceptor,
+            _logger,
+            isWindows11: static () => true,
+            isRegisteredForStartup: static () => false,
+            resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
+            isStableOpenVerbHandlerPath: static _ => true,
+            runInBackground: work => Task.Run(work));
+
+        var settings = new AppSettings
+        {
+            EnableExplorerOpenVerbInterception = true,
+            RunAtStartup = false,
+            PersistExplorerOpenVerbInterceptionAcrossExit = false,
+        };
+
+        service.Start(settings);
+        await interceptor.WaitForCompletionAsync(TimeSpan.FromSeconds(2));
+
+        interceptor.EnableOrRepairCalls.Should().Be(1);
+        interceptor.EnableOrRepairPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeFalse(
+            "manual launch should only enable a session-scoped override when RunAtStartup is off");
+        interceptor.DisableAndRestoreCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Start_WhenStartupRegistrationExistsButSettingIsOff_ShouldPersistAcrossReboot()
+    {
+        var interceptor = new FakeExplorerOpenVerbInterceptor();
+        var service = new ExplorerOpenVerbStartupService(
+            interceptor,
+            _logger,
+            isWindows11: static () => true,
+            isRegisteredForStartup: static () => true,
+            resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
+            isStableOpenVerbHandlerPath: static _ => true,
+            runInBackground: work => Task.Run(work));
+
+        var settings = new AppSettings
+        {
+            EnableExplorerOpenVerbInterception = true,
+            RunAtStartup = false,
+            PersistExplorerOpenVerbInterceptionAcrossExit = false,
+        };
+
+        service.Start(settings);
+        await interceptor.WaitForCompletionAsync(TimeSpan.FromSeconds(2));
+
+        interceptor.EnableOrRepairCalls.Should().Be(1);
+        interceptor.EnableOrRepairPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeTrue(
+            "real startup registration means WinTab will be present after reboot, so interception may persist");
+    }
+
+    [Fact]
+    public async Task Start_WhenSettingsClaimStartupButRegistrationIsMissing_ShouldStaySessionOnly()
+    {
+        var interceptor = new FakeExplorerOpenVerbInterceptor();
+        var service = new ExplorerOpenVerbStartupService(
+            interceptor,
+            _logger,
+            isWindows11: static () => true,
+            isRegisteredForStartup: static () => false,
+            resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
+            isStableOpenVerbHandlerPath: static _ => true,
+            runInBackground: work => Task.Run(work));
+
+        var settings = new AppSettings
+        {
+            EnableExplorerOpenVerbInterception = true,
+            RunAtStartup = true,
+            PersistExplorerOpenVerbInterceptionAcrossExit = false,
+        };
+
+        service.Start(settings);
+        await interceptor.WaitForCompletionAsync(TimeSpan.FromSeconds(2));
+
+        interceptor.EnableOrRepairCalls.Should().Be(1);
+        interceptor.EnableOrRepairPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeFalse(
+            "stale settings must not leave persistent Explorer hijacking behind when startup registration is actually absent");
     }
 
     public void Dispose()
@@ -172,19 +275,23 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
         public int EnableOrRepairCalls { get; private set; }
         public int DisableAndRestoreCalls { get; private set; }
         public List<bool> StartupSelfCheckArguments { get; } = [];
+        public List<bool> StartupSelfCheckPersistAcrossRebootArguments { get; } = [];
+        public List<bool> EnableOrRepairPersistAcrossRebootArguments { get; } = [];
 
-        public void StartupSelfCheck(bool settingEnabled)
+        public void StartupSelfCheck(bool settingEnabled, bool persistAcrossReboot)
         {
             StartupSelfCheckCalls++;
             StartupSelfCheckArguments.Add(settingEnabled);
+            StartupSelfCheckPersistAcrossRebootArguments.Add(persistAcrossReboot);
 
             if (_startupSelfCheckDelayMs > 0)
                 Task.Delay(_startupSelfCheckDelayMs).GetAwaiter().GetResult();
         }
 
-        public void EnableOrRepair()
+        public void EnableOrRepair(bool persistAcrossReboot)
         {
             EnableOrRepairCalls++;
+            EnableOrRepairPersistAcrossRebootArguments.Add(persistAcrossReboot);
 
             if (_enableOrRepairDelayMs > 0)
                 Task.Delay(_enableOrRepairDelayMs).GetAwaiter().GetResult();
@@ -206,5 +313,3 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
         }
     }
 }
-
-

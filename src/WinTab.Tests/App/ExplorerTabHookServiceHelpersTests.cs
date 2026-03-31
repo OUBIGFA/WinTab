@@ -41,29 +41,28 @@ public sealed class ExplorerTabHookServiceHelpersTests
     }
 
     [Theory]
-    [InlineData("shell:RecycleBinFolder", true)]
-    [InlineData("shell::Downloads", true)]
-    [InlineData("::{645FF040-5081-101B-9F08-00AA002F954E}", true)]
-    [InlineData("{645FF040-5081-101B-9F08-00AA002F954E}", true)]
-    [InlineData("C:\\Windows", false)]
-    [InlineData("\\\\server\\share", false)]
-    public void ShouldBypassAutoConvertForLocation_ShouldPreferNativeForNamespaceTargets(string input, bool expected)
+    [InlineData("shell:RecycleBinFolder", false, "tab-navigable shell namespace must merge into tab")]
+    [InlineData("shell::Downloads", false, "tab-navigable shell namespace must merge into tab")]
+    [InlineData("::{645FF040-5081-101B-9F08-00AA002F954E}", false, "Recycle Bin must merge into tab")]
+    [InlineData("{645FF040-5081-101B-9F08-00AA002F954E}", false, "GUID shell namespace must merge into tab")]
+    [InlineData("C:\\Windows", false, "physical path must merge into tab")]
+    [InlineData("\\\\server\\share", false, "UNC path must merge into tab")]
+    public void ShouldBypassAutoConvertForLocation_ShouldOnlyBypassNativeShellNamespaces(string input, bool expected, string reason)
     {
         bool actual = InvokePrivateStatic<bool>("ShouldBypassAutoConvertForLocation", input);
-        actual.Should().Be(expected);
+        actual.Should().Be(expected, reason);
     }
 
     [Theory]
     [InlineData(null, true)]
     [InlineData(@"C:\Users\bigfa\Desktop", true)]
-    [InlineData("shell:RecycleBinFolder", false)]
-    [InlineData("::{645FF040-5081-101B-9F08-00AA002F954E}", false)]
-    [InlineData("shell::Downloads", false)]
-    public void ShouldConvertWindowLocationToTab_ShouldRejectShellNamespaceWindows(string? input, bool expected)
+    [InlineData("shell:RecycleBinFolder", true, "Recycle Bin must convert to tab")]
+    [InlineData("::{645FF040-5081-101B-9F08-00AA002F954E}", true, "Recycle Bin GUID must convert to tab")]
+    [InlineData("shell::Downloads", true, "Downloads shell namespace must convert to tab")]
+    public void ShouldConvertWindowLocationToTab_ShouldAllowShellNamespacesToConvert(string? input, bool expected, string reason = "")
     {
         bool actual = InvokePrivateStatic<bool>("ShouldConvertWindowLocationToTab", input);
-        actual.Should().Be(expected,
-            "shell namespace windows should stay native even if standalone-window auto-convert is enabled");
+        actual.Should().Be(expected, reason);
     }
 
     [Fact]

@@ -253,4 +253,15 @@ public static class NativeConstants
     public const uint MOUSEEVENTF_MIDDLEUP   = 0x0040;
     public const uint MOUSEEVENTF_WHEEL      = 0x0800;
     public const uint MOUSEEVENTF_ABSOLUTE   = 0x8000;
+
+    // Registry access / creation flags
+    public const int KEY_QUERY_VALUE        = 0x0001;
+    public const int KEY_SET_VALUE          = 0x0002;
+    public const int KEY_CREATE_SUB_KEY     = 0x0004;
+    public const int KEY_ENUMERATE_SUB_KEYS = 0x0008;
+    public const int KEY_WOW64_64KEY        = 0x0100;
+    public const int KEY_WOW64_32KEY        = 0x0200;
+    public const int KEY_READ               = 0x20019;
+    public const int KEY_WRITE              = 0x20006;
+    public const int REG_OPTION_VOLATILE    = 0x0001;
 }

@@ -9,6 +9,7 @@ public sealed class ExplorerOpenVerbStartupService
     private readonly IExplorerOpenVerbInterceptor _interceptor;
     private readonly Logger _logger;
     private readonly Func<bool> _isWindows11;
+    private readonly Func<bool> _isRegisteredForStartup;
     private readonly Func<string> _resolveLaunchExecutablePath;
     private readonly Func<string, bool> _isStableOpenVerbHandlerPath;
     private readonly Func<Func<Task>, Task> _runInBackground;
@@ -18,11 +19,13 @@ public sealed class ExplorerOpenVerbStartupService
 
     public ExplorerOpenVerbStartupService(
         IExplorerOpenVerbInterceptor interceptor,
-        Logger logger)
+        Logger logger,
+        WinTab.Platform.Win32.StartupRegistrar startupRegistrar)
         : this(
             interceptor,
             logger,
             isWindows11: () => OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000),
+            isRegisteredForStartup: startupRegistrar.IsEnabled,
             resolveLaunchExecutablePath: AppEnvironment.ResolveLaunchExecutablePath,
             isStableOpenVerbHandlerPath: ExplorerOpenVerbHandler.IsStableOpenVerbHandlerPath,
             runInBackground: work => Task.Run(work))
@@ -33,6 +36,7 @@ public sealed class ExplorerOpenVerbStartupService
         IExplorerOpenVerbInterceptor interceptor,
         Logger logger,
         Func<bool> isWindows11,
+        Func<bool> isRegisteredForStartup,
         Func<string> resolveLaunchExecutablePath,
         Func<string, bool> isStableOpenVerbHandlerPath,
         Func<Func<Task>, Task> runInBackground)
@@ -40,6 +44,7 @@ public sealed class ExplorerOpenVerbStartupService
         ArgumentNullException.ThrowIfNull(interceptor);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(isWindows11);
+        ArgumentNullException.ThrowIfNull(isRegisteredForStartup);
         ArgumentNullException.ThrowIfNull(resolveLaunchExecutablePath);
         ArgumentNullException.ThrowIfNull(isStableOpenVerbHandlerPath);
         ArgumentNullException.ThrowIfNull(runInBackground);
@@ -47,6 +52,7 @@ public sealed class ExplorerOpenVerbStartupService
         _interceptor = interceptor;
         _logger = logger;
         _isWindows11 = isWindows11;
+        _isRegisteredForStartup = isRegisteredForStartup;
         _resolveLaunchExecutablePath = resolveLaunchExecutablePath;
         _isStableOpenVerbHandlerPath = isStableOpenVerbHandlerPath;
         _runInBackground = runInBackground;
@@ -110,6 +116,8 @@ public sealed class ExplorerOpenVerbStartupService
         {
             EnableExplorerOpenVerbInterception = source.EnableExplorerOpenVerbInterception,
             OpenChildFolderInNewTabFromActiveTab = source.OpenChildFolderInNewTabFromActiveTab,
+            PersistExplorerOpenVerbInterceptionAcrossExit = source.PersistExplorerOpenVerbInterceptionAcrossExit,
+            RunAtStartup = source.RunAtStartup,
         };
     }
 
@@ -120,13 +128,21 @@ public sealed class ExplorerOpenVerbStartupService
             string openVerbHandlerPath = _resolveLaunchExecutablePath();
             bool hasStableOpenVerbHandlerPath = _isStableOpenVerbHandlerPath(openVerbHandlerPath);
             bool isWin11 = _isWindows11();
-
+            bool isRegisteredForStartup = _isRegisteredForStartup();
             bool enableExplorerOpenVerbInterception =
                 ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath);
+            bool persistAcrossReboot =
+                settings.PersistExplorerOpenVerbInterceptionAcrossExit || isRegisteredForStartup;
 
             if (!hasStableOpenVerbHandlerPath)
             {
                 _logger.Warn($"Explorer open-verb interception disabled for transient executable path: {openVerbHandlerPath}");
+            }
+
+            if (settings.RunAtStartup != isRegisteredForStartup)
+            {
+                _logger.Warn(
+                    $"RunAtStartup setting ({settings.RunAtStartup}) does not match real startup registration ({isRegisteredForStartup}); using actual registration state for Explorer interception persistence.");
             }
 
             if (!isWin11 && settings.EnableExplorerOpenVerbInterception)
@@ -134,11 +150,13 @@ public sealed class ExplorerOpenVerbStartupService
                 _logger.Warn("Explorer open-verb interception is running in compatibility mode on non-Windows 11 systems.");
             }
 
-            _interceptor.StartupSelfCheck(settingEnabled: enableExplorerOpenVerbInterception);
+            _interceptor.StartupSelfCheck(
+                settingEnabled: enableExplorerOpenVerbInterception,
+                persistAcrossReboot: persistAcrossReboot);
 
             if (enableExplorerOpenVerbInterception)
             {
-                _interceptor.EnableOrRepair();
+                _interceptor.EnableOrRepair(persistAcrossReboot);
             }
             else
             {

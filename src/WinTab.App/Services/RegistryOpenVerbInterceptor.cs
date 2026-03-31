@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Win32;
 using WinTab.Diagnostics;
 using WinTab.Persistence;
+using WinTab.Platform.Win32;
 using WinTab.ShellBridge;
 
 namespace WinTab.App.Services;
@@ -89,11 +90,11 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
     }
 
-    public void EnableOrRepair()
+    public void EnableOrRepair(bool persistAcrossReboot)
     {
         EnsureBackupExists();
         PersistBackupToRegistry();
-        WriteOverride();
+        WriteOverride(persistAcrossReboot);
     }
 
     public void DisableAndRestore()
@@ -134,7 +135,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         try { DeleteBackupFromRegistry(); } catch { /* ignore */ }
     }
 
-    public void StartupSelfCheck(bool settingEnabled)
+    public void StartupSelfCheck(bool settingEnabled, bool persistAcrossReboot)
     {
         try
         {
@@ -169,7 +170,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                         : "Explorer open-verb points to an incomplete WinTab override but no backup exists; resetting override before repair.";
                     _logger.Warn(warning);
                     DisableAndRestore();
-                    EnableOrRepair();
+                    EnableOrRepair(persistAcrossReboot);
                     return;
                 }
 
@@ -177,7 +178,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 if (!registryPointsToUs || !hasAnyBackup)
                 {
                     _logger.Warn("Explorer open-verb interception is enabled but state is inconsistent; repairing.");
-                    EnableOrRepair();
+                    EnableOrRepair(persistAcrossReboot);
                 }
             }
         }
@@ -279,8 +280,14 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         return backup;
     }
 
-    private void WriteOverride()
+    private void WriteOverride(bool persistAcrossReboot)
     {
+        if (!persistAcrossReboot)
+        {
+            WriteSessionOnlyOverride();
+            return;
+        }
+
         bool comHostExists = File.Exists(_comHostPath);
         bool comHost32Exists = File.Exists(_comHost32Path);
         bool x64RuntimeCompatible = HasCompatibleRuntimeForHost(_comRuntimeConfigPath, RegistryView.Registry64);
@@ -377,6 +384,116 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             }
 
             _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU).");
+        }
+    }
+
+    private void WriteSessionOnlyOverride()
+    {
+        RemoveOverridesOnly();
+
+        bool comHostExists = File.Exists(_comHostPath);
+        bool comHost32Exists = File.Exists(_comHost32Path);
+        bool x64RuntimeCompatible = HasCompatibleRuntimeForHost(_comRuntimeConfigPath, RegistryView.Registry64);
+        bool x86RuntimeCompatible = HasCompatibleRuntimeForHost(_com32RuntimeConfigPath, RegistryView.Registry32);
+        bool preferDelegateExecute = ShouldPreferDelegateExecuteOverride(
+            comHostExists,
+            comHost32Exists,
+            x64RuntimeCompatible,
+            x86RuntimeCompatible);
+
+        if (preferDelegateExecute)
+        {
+            RegisterDelegateExecuteComServerVolatileCurrentUser();
+            WriteSessionOnlyVerbOverrides(preferDelegateExecute: true);
+            _logger.Info("Enabled Explorer open-verb interception in session-only mode via volatile DelegateExecute bridge (HKCU, x64+x86).");
+            return;
+        }
+
+        WriteSessionOnlyVerbOverrides(preferDelegateExecute: false);
+        LogLegacyDelegateExecuteFallbackReason(comHostExists, comHost32Exists, x64RuntimeCompatible, x86RuntimeCompatible);
+        _logger.Info("Enabled Explorer open-verb interception in session-only mode (volatile HKCU command overrides).");
+    }
+
+    private void WriteSessionOnlyVerbOverrides(bool preferDelegateExecute)
+    {
+        foreach (string cls in TargetClasses)
+        {
+            foreach (RegistryView view in GetDelegateExecuteRegistryViews())
+            {
+                using RegistryKey shellKey = VolatileRegistryKeyFactory.CreateCurrentUserVolatileSubKey(
+                    $@"Software\Classes\{cls}\shell",
+                    view);
+                shellKey.SetValue(string.Empty, OpenVerb, RegistryValueKind.String);
+
+                foreach (string verb in TargetVerbs)
+                {
+                    using RegistryKey key = VolatileRegistryKeyFactory.CreateCurrentUserVolatileSubKey(
+                        $@"Software\Classes\{cls}\shell\{verb}\command",
+                        view);
+
+                    if (preferDelegateExecute)
+                    {
+                        key.SetValue(string.Empty, string.Empty, RegistryValueKind.String);
+                        key.SetValue(DelegateExecuteValueName, DelegateExecuteClsidBraced, RegistryValueKind.String);
+                    }
+                    else
+                    {
+                        key.SetValue(string.Empty, BuildOverrideCommand(), RegistryValueKind.String);
+                        key.DeleteValue(DelegateExecuteValueName, throwOnMissingValue: false);
+                    }
+                }
+            }
+        }
+    }
+
+    private void RegisterDelegateExecuteComServerVolatileCurrentUser()
+    {
+        foreach (RegistryView view in GetDelegateExecuteRegistryViews())
+        {
+            string comHostPath = GetComHostPathForView(view);
+
+            using RegistryKey clsidKeyCu = VolatileRegistryKeyFactory.CreateCurrentUserVolatileSubKey(
+                DelegateExecuteClsidKeyPath,
+                view);
+            clsidKeyCu.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
+
+            using RegistryKey inprocCu = VolatileRegistryKeyFactory.CreateCurrentUserVolatileSubKey(
+                $@"{DelegateExecuteClsidKeyPath}\InProcServer32",
+                view);
+            inprocCu.SetValue(string.Empty, comHostPath, RegistryValueKind.String);
+            inprocCu.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
+        }
+    }
+
+    private void LogLegacyDelegateExecuteFallbackReason(
+        bool comHostExists,
+        bool comHost32Exists,
+        bool x64RuntimeCompatible,
+        bool x86RuntimeCompatible)
+    {
+        if (comHostExists && !comHost32Exists)
+        {
+            _logger.Warn($"DelegateExecute x86 COM host is missing, using session-only legacy command override: {_comHost32Path}");
+        }
+        else if (!comHostExists && comHost32Exists)
+        {
+            _logger.Warn($"DelegateExecute x64 COM host is missing, using session-only legacy command override: {_comHostPath}");
+        }
+        else if (!comHostExists && !comHost32Exists)
+        {
+            _logger.Warn($"DelegateExecute COM hosts are missing, using session-only legacy command override: {_comHostPath} | {_comHost32Path}");
+        }
+        else if (!x64RuntimeCompatible && !x86RuntimeCompatible)
+        {
+            _logger.Warn($"DelegateExecute bridge runtimes are incompatible for both architectures, using session-only legacy command override: {_comRuntimeConfigPath} | {_com32RuntimeConfigPath}");
+        }
+        else if (!x64RuntimeCompatible)
+        {
+            _logger.Warn($"DelegateExecute x64 runtime is incompatible, using session-only legacy command override: {_comRuntimeConfigPath}");
+        }
+        else if (!x86RuntimeCompatible)
+        {
+            _logger.Warn($"DelegateExecute x86 runtime is incompatible, using session-only legacy command override: {_com32RuntimeConfigPath}");
         }
     }
 

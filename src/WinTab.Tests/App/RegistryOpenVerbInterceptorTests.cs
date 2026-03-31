@@ -151,6 +151,33 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
             "runtime cleanup must still delete the user-scope COM registration");
     }
 
+    [Fact]
+    public void RuntimeInterceptorSource_ShouldUseVolatileSessionOnlyOverridesWhenPersistenceAcrossRebootIsDisabled()
+    {
+        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
+        string helperSource = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.Platform.Win32", "VolatileRegistryKeyFactory.cs"]));
+
+        source.Should().Contain("WriteSessionOnlyOverride",
+            "session-only startup should not rely on persistent HKCU Classes overrides");
+        source.Should().Contain("persistAcrossReboot",
+            "the interceptor must branch between reboot-persistent and session-only shell registration");
+        helperSource.Should().Contain("REG_OPTION_VOLATILE",
+            "session-only shell overrides must be created as volatile registry keys so Windows reboot clears them automatically");
+    }
+
+    [Fact]
+    public void RuntimeInterceptorSource_ShouldPreferVolatileDelegateExecuteForSessionOnlyMode()
+    {
+        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
+
+        source.Should().Contain("RegisterDelegateExecuteComServerVolatileCurrentUser",
+            "session-only interception should use the direct DelegateExecute bridge first so folder opens can be reused without flashing a temporary Explorer window");
+        source.Should().Contain("volatile DelegateExecute bridge",
+            "logging should make it explicit when the no-flicker session-only DelegateExecute path is active");
+        source.Should().Contain("volatile HKCU command overrides",
+            "legacy command mode should remain only as the compatibility fallback when the DelegateExecute bridge is unavailable");
+    }
+
     public void Dispose()
     {
         _logger.Dispose();

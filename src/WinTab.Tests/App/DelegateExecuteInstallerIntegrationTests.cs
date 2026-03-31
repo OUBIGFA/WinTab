@@ -128,19 +128,13 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     }
 
     [Fact]
-    public void InstallerScript_ShouldRestartExplorerWhenUpdatingShellBridge()
+    public void InstallerScript_ShouldNotForceRestartExplorerWhenUpdatingShellBridge()
     {
         string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
-        script.Should().Contain("taskkill.exe",
-            "updating the Explorer-loaded ShellBridge requires stopping the owning process");
-        script.Should().Contain("/IM explorer.exe /F",
-            "installer must forcibly stop Explorer so the ShellBridge DLL is not left stale in Program Files");
-        script.Should().Contain("explorer.exe",
-            "installer must restart Explorer after the shell bridge files are updated");
-        script.Should().Contain("DeinitializeSetup",
-            "Explorer must still be restarted if setup exits early after stopping the shell");
+        script.Should().NotContain("/IM explorer.exe /F",
+            "setup should not kill the user's shell during install or uninstall");
     }
 
     [Fact]
