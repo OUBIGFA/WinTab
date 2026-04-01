@@ -24,6 +24,7 @@
     <ProjectReference Include="..\WinTab.Diagnostics\WinTab.Diagnostics.csproj" />
     <ProjectReference Include="..\WinTab.Persistence\WinTab.Persistence.csproj" />
     <ProjectReference Include="..\WinTab.Platform.Win32\WinTab.Platform.Win32.csproj" />
+    <ProjectReference Include="..\WinTab.ShellBridge\WinTab.ShellBridge.csproj" />
   </ItemGroup>
 
 </Project>

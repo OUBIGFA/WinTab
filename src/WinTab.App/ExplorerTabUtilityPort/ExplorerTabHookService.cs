@@ -328,7 +328,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
     private static readonly object ShellWindowsInitLock = new();
     private static object? _shellWindows;
     private static int _shellWindowsThreadId;
-    private static bool _clipboardOperationInProgress;
+    private static int _clipboardOperationInProgress;
     private static readonly ConcurrentDictionary<IntPtr, DateTimeOffset> _externalSuppressNewTabDefaultUntil = new();
 
     private readonly IWindowEventSource _windowEvents;
@@ -2266,10 +2266,9 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
             return false;
 
         // Re-entrancy guard: prevent concurrent clipboard manipulation.
-        if (_clipboardOperationInProgress)
+        if (!TryEnterClipboardOperation())
             return false;
 
-        _clipboardOperationInProgress = true;
         try
         {
             string original = await dispatcher.InvokeAsync(() =>
@@ -2303,8 +2302,18 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         }
         finally
         {
-            _clipboardOperationInProgress = false;
+            ExitClipboardOperation();
         }
+    }
+
+    private static bool TryEnterClipboardOperation()
+    {
+        return Interlocked.CompareExchange(ref _clipboardOperationInProgress, 1, 0) == 0;
+    }
+
+    private static void ExitClipboardOperation()
+    {
+        Volatile.Write(ref _clipboardOperationInProgress, 0);
     }
 
     private static List<IntPtr> GetAllTabHandles(IntPtr explorerTopLevel)
