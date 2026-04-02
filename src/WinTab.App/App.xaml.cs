@@ -186,7 +186,7 @@ public partial class App : Application
                     ShouldDisableExplorerOpenVerbInterceptionOnExit(settings))
                 {
                     var interceptor = _serviceProvider?.GetService<RegistryOpenVerbInterceptor>();
-                    interceptor?.DisableAndRestore();
+                    interceptor?.DisableAndRestore(deleteBackup: false);
                 }
             }
             catch (Exception ex)
@@ -291,8 +291,7 @@ public partial class App : Application
     private static bool ShouldDisableExplorerOpenVerbInterceptionOnExit(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        return settings.EnableExplorerOpenVerbInterception &&
-               !settings.PersistExplorerOpenVerbInterceptionAcrossExit;
+        return settings.EnableExplorerOpenVerbInterception;
     }
 
     public void SetTrayIconVisibility(bool visible)

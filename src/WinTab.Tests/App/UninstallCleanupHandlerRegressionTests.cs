@@ -21,4 +21,18 @@ public sealed class UninstallCleanupHandlerRegressionTests
         source.Should().Contain("DelegateExecuteClsidBraced",
             "cleanup must target the WinTab DelegateExecute CLSID consistently");
     }
+
+    [Fact]
+    public void UninstallCleanupHandlerSource_ShouldDeleteUserOverridesToRevealNativeExplorerDefaults()
+    {
+        string sourcePath = TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "UninstallCleanupHandler.cs"]);
+        string source = File.ReadAllText(sourcePath);
+
+        source.Should().Contain("shell?.DeleteValue(string.Empty, throwOnMissingValue: false);",
+            "fallback cleanup should remove the HKCU default verb override");
+        source.Should().Contain("classesRoot.DeleteSubKeyTree($@\"{cls}\\shell\\{verb}\", throwOnMissingSubKey: false);",
+            "fallback cleanup should delete the HKCU open/explore/opennewwindow overrides");
+        source.Should().Contain("TryDeleteEmptyKey(classesRoot, $@\"{cls}\\shell\");",
+            "fallback cleanup should clean up empty HKCU shell keys after removing WinTab overrides");
+    }
 }

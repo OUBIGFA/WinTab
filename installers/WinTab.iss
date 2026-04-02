@@ -290,6 +290,55 @@ begin
   Result := AddBackslash(ExtractFileDir(ExistingUninstallerPath)) + '{#AppExeName}';
 end;
 
+function GetExistingInstallDirectory(): String;
+begin
+  Result := '';
+
+  if Trim(ExistingUninstallerPath) = '' then
+    exit;
+
+  Result := AddBackslash(ExtractFileDir(ExistingUninstallerPath));
+end;
+
+function HasExistingInstallPayload(): Boolean;
+var
+  InstallDir: String;
+begin
+  InstallDir := GetExistingInstallDirectory();
+  if Trim(InstallDir) = '' then
+  begin
+    Result := False;
+    exit;
+  end;
+
+  Result :=
+    FileExists(InstallDir + '{#AppExeName}') or
+    FileExists(InstallDir + 'WinTab.Platform.Win32.dll') or
+    FileExists(InstallDir + 'WinTab.ShellBridge.comhost.dll') or
+    FileExists(InstallDir + 'x86\WinTab.ShellBridge.comhost.dll');
+end;
+
+function WaitForExistingInstallFilesCleanup(const TimeoutMs: Integer): Boolean;
+var
+  RemainingWaitMs: Integer;
+begin
+  RemainingWaitMs := TimeoutMs;
+
+  while RemainingWaitMs >= 0 do
+  begin
+    if not HasExistingInstallPayload() then
+    begin
+      Result := True;
+      exit;
+    end;
+
+    Sleep(500);
+    RemainingWaitMs := RemainingWaitMs - 500;
+  end;
+
+  Result := not HasExistingInstallPayload();
+end;
+
 procedure StopExistingShellBridgeHostsForUpgrade();
 var
   ExistingAppExePath: String;
@@ -464,23 +513,19 @@ var
 begin
   DelegateExecuteClsid := '{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}';
 
-  // Remove WinTab open-verb overrides from HKCU for all target classes.
-  // Called during reinstall cleanup to ensure Explorer doesn't try to load
-  // deleted WinTab executables when opening folders.
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\open\command');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\explore\command');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\opennewwindow\command');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\open\command');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\explore\command');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\opennewwindow\command');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\open\command');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\explore\command');
-  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\opennewwindow\command');
-
-  // Restore safe default verbs.
-  RegWriteStringValue(HKCU, 'Software\Classes\Folder\shell', '', 'open');
-  RegWriteStringValue(HKCU, 'Software\Classes\Directory\shell', '', 'none');
-  RegWriteStringValue(HKCU, 'Software\Classes\Drive\shell', '', 'none');
+  // Remove WinTab user-scope shell overrides so Explorer falls back to the native machine defaults.
+  RegDeleteValue(HKCU, 'Software\Classes\Folder\shell', '');
+  RegDeleteValue(HKCU, 'Software\Classes\Directory\shell', '');
+  RegDeleteValue(HKCU, 'Software\Classes\Drive\shell', '');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\open');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\explore');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\opennewwindow');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\open');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\explore');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\opennewwindow');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\open');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\explore');
+  RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\opennewwindow');
 
   // Remove DelegateExecute CLSID from HKCU (both views via reg.exe).
   Exec('reg.exe', 'delete "HKCU\Software\Classes\CLSID\' + DelegateExecuteClsid + '" /f /reg:64', '', SW_HIDE, ewNoWait, ResultCode);
@@ -492,6 +537,31 @@ begin
 
   // Remove WinTab backup registry entries.
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\WinTab\Backups\ExplorerOpenVerb');
+end;
+
+function TryRunInstalledCleanupBeforeDelete(): Boolean;
+var
+  ExistingAppExePath: String;
+  ResultCode: Integer;
+begin
+  Result := False;
+  ExistingAppExePath := ExpandConstant('{app}\{#AppExeName}');
+
+  if not FileExists(ExistingAppExePath) then
+    exit;
+
+  if not Exec(
+    ExistingAppExePath,
+    '--wintab-cleanup',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode) then
+  begin
+    exit;
+  end;
+
+  Result := ResultCode = 0;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -539,6 +609,14 @@ begin
 
     if not WaitForExistingInstallRemoval(20000) then
       Result := CustomMessage('ReinstallUninstallIncomplete');
+
+    if Result = '' then
+    begin
+      StopExistingShellBridgeHostsForUpgrade();
+
+      if not WaitForExistingInstallFilesCleanup(20000) then
+        Result := CustomMessage('ReinstallUninstallIncomplete');
+    end;
   end;
 
   if Result <> '' then
@@ -551,9 +629,13 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   // Run open-verb registry restore during standalone uninstall.
-  // This ensures Explorer doesn't freeze when opening folders after WinTab is removed.
+  // Prefer the installed WinTab cleanup path so backup-based restore stays authoritative.
+  // Fall back to the known-safe registry defaults if the app-side cleanup cannot run.
   if CurUninstallStep = usUninstall then
-    RestoreExplorerOpenVerbDefaultsViaReg();
+  begin
+    if not TryRunInstalledCleanupBeforeDelete() then
+      RestoreExplorerOpenVerbDefaultsViaReg();
+  end;
 end;
 
 function ShouldRemoveUserData(): Boolean;

@@ -11,7 +11,6 @@ namespace WinTab.App.Services;
 public static class UninstallCleanupHandler
 {
     private const string DelegateExecuteClsidBraced = "{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}";
-
     public static int RunUninstallCleanup(string exePath)
     {
         Logger? cleanupLogger = null;
@@ -75,10 +74,14 @@ public static class UninstallCleanupHandler
 
                 foreach (string cls in classes)
                 {
+                    using RegistryKey? shell = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{cls}\shell", writable: true);
+                    shell?.DeleteValue(string.Empty, throwOnMissingValue: false);
+
                     foreach (string verb in verbs)
-                    {
-                        classesRoot.DeleteSubKeyTree($@"{cls}\shell\{verb}\command", throwOnMissingSubKey: false);
-                    }
+                        classesRoot.DeleteSubKeyTree($@"{cls}\shell\{verb}", throwOnMissingSubKey: false);
+
+                    TryDeleteEmptyKey(classesRoot, $@"{cls}\shell");
+                    TryDeleteEmptyKey(classesRoot, cls);
                 }
             }
 
@@ -106,20 +109,22 @@ public static class UninstallCleanupHandler
                 }
             }
 
-            using RegistryKey? folderShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Folder\shell", writable: true);
-            using RegistryKey? directoryShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Directory\shell", writable: true);
-            using RegistryKey? driveShell = Registry.CurrentUser.CreateSubKey(@"Software\Classes\Drive\shell", writable: true);
-
-            folderShell?.SetValue(string.Empty, "open", RegistryValueKind.String);
-            directoryShell?.SetValue(string.Empty, "none", RegistryValueKind.String);
-            driveShell?.SetValue(string.Empty, "none", RegistryValueKind.String);
-
-            logger?.Info("Restored Explorer open-verb defaults for standalone handler invocation.");
+            logger?.Info("Removed WinTab overrides and restored native Explorer defaults for standalone cleanup.");
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             logger?.Error("Failed to restore Explorer open-verb defaults.", ex);
         }
+    }
+
+    private static void TryDeleteEmptyKey(RegistryKey root, string subKeyPath)
+    {
+        using RegistryKey? key = root.OpenSubKey(subKeyPath, writable: true);
+        if (key is null)
+            return;
+
+        if (key.SubKeyCount == 0 && key.ValueCount == 0)
+            root.DeleteSubKeyTree(subKeyPath, throwOnMissingSubKey: false);
     }
 
     private static RegistryView[] GetRegistryViews()

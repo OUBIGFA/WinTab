@@ -38,7 +38,7 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
     }
 
     [Fact]
-    public void ShouldEnableOpenVerbInterception_WhenChildFolderNewTabDisabled_ShouldRemainTrueForDirectReuse()
+    public void ShouldEnableOpenVerbInterception_WhenChildFolderNewTabDisabled_ShouldBeFalseForNativeBrowsing()
     {
         var settings = new AppSettings
         {
@@ -48,7 +48,8 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
 
         bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: true);
 
-        enabled.Should().BeTrue();
+        enabled.Should().BeFalse(
+            "when child folders should open with native in-place browsing, WinTab must not register the open-verb interceptor");
     }
 
     [Fact]
@@ -108,7 +109,7 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
     }
 
     [Fact]
-    public void ShouldPersistAcrossReboot_WhenRunAtStartupEnabled_ShouldBeTrue()
+    public void ShouldPersistAcrossReboot_WhenRunAtStartupEnabled_ShouldStillBeFalse()
     {
         var settings = new AppSettings
         {
@@ -118,11 +119,12 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
 
         bool persist = ExplorerOpenVerbInterceptionPolicy.ShouldPersistAcrossReboot(settings);
 
-        persist.Should().BeTrue();
+        persist.Should().BeFalse(
+            "WinTab must not leave Explorer hijacked after reboot just because auto-start is enabled");
     }
 
     [Fact]
-    public void ShouldPersistAcrossReboot_WhenExplicitPersistEnabled_ShouldBeTrue()
+    public void ShouldPersistAcrossReboot_WhenExplicitPersistEnabled_ShouldStillBeFalse()
     {
         var settings = new AppSettings
         {
@@ -132,6 +134,7 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
 
         bool persist = ExplorerOpenVerbInterceptionPolicy.ShouldPersistAcrossReboot(settings);
 
-        persist.Should().BeTrue();
+        persist.Should().BeFalse(
+            "WinTab must restore native Explorer behavior whenever the process is not running");
     }
 }

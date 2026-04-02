@@ -37,23 +37,30 @@ public sealed class InstallerUninstallOrderingTests
         string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
-        // The installer must restore open-verb defaults during uninstall.
-        // It does this via RegDeleteKeyIncludingSubkeys in RestoreExplorerOpenVerbDefaultsViaReg,
-        // which removes the entire command subkeys for all target classes.
-        script.Should().Contain("RegDeleteKeyIncludingSubkeys",
-            "uninstall must remove Explorer open-verb command keys via RegDeleteKeyIncludingSubkeys");
-
-        script.Should().Contain("Folder\\shell\\open\\command",
-            "uninstall must restore Folder shell open verb");
+        // The installer must keep a script-side fallback restore path for cases
+        // where the installed WinTab cleanup executable cannot run.
+        script.Should().Contain("RegDeleteKeyIncludingSubkeys(HKCU, 'Software\\Classes\\Folder\\shell\\open');",
+            "uninstall fallback should remove the user-scope Folder open override");
 
         script.Should().Contain("Directory\\shell",
-            "uninstall must restore Directory shell default verb");
+            "uninstall fallback must remove the Directory shell overrides");
 
         script.Should().Contain("Drive\\shell",
-            "uninstall must restore Drive shell default verb");
+            "uninstall fallback must remove the Drive shell overrides");
+    }
 
-        script.Should().Contain("RegWriteStringValue",
-            "uninstall must write safe default verb values after removing overrides");
+    [Fact]
+    public void InstallerScript_ShouldDeleteUserScopeOverridesToRevealNativeExplorerDefaults()
+    {
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
+        string script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain(@"RegDeleteValue(HKCU, 'Software\Classes\Directory\shell', '');",
+            "the uninstall fallback must remove the HKCU Directory default verb override");
+        script.Should().Contain(@"RegDeleteValue(HKCU, 'Software\Classes\Drive\shell', '');",
+            "the uninstall fallback must remove the HKCU Drive default verb override");
+        script.Should().Contain(@"RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\open');",
+            "the uninstall fallback should delete the HKCU Directory open override so Explorer falls back to the machine defaults");
     }
 
     [Fact]
@@ -62,13 +69,12 @@ public sealed class InstallerUninstallOrderingTests
         string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
-        // The open-verb restore must NOT depend on WinTab.exe being present,
-        // because [UninstallDelete] removes it before [UninstallRun] executes.
-        // Instead, use reg.exe commands in CurUninstallStepChanged.
-
-        // Verify reg.exe is used for open-verb restoration (not just exe cleanup)
+        script.Should().Contain("TryRunInstalledCleanupBeforeDelete",
+            "standalone uninstall should prefer the installed WinTab cleanup path so backup-based restore remains authoritative");
         script.Should().Contain("reg.exe",
-            "uninstall must use reg.exe to restore Explorer open-verb defaults as a fallback");
+            "the installer must still keep a registry-script fallback when the installed cleanup executable is unavailable");
+        script.Should().Contain("if not TryRunInstalledCleanupBeforeDelete() then",
+            "fallback defaults should run only after the backup-based cleanup path fails");
     }
 
     [Fact]
@@ -97,23 +103,30 @@ public sealed class InstallerUninstallOrderingTests
     }
 
     [Fact]
-    public void InstallerScript_CleanReinstall_ShouldNotKillExplorerAgainAfterLegacyUninstallCompletes()
+    public void InstallerScript_CleanReinstall_ShouldCleanupResidualWinTabProcessesBeforeCopyingNewFiles()
     {
         string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
         Regex.IsMatch(
                 script,
-                @"if SelectedReinstallMode = 'direct' then\s+StopExistingShellBridgeHostsForUpgrade\(\);",
+                @"if SelectedReinstallMode = 'clean' then[\s\S]*StopExistingShellBridgeHostsForUpgrade\(\);",
                 RegexOptions.CultureInvariant)
             .Should()
-            .BeTrue("clean reinstall already runs the legacy uninstaller, which performs its own Explorer restart");
+            .BeTrue("clean reinstall must still kill any lingering WinTab process that keeps DLLs locked after the legacy uninstaller returns");
+    }
+
+    [Fact]
+    public void InstallerScript_CleanReinstall_ShouldWaitForOldInstallPayloadToDisappearOrUnlock()
+    {
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
+        string script = File.ReadAllText(scriptPath);
 
         Regex.IsMatch(
                 script,
-                @"if Result <> '' then\s+exit;\s+StopExistingShellBridgeHostsForUpgrade\(\);",
+                @"WaitForExistingInstallFilesCleanup",
                 RegexOptions.CultureInvariant)
             .Should()
-            .BeFalse("calling StopExistingShellBridgeHostsForUpgrade unconditionally after clean uninstall kills Explorer twice");
+            .BeTrue("clean reinstall must wait for the old install payload to disappear after uninstall so file-copy does not race a still-locked DLL");
     }
 }

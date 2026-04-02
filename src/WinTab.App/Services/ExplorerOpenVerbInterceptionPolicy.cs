@@ -12,12 +12,16 @@ internal static class ExplorerOpenVerbInterceptionPolicy
 
     public static bool ShouldEnableOpenVerbInterception(AppSettings settings, bool hasStableOpenVerbHandlerPath)
     {
-        return settings.EnableExplorerOpenVerbInterception && hasStableOpenVerbHandlerPath;
+        ArgumentNullException.ThrowIfNull(settings);
+
+        return settings.EnableExplorerOpenVerbInterception &&
+               settings.OpenChildFolderInNewTabFromActiveTab &&
+               hasStableOpenVerbHandlerPath;
     }
 
     public static bool ShouldPersistAcrossReboot(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        return settings.PersistExplorerOpenVerbInterceptionAcrossExit || settings.RunAtStartup;
+        return false;
     }
 }

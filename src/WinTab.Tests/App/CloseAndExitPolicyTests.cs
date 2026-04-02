@@ -23,7 +23,7 @@ public sealed class CloseAndExitPolicyTests
     }
 
     [Fact]
-    public void ExplorerOpenVerbExitPolicy_WhenPersistAcrossExitEnabled_ShouldNotRestoreOnExit()
+    public void ExplorerOpenVerbExitPolicy_WhenInterceptionEnabled_ShouldAlwaysRestoreOnExit()
     {
         MethodInfo? method = typeof(WinTab.App.App).GetMethod(
             "ShouldDisableExplorerOpenVerbInterceptionOnExit",
@@ -39,8 +39,8 @@ public sealed class CloseAndExitPolicyTests
 
         object? result = method?.Invoke(null, [settings]);
         result.Should().BeOfType<bool>();
-        ((bool)result!).Should().BeFalse(
-            "persist-on-exit should keep interception active when the user opted in");
+        ((bool)result!).Should().BeTrue(
+            "WinTab must stop hijacking Explorer once the process is no longer running");
     }
 
     [Fact]
@@ -61,5 +61,26 @@ public sealed class CloseAndExitPolicyTests
         object? result = method?.Invoke(null, [settings]);
         result.Should().BeOfType<bool>();
         ((bool)result!).Should().BeTrue();
+    }
+
+    [Fact]
+    public void ExplorerOpenVerbExitPolicy_WhenInterceptionDisabled_ShouldNotTouchExplorerStateOnExit()
+    {
+        MethodInfo? method = typeof(WinTab.App.App).GetMethod(
+            "ShouldDisableExplorerOpenVerbInterceptionOnExit",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        method.Should().NotBeNull("exit policy should be centralized and testable");
+
+        var settings = new AppSettings
+        {
+            EnableExplorerOpenVerbInterception = false,
+            PersistExplorerOpenVerbInterceptionAcrossExit = true
+        };
+
+        object? result = method?.Invoke(null, [settings]);
+        result.Should().BeOfType<bool>();
+        ((bool)result!).Should().BeFalse(
+            "when interception is disabled, shutdown should not mutate Explorer open-verb state");
     }
 }

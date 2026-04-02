@@ -26,7 +26,6 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
     private const string BackupRegistryValueName = "BackupJson";
     private const string DelegateExecuteValueName = "DelegateExecute";
     private const string DelegateExecuteComDescription = "WinTab Open Folder DelegateExecute";
-
     private const string HandlerArgNew = "--wintab-open-folder";
     private const string HandlerArgLegacy = "--open-folder";
     private static readonly string[] TargetClasses =
@@ -97,7 +96,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         WriteOverride(persistAcrossReboot);
     }
 
-    public void DisableAndRestore()
+    public void DisableAndRestore(bool deleteBackup = true)
     {
         BackupFile? backup = null;
 
@@ -131,8 +130,11 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             ApplySafeDefaultsAndRemoveOverrides();
         }
 
-        try { File.Delete(BackupPath); } catch { /* ignore */ }
-        try { DeleteBackupFromRegistry(); } catch { /* ignore */ }
+        if (deleteBackup)
+        {
+            try { File.Delete(BackupPath); } catch { /* ignore */ }
+            try { DeleteBackupFromRegistry(); } catch { /* ignore */ }
+        }
     }
 
     public void StartupSelfCheck(bool settingEnabled, bool persistAcrossReboot)
@@ -148,7 +150,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             if (!settingEnabled && (registryPointsToUs || registryPointsToAnyWinTabHandler))
             {
                 _logger.Warn("Explorer open-verb points to WinTab but setting is disabled; restoring defaults.");
-                DisableAndRestore();
+                DisableAndRestore(deleteBackup: false);
                 return;
             }
 
@@ -518,26 +520,33 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
     {
         RemoveOverridesOnly();
 
+        using RegistryKey? root = Registry.CurrentUser.OpenSubKey(@"Software\Classes", writable: true);
+        if (root is null)
+            return;
+
         foreach (string cls in TargetClasses)
         {
-            using RegistryKey? shell = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\shell", writable: true);
-            if (shell is null)
-                continue;
+            using RegistryKey? shell = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{cls}\shell", writable: true);
+            shell?.DeleteValue(string.Empty, throwOnMissingValue: false);
 
-            shell.SetValue(string.Empty, GetSafeDefaultVerb(cls), RegistryValueKind.String);
+            foreach (string verb in TargetVerbs)
+                root.DeleteSubKeyTree($@"{cls}\shell\{verb}", throwOnMissingSubKey: false);
+
+            TryDeleteEmptyKey(root, $@"{cls}\shell");
+            TryDeleteEmptyKey(root, cls);
         }
 
-        _logger.Info("Applied safe Explorer open-verb defaults.");
+        _logger.Info("Removed WinTab overrides and restored native Explorer defaults.");
     }
 
-    private static string GetSafeDefaultVerb(string className)
+    private static void TryDeleteEmptyKey(RegistryKey root, string subKeyPath)
     {
-        return className switch
-        {
-            "Directory" => NoneVerb,
-            "Drive" => NoneVerb,
-            _ => OpenVerb,
-        };
+        using RegistryKey? key = root.OpenSubKey(subKeyPath, writable: true);
+        if (key is null)
+            return;
+
+        if (key.SubKeyCount == 0 && key.ValueCount == 0)
+            root.DeleteSubKeyTree(subKeyPath, throwOnMissingSubKey: false);
     }
 
     private bool IsLikelyBrokenOpenVerbState()

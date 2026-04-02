@@ -178,6 +178,21 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
             "legacy command mode should remain only as the compatibility fallback when the DelegateExecute bridge is unavailable");
     }
 
+    [Fact]
+    public void RuntimeInterceptorSource_ShouldDeleteUserOverridesWhenBackupIsMissing()
+    {
+        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
+
+        source.Should().Contain("shell?.DeleteValue(string.Empty, throwOnMissingValue: false);",
+            "safe fallback should remove the user-scope default verb override when no backup is available");
+        source.Should().Contain("root.DeleteSubKeyTree($@\"{cls}\\shell\\{verb}\", throwOnMissingSubKey: false);",
+            "safe fallback should delete the user-scope open/explore/opennewwindow overrides so Explorer falls back to the native defaults");
+        source.Should().Contain("TryDeleteEmptyKey(root, $@\"{cls}\\shell\");",
+            "safe fallback should clean up empty HKCU shell keys after removing WinTab overrides");
+        source.Should().Contain("if (!string.Equals(defaultVerb, OpenVerb, StringComparison.OrdinalIgnoreCase))",
+            "broken-state detection should keep the same gating semantics as the reference version");
+    }
+
     public void Dispose()
     {
         _logger.Dispose();
