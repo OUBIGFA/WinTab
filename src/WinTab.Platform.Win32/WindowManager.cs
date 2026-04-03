@@ -114,6 +114,38 @@ public sealed class WindowManager : IWindowManager
     }
 
     /// <inheritdoc />
+    /// <summary>
+    /// Cloaks the window via DWM so it is never composited on screen.
+    /// Unlike <see cref="Hide"/>, cloaking takes effect before the next
+    /// DWM frame, eliminating the flash that <c>ShowWindow(SW_HIDE)</c>
+    /// cannot prevent due to its inherent race with Explorer's paint.
+    /// </summary>
+    public bool SuppressVisibility(IntPtr hWnd)
+    {
+        if (!NativeMethods.IsWindow(hWnd))
+            return false;
+
+        int cloaked = 1; // TRUE
+        int hr = NativeMethods.DwmSetWindowAttribute(
+            hWnd, NativeConstants.DWMWA_CLOAK, ref cloaked, sizeof(int));
+        return hr == 0; // S_OK
+    }
+
+    /// <inheritdoc />
+    /// <summary>
+    /// Removes DWM cloaking so the window becomes visible again.
+    /// </summary>
+    public void RestoreVisibility(IntPtr hWnd)
+    {
+        if (!NativeMethods.IsWindow(hWnd))
+            return;
+
+        int cloaked = 0; // FALSE
+        NativeMethods.DwmSetWindowAttribute(
+            hWnd, NativeConstants.DWMWA_CLOAK, ref cloaked, sizeof(int));
+    }
+
+    /// <inheritdoc />
     public WindowInfo? GetWindowInfo(IntPtr hWnd)
     {
         return WindowEnumerator.GetWindowInfo(hWnd);

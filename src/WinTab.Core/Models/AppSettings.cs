@@ -25,5 +25,5 @@ public sealed class AppSettings
     public bool EnableAutoConvertExplorerWindows { get; set; } = false;
 
     // Schema version for migration
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
 }

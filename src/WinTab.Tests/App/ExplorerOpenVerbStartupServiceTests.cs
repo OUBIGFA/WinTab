@@ -24,7 +24,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Start_WhenInterceptorCallsAreSlow_ShouldNotBlockStartupThread()
+    public void Start_WhenAutoConvertEnabled_ShouldArmInterceptionBeforeReturning()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor(
             startupSelfCheckDelayMs: 400,
@@ -40,17 +40,15 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = true,
-            OpenChildFolderInNewTabFromActiveTab = true,
+            EnableAutoConvertExplorerWindows = true,
             RunAtStartup = true,
         };
 
         var sw = Stopwatch.StartNew();
         service.Start(settings);
-        sw.ElapsedMilliseconds.Should().BeLessThan(150,
-            "startup should not wait on registry self-check/repair path");
+        sw.ElapsedMilliseconds.Should().BeGreaterOrEqualTo(700,
+            "startup must finish arming the session interception path before the app reports itself ready, otherwise the first folder open after launch can still flash a temporary Explorer window");
 
-        await interceptor.WaitForCompletionAsync(TimeSpan.FromSeconds(3));
         interceptor.StartupSelfCheckCalls.Should().Be(1);
         interceptor.StartupSelfCheckArguments.Should().ContainSingle().Which.Should().BeTrue();
         interceptor.StartupSelfCheckPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeFalse();
@@ -60,7 +58,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
     }
 
     [Fact]
-    public void Start_WhenInterceptionSettingDisabled_ShouldRunSynchronouslyToAvoidRace()
+    public void Start_WhenAutoConvertDisabled_ShouldRunSynchronouslyToAvoidRace()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor(
             startupSelfCheckDelayMs: 250,
@@ -76,8 +74,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = false,
-            OpenChildFolderInNewTabFromActiveTab = true,
+            EnableAutoConvertExplorerWindows = false,
             RunAtStartup = false,
         };
 
@@ -112,8 +109,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = true,
-            OpenChildFolderInNewTabFromActiveTab = true,
+            EnableAutoConvertExplorerWindows = true,
             RunAtStartup = true,
         };
 
@@ -126,7 +122,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Start_WhenChildFolderNewTabDisabled_ShouldRestoreNativeExplorerBrowsing()
+    public async Task Start_WhenAutoConvertEnabledButChildFolderNewTabDisabled_ShouldStillRepairInterception()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor();
         var service = new ExplorerOpenVerbStartupService(
@@ -139,7 +135,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = true,
+            EnableAutoConvertExplorerWindows = true,
             OpenChildFolderInNewTabFromActiveTab = false,
             RunAtStartup = false,
             PersistExplorerOpenVerbInterceptionAcrossExit = false,
@@ -148,16 +144,14 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
         service.Start(settings);
         await interceptor.WaitForCompletionAsync(TimeSpan.FromSeconds(2));
 
-        interceptor.StartupSelfCheckArguments.Should().ContainSingle().Which.Should().BeFalse();
+        interceptor.StartupSelfCheckArguments.Should().ContainSingle().Which.Should().BeTrue();
         interceptor.StartupSelfCheckPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeFalse();
-        interceptor.DisableAndRestoreCalls.Should().Be(1);
-        interceptor.DisableAndRestoreDeleteBackupArguments.Should().ContainSingle().Which.Should().BeFalse(
-            "when child folders should use native in-place browsing, startup should restore Explorer state but preserve backup metadata");
-        interceptor.EnableOrRepairCalls.Should().Be(0);
+        interceptor.EnableOrRepairCalls.Should().Be(1);
+        interceptor.DisableAndRestoreCalls.Should().Be(0);
     }
 
     [Fact]
-    public async Task Start_WhenInterceptionEnabledAndChildFolderNewTabEnabled_ShouldRepairInterception()
+    public async Task Start_WhenAutoConvertEnabledAndChildFolderNewTabEnabled_ShouldRepairInterception()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor();
         var service = new ExplorerOpenVerbStartupService(
@@ -170,7 +164,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = true,
+            EnableAutoConvertExplorerWindows = true,
             OpenChildFolderInNewTabFromActiveTab = true,
             RunAtStartup = false,
             PersistExplorerOpenVerbInterceptionAcrossExit = false,
@@ -186,7 +180,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Start_WhenChildFolderNewTabEnabled_ShouldRepairEvenWithoutRunAtStartup()
+    public async Task Start_WhenAutoConvertEnabled_ShouldRepairEvenWithoutRunAtStartup()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor();
         var service = new ExplorerOpenVerbStartupService(
@@ -199,7 +193,7 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = true,
+            EnableAutoConvertExplorerWindows = true,
             OpenChildFolderInNewTabFromActiveTab = true,
             RunAtStartup = false,
             PersistExplorerOpenVerbInterceptionAcrossExit = false,
@@ -210,11 +204,71 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         interceptor.EnableOrRepairCalls.Should().Be(1);
         interceptor.EnableOrRepairPersistAcrossRebootArguments.Should().ContainSingle().Which.Should().BeFalse(
-            "startup registration drift should not matter once the user explicitly wants child folders to open in new tabs, and the shell hook must still remain session-only");
+            "startup registration drift should not matter once Explorer capture is enabled, and the shell hook must still remain session-only");
     }
 
     [Fact]
-    public async Task Start_WhenInterceptionEnabledButChildFolderNewTabDisabled_ShouldNotRepairInterception()
+    public void ReconfigureForCurrentSettings_WhenAutoConvertEnabled_ShouldApplySynchronously()
+    {
+        var interceptor = new FakeExplorerOpenVerbInterceptor(
+            startupSelfCheckDelayMs: 200,
+            enableOrRepairDelayMs: 200);
+
+        var service = new ExplorerOpenVerbStartupService(
+            interceptor,
+            _logger,
+            isWindows11: static () => true,
+            resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
+            isStableOpenVerbHandlerPath: static _ => true,
+            runInBackground: work => Task.Run(work));
+
+        var settings = new AppSettings
+        {
+            EnableAutoConvertExplorerWindows = true,
+            RunAtStartup = false,
+        };
+
+        var sw = Stopwatch.StartNew();
+        service.ReconfigureForCurrentSettings(settings);
+
+        sw.ElapsedMilliseconds.Should().BeGreaterOrEqualTo(350,
+            "when the user enables the feature at runtime, WinTab must finish arming the open-verb interception path before returning so the next folder open does not flash a temporary Explorer window");
+        interceptor.StartupSelfCheckCalls.Should().Be(1);
+        interceptor.EnableOrRepairCalls.Should().Be(1);
+        interceptor.DisableAndRestoreCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public void ReconfigureForCurrentSettings_WhenAutoConvertDisabled_ShouldRemoveInterceptionSynchronously()
+    {
+        var interceptor = new FakeExplorerOpenVerbInterceptor(startupSelfCheckDelayMs: 250);
+
+        var service = new ExplorerOpenVerbStartupService(
+            interceptor,
+            _logger,
+            isWindows11: static () => true,
+            resolveLaunchExecutablePath: static () => @"C:\Program Files\WinTab\WinTab.exe",
+            isStableOpenVerbHandlerPath: static _ => true,
+            runInBackground: work => Task.Run(work));
+
+        var settings = new AppSettings
+        {
+            EnableAutoConvertExplorerWindows = false,
+            RunAtStartup = false,
+        };
+
+        var sw = Stopwatch.StartNew();
+        service.ReconfigureForCurrentSettings(settings);
+
+        sw.ElapsedMilliseconds.Should().BeGreaterOrEqualTo(200,
+            "when the user disables the feature at runtime, WinTab must remove the session interception before returning so Explorer immediately goes back to native behavior");
+        interceptor.StartupSelfCheckCalls.Should().Be(1);
+        interceptor.EnableOrRepairCalls.Should().Be(0);
+        interceptor.DisableAndRestoreCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Start_WhenAutoConvertDisabled_ShouldNotRepairInterception()
     {
         var interceptor = new FakeExplorerOpenVerbInterceptor();
         var service = new ExplorerOpenVerbStartupService(
@@ -227,8 +281,8 @@ public sealed class ExplorerOpenVerbStartupServiceTests : IDisposable
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = true,
-            OpenChildFolderInNewTabFromActiveTab = false,
+            EnableAutoConvertExplorerWindows = false,
+            OpenChildFolderInNewTabFromActiveTab = true,
             RunAtStartup = true,
             PersistExplorerOpenVerbInterceptionAcrossExit = false,
         };

@@ -58,6 +58,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private static string BackupPath => ExplorerShellBaselineStore.BackupPath;
     private static string DelegateExecuteClsidBraced => "{" + DelegateExecuteIds.OpenFolderDelegateExecuteClsid + "}";
+    private static string MalformedDelegateExecuteClsidBraced => DelegateExecuteClsidBraced + "}";
 
     public static string HandlerArgument => HandlerArgNew;
 
@@ -79,7 +80,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 }
             }
 
-            if (allVerbsDelegateExecute && IsCurrentUserDelegateExecuteRegistered())
+            if (allVerbsDelegateExecute && IsDelegateExecuteComServerRegistered(requireMachineWideRegistration: true))
                 return true;
 
             return allVerbsLegacyCommand;
@@ -109,7 +110,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
 
         RestoreFromBackup(baseline);
-        RemoveDelegateExecuteComServerRegistration();
+        RemoveCurrentUserDelegateExecuteComServerRegistration();
 
         if (IsLikelyBrokenOpenVerbState())
         {
@@ -194,18 +195,29 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         bool comHost32Exists = File.Exists(_comHost32Path);
         bool x64RuntimeCompatible = HasCompatibleRuntimeForHost(_comRuntimeConfigPath, RegistryView.Registry64);
         bool x86RuntimeCompatible = HasCompatibleRuntimeForHost(_com32RuntimeConfigPath, RegistryView.Registry32);
-        bool preferDelegateExecute = ShouldPreferDelegateExecuteOverride(
+        bool delegateExecutePrerequisitesSatisfied = ShouldPreferDelegateExecuteOverride(
             comHostExists,
             comHost32Exists,
             x64RuntimeCompatible,
             x86RuntimeCompatible);
 
+        bool machineWideRegistrationReady = delegateExecutePrerequisitesSatisfied &&
+            IsDelegateExecuteComServerRegistered(requireMachineWideRegistration: true);
+
+        if (delegateExecutePrerequisitesSatisfied && !machineWideRegistrationReady)
+        {
+            _logger.Warn("DelegateExecute machine-wide COM bridge is unavailable, using session-only legacy command override for shell-host compatibility.");
+        }
+
+        bool preferDelegateExecute = ShouldUseDelegateExecuteOverride(
+            delegateExecutePrerequisitesSatisfied,
+            machineWideRegistrationReady);
+
         if (preferDelegateExecute)
         {
-            RegisterDelegateExecuteComServerVolatileCurrentUser();
             WriteSessionOnlyVerbOverrides(preferDelegateExecute: true);
             NotifyShellAssociationChanged();
-            _logger.Info("Enabled Explorer open-verb interception in runtime-only mode via volatile DelegateExecute bridge.");
+            _logger.Info("Enabled Explorer open-verb interception in runtime-only mode via machine-wide DelegateExecute bridge.");
             return;
         }
 
@@ -275,25 +287,6 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
     }
 
-    private void RegisterDelegateExecuteComServerVolatileCurrentUser()
-    {
-        foreach (RegistryView view in GetDelegateExecuteRegistryViews())
-        {
-            string comHostPath = GetComHostPathForView(view);
-
-            using RegistryKey clsidKeyCu = VolatileRegistryKeyFactory.CreateCurrentUserVolatileSubKey(
-                DelegateExecuteClsidKeyPath,
-                view);
-            clsidKeyCu.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
-
-            using RegistryKey inprocCu = VolatileRegistryKeyFactory.CreateCurrentUserVolatileSubKey(
-                $@"{DelegateExecuteClsidKeyPath}\InProcServer32",
-                view);
-            inprocCu.SetValue(string.Empty, comHostPath, RegistryValueKind.String);
-            inprocCu.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
-        }
-    }
-
     private void LogLegacyDelegateExecuteFallbackReason(
         bool comHostExists,
         bool comHost32Exists,
@@ -338,7 +331,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 root.DeleteSubKeyTree($@"{cls}\{BuildCommandSubKey(verb)}", throwOnMissingSubKey: false);
         }
 
-        RemoveDelegateExecuteComServerRegistration();
+        RemoveCurrentUserDelegateExecuteComServerRegistration();
     }
 
     private void ApplySafeDefaultsAndRemoveOverrides()
@@ -521,13 +514,22 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         return view == RegistryView.Registry32 ? _comHost32Path : _comHostPath;
     }
 
-    private bool IsCurrentUserDelegateExecuteRegistered()
+    private bool IsDelegateExecuteComServerRegistered(bool requireMachineWideRegistration)
+    {
+        bool machineWideRegistered = IsDelegateExecuteComServerRegistered(RegistryHive.LocalMachine);
+        if (requireMachineWideRegistration)
+            return machineWideRegistered;
+
+        return machineWideRegistered || IsDelegateExecuteComServerRegistered(RegistryHive.CurrentUser);
+    }
+
+    private bool IsDelegateExecuteComServerRegistered(RegistryHive hive)
     {
         try
         {
             foreach (RegistryView view in GetDelegateExecuteRegistryViews())
             {
-                using RegistryKey? inproc = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+                using RegistryKey? inproc = RegistryKey.OpenBaseKey(hive, view)
                     .OpenSubKey($@"{DelegateExecuteClsidKeyPath}\InProcServer32", writable: false);
                 if (inproc is null)
                     return false;
@@ -551,7 +553,18 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
     }
 
-    private void RemoveDelegateExecuteComServerRegistration()
+    private void RemoveCurrentUserDelegateExecuteComServerRegistration()
+    {
+        foreach (RegistryView view in GetDelegateExecuteRegistryViews())
+        {
+            using RegistryKey? rootCu = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
+                .OpenSubKey(@"Software\Classes\CLSID", writable: true);
+            rootCu?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+            rootCu?.DeleteSubKeyTree(MalformedDelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+        }
+    }
+
+    private void RemoveLegacyDelegateExecuteComServerRegistration()
     {
         foreach (RegistryView view in GetDelegateExecuteRegistryViews())
         {
@@ -560,6 +573,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
                 using RegistryKey? rootLm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view)
                     .OpenSubKey(@"Software\Classes\CLSID", writable: true);
                 rootLm?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+                rootLm?.DeleteSubKeyTree(MalformedDelegateExecuteClsidBraced, throwOnMissingSubKey: false);
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
             {
@@ -569,6 +583,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             using RegistryKey? rootCu = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
                 .OpenSubKey(@"Software\Classes\CLSID", writable: true);
             rootCu?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+            rootCu?.DeleteSubKeyTree(MalformedDelegateExecuteClsidBraced, throwOnMissingSubKey: false);
         }
     }
 
@@ -662,6 +677,13 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         bool x86RuntimeCompatible)
     {
         return comHostExists && comHost32Exists && x64RuntimeCompatible && x86RuntimeCompatible;
+    }
+
+    private static bool ShouldUseDelegateExecuteOverride(
+        bool delegateExecutePrerequisitesSatisfied,
+        bool machineWideRegistrationReady)
+    {
+        return delegateExecutePrerequisitesSatisfied && machineWideRegistrationReady;
     }
 
     private static bool ShouldResetOverrideBeforeRepair(

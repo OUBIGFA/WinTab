@@ -101,6 +101,28 @@ public sealed class RegistryOpenVerbCompatibilityPolicyTests : IDisposable
     }
 
     [Fact]
+    public void ShouldUseDelegateExecuteOverride_WhenMachineWideRegistrationIsUnavailable_ShouldStayInLegacyMode()
+    {
+        bool useDelegateExecute = InvokeShouldUseDelegateExecuteOverride(
+            delegateExecutePrerequisitesSatisfied: true,
+            machineWideRegistrationReady: false);
+
+        useDelegateExecute.Should().BeFalse(
+            "without the machine-wide COM bridge, some shell surfaces fall back to launching a temporary Explorer window, which reintroduces visible flashing");
+    }
+
+    [Fact]
+    public void ShouldUseDelegateExecuteOverride_WhenMachineWideRegistrationIsReady_ShouldKeepDelegateExecuteMode()
+    {
+        bool useDelegateExecute = InvokeShouldUseDelegateExecuteOverride(
+            delegateExecutePrerequisitesSatisfied: true,
+            machineWideRegistrationReady: true);
+
+        useDelegateExecute.Should().BeTrue(
+            "once the machine-wide COM bridge is available, WinTab should keep the direct no-flicker DelegateExecute path");
+    }
+
+    [Fact]
     public void ShouldResetOverrideBeforeRepair_WhenIncompleteOverrideExistsWithoutBackup_ShouldResetBeforeTakingNewBackup()
     {
         bool shouldReset = InvokeShouldResetOverrideBeforeRepair(
@@ -165,6 +187,19 @@ public sealed class RegistryOpenVerbCompatibilityPolicyTests : IDisposable
             ?? throw new InvalidOperationException("Method not found: ShouldResetOverrideBeforeRepair");
 
         object? result = method.Invoke(null, [registryPointsToUs, registryPointsToAnyWinTabHandler, hasAnyBackup]);
+        return result is bool value && value;
+    }
+
+    private static bool InvokeShouldUseDelegateExecuteOverride(
+        bool delegateExecutePrerequisitesSatisfied,
+        bool machineWideRegistrationReady)
+    {
+        MethodInfo method = typeof(RegistryOpenVerbInterceptor).GetMethod(
+            "ShouldUseDelegateExecuteOverride",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("Method not found: ShouldUseDelegateExecuteOverride");
+
+        object? result = method.Invoke(null, [delegateExecutePrerequisitesSatisfied, machineWideRegistrationReady]);
         return result is bool value && value;
     }
 }

@@ -12,6 +12,7 @@ namespace WinTab.App.Services;
 public static class UninstallCleanupHandler
 {
     private const string DelegateExecuteClsidBraced = "{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}";
+    private const string MalformedDelegateExecuteClsidBraced = "{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}";
     private const uint ShcneAssocChanged = 0x08000000;
     private const uint ShcnfIdList = 0x0000;
 
@@ -95,6 +96,7 @@ public static class UninstallCleanupHandler
                 using RegistryKey? clsidRoot = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
                     .OpenSubKey(@"Software\Classes\CLSID", writable: true);
                 clsidRoot?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+                clsidRoot?.DeleteSubKeyTree(MalformedDelegateExecuteClsidBraced, throwOnMissingSubKey: false);
             }
 
             // Clean up HKLM COM registration (machine-wide) - added for Windows 11 Start Menu support
@@ -105,6 +107,7 @@ public static class UninstallCleanupHandler
                     using RegistryKey? clsidRoot = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view)
                         .OpenSubKey(@"Software\Classes\CLSID", writable: true);
                     clsidRoot?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
+                    clsidRoot?.DeleteSubKeyTree(MalformedDelegateExecuteClsidBraced, throwOnMissingSubKey: false);
                 }
                 catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
                 {

@@ -1,0 +1,59 @@
+{
+	"version": "26.2.9000",
+	"workloads": {
+		"macos": {
+			"description": ".NET SDK Workload for building macOS applications.",
+			"packs": [
+				"Microsoft.macOS.Sdk.net9.0_26.2",
+				"Microsoft.macOS.Sdk.net8.0_14.0",
+				"Microsoft.macOS.Sdk.net8.0_15.0",
+				"Microsoft.macOS.Sdk.net9.0_15.0",
+				"Microsoft.macOS.Ref.net9.0_26.2",
+				"Microsoft.macOS.Runtime.osx-x64.net9.0_26.2",
+				"Microsoft.macOS.Runtime.osx-arm64.net9.0_26.2",
+				"Microsoft.macOS.Templates.net9"
+			],
+			"extends": [
+				"microsoft-net-runtime-mono-tooling",
+				"microsoft-net-runtime-mono-tooling-net8",
+			]
+		},
+	},
+	"packs": {
+		"Microsoft.macOS.Sdk.net9.0_26.2": {
+			"kind": "sdk",
+			"version": "26.2.9000",
+		},
+		"Microsoft.macOS.Sdk.net8.0_14.0": {
+			"kind": "sdk",
+			"version": "14.0.8523",
+		},
+		"Microsoft.macOS.Sdk.net8.0_15.0": {
+			"kind": "sdk",
+			"version": "15.0.8324",
+		},
+		"Microsoft.macOS.Sdk.net9.0_15.0": {
+			"kind": "sdk",
+			"version": "15.0.9617",
+		},
+		"Microsoft.macOS.Ref.net9.0_26.2": {
+			"kind": "framework",
+			"version": "26.2.9000"
+		},
+		"Microsoft.macOS.Runtime.osx-x64.net9.0_26.2": {
+			"kind": "framework",
+			"version": "26.2.9000"
+		},
+		"Microsoft.macOS.Runtime.osx-arm64.net9.0_26.2": {
+			"kind": "framework",
+			"version": "26.2.9000"
+		},
+		"Microsoft.macOS.Templates.net9": {
+			"kind": "template",
+			"version": "26.2.9000",
+			"alias-to": {
+				"any": "Microsoft.macOS.Templates",
+			}
+		}
+	}
+}

@@ -27,19 +27,47 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     }
 
     [Fact]
-    public void InstallerScript_ShouldNotPreRegisterPersistentDelegateExecuteComServer()
+    public void InstallerScript_ShouldDeclareWellFormedDelegateExecuteClsidWithoutExtraBrace()
     {
         string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
-        script.Should().NotContain(@"Root: HKLM; Subkey: ""Software\Classes\CLSID\{#DelegateExecuteClsid}""",
-            "the safety-first redesign must not leave machine-wide DelegateExecute registration behind when WinTab is installed but not running");
-        script.Should().NotContain(@"Root: HKLM32; Subkey: ""Software\Classes\CLSID\{#DelegateExecuteClsid}""",
-            "the installer must not pre-register the 32-bit machine-wide DelegateExecute bridge either");
+        script.Should().Contain(@"#define DelegateExecuteClsid ""{{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}""",
+            "the installer must escape the leading brace so Inno emits a single well-formed braced CLSID and machine-wide COM registration lands at the path the runtime actually probes");
+        script.Should().NotContain(@"#define DelegateExecuteClsid ""{{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}""",
+            "the previous escaped form created a malformed registry key with an extra trailing brace, which made the runtime believe the machine-wide bridge was missing");
+    }
+
+    [Fact]
+    public void InstallerScript_ShouldCleanupMalformedLegacyDelegateExecuteClsidDuringInstallAndUninstall()
+    {
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
+        string script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain(@"#define MalformedDelegateExecuteClsid ""{{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}""",
+            "the installer should explicitly encode the malformed legacy CLSID variant so upgraded machines can be repaired automatically");
+        script.Should().Contain("WinTabDelegateExecuteCleanupBrokenHKLM64",
+            "uninstall must also remove the malformed machine-wide x64 CLSID left by the broken installer");
+        script.Should().Contain(@"delete """"HKLM\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"""" /f",
+            "install/uninstall cleanup should target the malformed HKLM CLSID directly");
+        script.Should().Contain(@"delete """"HKCU\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"""" /f /reg:32",
+            "cleanup should also remove any malformed per-user 32-bit CLSID residue");
+    }
+
+    [Fact]
+    public void InstallerScript_ShouldRegisterPersistentMachineWideDelegateExecuteComServerWithoutPerUserPreRegistration()
+    {
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
+        string script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain(@"Root: HKLM; Subkey: ""Software\Classes\CLSID\{#DelegateExecuteClsid}""",
+            "the no-flicker DelegateExecute bridge still needs a machine-wide COM registration so shell surfaces outside the current Explorer process do not fall back to window-then-merge behavior");
+        script.Should().Contain(@"Root: HKLM32; Subkey: ""Software\Classes\CLSID\{#DelegateExecuteClsid}""",
+            "32-bit shell hosts still need the machine-wide x86 bridge to avoid flashing a temporary Explorer window");
         script.Should().NotContain(@"Root: HKCU64; Subkey: ""Software\Classes\CLSID\{#DelegateExecuteClsid}""",
-            "runtime-only interception must not rely on persistent per-user COM registration written at install time");
+            "the installer should avoid persistent per-user COM registration because shell verbs are now runtime-only and machine-wide CLSID registration is sufficient");
         script.Should().NotContain(@"Root: HKCU32; Subkey: ""Software\Classes\CLSID\{#DelegateExecuteClsid}""",
-            "runtime-only interception must not rely on persistent 32-bit per-user COM registration written at install time");
+            "the installer should avoid persistent 32-bit per-user COM registration for the same reason");
     }
 
     [Fact]
@@ -53,15 +81,19 @@ public sealed class DelegateExecuteInstallerIntegrationTests
     }
 
     [Fact]
-    public void InstallerScript_ShouldNotRegisterDelegateExecuteForBothRegistryViewsAtInstallTime()
+    public void InstallerScript_ShouldRegisterOnlyMachineWideDelegateExecuteAtInstallTime()
     {
         string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
         string script = File.ReadAllText(scriptPath);
 
-        script.Should().NotContain("Root: HKLM; Subkey: \"Software\\Classes\\CLSID\\{#DelegateExecuteClsid}\"",
-            "the installer must not pre-register machine-wide DelegateExecute keys while WinTab is not running");
-        script.Should().NotContain("Root: HKCU64; Subkey: \"Software\\Classes\\CLSID\\{#DelegateExecuteClsid}\"",
-            "the installer must not pre-register per-user DelegateExecute keys while WinTab is not running");
+        script.Should().Contain("Root: HKLM",
+            "the installer must pre-register the machine-wide x64 DelegateExecute bridge to preserve no-flicker folder open handling");
+        script.Should().Contain("Root: HKLM32",
+            "the installer must pre-register the machine-wide x86 DelegateExecute bridge for 32-bit shell hosts");
+        script.Should().NotContain("Root: HKCU64",
+            "the installer should not pre-register per-user x64 DelegateExecute keys");
+        script.Should().NotContain("Root: HKCU32",
+            "the installer should not pre-register per-user x86 DelegateExecute keys");
         script.Should().Contain("/reg:32",
             "uninstall cleanup should explicitly remove the 32-bit DelegateExecute registration too");
     }
@@ -165,5 +197,21 @@ public sealed class DelegateExecuteInstallerIntegrationTests
             "the installer should disable interception before replacing shell bridge files in an existing installation");
         script.Should().Contain("ExistingInstallDetected",
             "the cleanup and Explorer restart flow should only run when replacing an existing installation");
+    }
+
+    [Fact]
+    public void InstallerScript_ShouldCreateStartMenuShortcutsDirectlyUnderProgramsRoot()
+    {
+        string scriptPath = TestRepoPaths.GetFile(["installers", "WinTab.iss"]);
+        string script = File.ReadAllText(scriptPath);
+
+        script.Should().Contain(@"Name: ""{autoprograms}\{#AppName}""",
+            "writing the shortcut directly under the Programs root avoids fragile program-group directory creation that can fail with IPersistFile::Save 0x80070003 on some machines");
+        script.Should().Contain(@"Name: ""{autoprograms}\Uninstall {#AppName}""",
+            "the uninstall shortcut should use the same direct Programs-root strategy");
+        script.Should().NotContain(@"Name: ""{group}\{#AppName}""",
+            "the installer should not depend on creating a dedicated program-group subdirectory before saving the shortcut");
+        script.Should().NotContain(@"Name: ""{group}\UninsWinTab""",
+            "the legacy grouped uninstall shortcut should be removed for the same reason");
     }
 }

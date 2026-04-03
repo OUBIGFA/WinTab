@@ -12,6 +12,8 @@ public interface IWindowManager
     bool BringToFront(IntPtr hWnd);
     bool IsAlive(IntPtr hWnd);
     bool IsVisible(IntPtr hWnd);
+    bool SuppressVisibility(IntPtr hWnd);
+    void RestoreVisibility(IntPtr hWnd);
     bool SetBounds(IntPtr hWnd, int x, int y, int width, int height);
     (int X, int Y, int Width, int Height) GetBounds(IntPtr hWnd);
     IReadOnlyList<WindowInfo> EnumerateTopLevelWindows(bool includeInvisible = false);

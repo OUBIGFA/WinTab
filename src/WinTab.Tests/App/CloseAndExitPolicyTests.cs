@@ -33,7 +33,7 @@ public sealed class CloseAndExitPolicyTests
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = true,
+            EnableAutoConvertExplorerWindows = true,
             PersistExplorerOpenVerbInterceptionAcrossExit = true
         };
 
@@ -54,7 +54,7 @@ public sealed class CloseAndExitPolicyTests
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = true,
+            EnableAutoConvertExplorerWindows = true,
             PersistExplorerOpenVerbInterceptionAcrossExit = false
         };
 
@@ -74,7 +74,7 @@ public sealed class CloseAndExitPolicyTests
 
         var settings = new AppSettings
         {
-            EnableExplorerOpenVerbInterception = false,
+            EnableAutoConvertExplorerWindows = false,
             PersistExplorerOpenVerbInterceptionAcrossExit = true
         };
 

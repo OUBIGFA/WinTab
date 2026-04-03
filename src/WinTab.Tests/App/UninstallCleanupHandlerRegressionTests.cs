@@ -20,6 +20,8 @@ public sealed class UninstallCleanupHandlerRegressionTests
             "machine-wide cleanup failures should be logged explicitly for diagnosis");
         source.Should().Contain("DelegateExecuteClsidBraced",
             "cleanup must target the WinTab DelegateExecute CLSID consistently");
+        source.Should().Contain("MalformedDelegateExecuteClsidBraced",
+            "cleanup should also target the malformed legacy CLSID key written by the broken installer so upgraded machines recover automatically");
     }
 
     [Fact]

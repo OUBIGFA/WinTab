@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using FluentAssertions;
 using WinTab.App.ExplorerTabUtilityPort;
+using WinTab.App.Services;
 using WinTab.App.ViewModels;
 using WinTab.Core.Models;
 using WinTab.Diagnostics;
@@ -32,7 +33,9 @@ public sealed class BehaviorViewModelTests
         context.ViewModel.EnableAutoConvertExplorerWindows = true;
 
         context.Settings.EnableAutoConvertExplorerWindows.Should().BeTrue();
-        context.Settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
+        context.Settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
+        context.OpenVerbConfigurationController.CallCount.Should().Be(1);
+        context.OpenVerbConfigurationController.LastConfiguredAutoConvertValue.Should().BeTrue();
         context.AutoConvertController.LastSetEnabledValue.Should().BeTrue();
         context.AutoConvertController.CallCount.Should().Be(1);
     }
@@ -46,6 +49,8 @@ public sealed class BehaviorViewModelTests
 
         context.Settings.EnableAutoConvertExplorerWindows.Should().BeFalse();
         context.Settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
+        context.OpenVerbConfigurationController.CallCount.Should().Be(1);
+        context.OpenVerbConfigurationController.LastConfiguredAutoConvertValue.Should().BeFalse();
         context.AutoConvertController.LastSetEnabledValue.Should().BeFalse();
         context.AutoConvertController.CallCount.Should().Be(1);
     }
@@ -59,6 +64,7 @@ public sealed class BehaviorViewModelTests
         public SettingsStore SettingsStore { get; }
         public ExplorerTabMouseHookService MouseHookService { get; }
         public FakeAutoConvertController AutoConvertController { get; }
+        public FakeExplorerOpenVerbConfigurationController OpenVerbConfigurationController { get; }
         public BehaviorViewModel ViewModel { get; }
 
         public TestContext(bool enableAutoConvert)
@@ -71,18 +77,20 @@ public sealed class BehaviorViewModelTests
             Settings = new AppSettings
             {
                 EnableAutoConvertExplorerWindows = enableAutoConvert,
-                EnableExplorerOpenVerbInterception = false,
+                EnableExplorerOpenVerbInterception = enableAutoConvert,
                 CloseTabOnDoubleClick = false
             };
 
             MouseHookService = new ExplorerTabMouseHookService(Settings, Logger);
             AutoConvertController = new FakeAutoConvertController();
+            OpenVerbConfigurationController = new FakeExplorerOpenVerbConfigurationController();
 
             ViewModel = new BehaviorViewModel(
                 Settings,
                 SettingsStore,
                 MouseHookService,
-                AutoConvertController);
+                AutoConvertController,
+                OpenVerbConfigurationController);
         }
 
         public void Dispose()
@@ -107,6 +115,18 @@ public sealed class BehaviorViewModelTests
             IsAutoConvertEnabled = enabled;
             LastSetEnabledValue = enabled;
             CallCount++;
+        }
+    }
+
+    public sealed class FakeExplorerOpenVerbConfigurationController : IExplorerOpenVerbConfigurationController
+    {
+        public int CallCount { get; private set; }
+        public bool? LastConfiguredAutoConvertValue { get; private set; }
+
+        public void ReconfigureForCurrentSettings(AppSettings settings)
+        {
+            CallCount++;
+            LastConfiguredAutoConvertValue = settings.EnableAutoConvertExplorerWindows;
         }
     }
 }

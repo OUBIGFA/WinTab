@@ -344,6 +344,8 @@ public sealed class ExplorerTabHookServiceHelpersTests
             "shutdown restore must include Explorer windows hidden by the early anti-flash path");
         source.Should().Contain(".. _pending.Keys",
             "shutdown restore must include Explorer windows hidden while a conversion was still in flight");
+        source.Should().Contain("_windowManager.RestoreVisibility(hwnd);",
+            "shutdown restore must uncloak tracked Explorer windows via DWM before showing them");
         source.Should().Contain("_windowManager.Show(hwnd);",
             "shutdown restore must explicitly make tracked Explorer windows visible again");
     }

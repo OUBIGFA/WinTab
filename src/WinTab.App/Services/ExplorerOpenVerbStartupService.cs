@@ -5,6 +5,7 @@ using WinTab.Diagnostics;
 namespace WinTab.App.Services;
 
 public sealed class ExplorerOpenVerbStartupService
+    : IExplorerOpenVerbConfigurationController
 {
     private readonly IExplorerOpenVerbInterceptor _interceptor;
     private readonly Logger _logger;
@@ -15,6 +16,7 @@ public sealed class ExplorerOpenVerbStartupService
 
     private int _started;
     private Task? _startupTask;
+    private readonly SemaphoreSlim _configurationGate = new(1, 1);
 
     public ExplorerOpenVerbStartupService(
         IExplorerOpenVerbInterceptor interceptor,
@@ -61,28 +63,40 @@ public sealed class ExplorerOpenVerbStartupService
             return;
 
         AppSettings snapshot = CreateStartupSnapshot(settings);
+        if (ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(snapshot))
+            settings.EnableExplorerOpenVerbInterception = snapshot.EnableExplorerOpenVerbInterception;
 
         try
         {
-            // If we need to DISABLE interception (e.g. preserve native in-Explorer browsing),
-            // do it synchronously to avoid a race where Explorer still launches the handler
-            // before the background task runs.
-            string openVerbHandlerPath = _resolveLaunchExecutablePath();
-            bool hasStableOpenVerbHandlerPath = _isStableOpenVerbHandlerPath(openVerbHandlerPath);
-            bool enableExplorerOpenVerbInterception =
-                ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(snapshot, hasStableOpenVerbHandlerPath);
-
-            if (!enableExplorerOpenVerbInterception)
-            {
-                _startupTask = ConfigureAsync(snapshot);
-                return;
-            }
-
-            _startupTask = _runInBackground(() => ConfigureAsync(snapshot));
+            // Arm or disarm interception before startup continues so the app
+            // never reports itself ready while Explorer is still on the old
+            // flash-then-merge path.
+            _startupTask = ConfigureSerializedAsync(snapshot);
+            _startupTask.GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
             _logger.Error("Failed to queue Explorer open-verb startup configuration.", ex);
+        }
+    }
+
+    public void ReconfigureForCurrentSettings(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        AppSettings snapshot = CreateStartupSnapshot(settings);
+        if (ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(snapshot))
+            settings.EnableExplorerOpenVerbInterception = snapshot.EnableExplorerOpenVerbInterception;
+
+        try
+        {
+            Task task = ConfigureSerializedAsync(snapshot);
+            _startupTask = task;
+            task.GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Failed to reconfigure Explorer open-verb interception for runtime settings change.", ex);
         }
     }
 
@@ -111,15 +125,20 @@ public sealed class ExplorerOpenVerbStartupService
         {
             EnableExplorerOpenVerbInterception = source.EnableExplorerOpenVerbInterception,
             OpenChildFolderInNewTabFromActiveTab = source.OpenChildFolderInNewTabFromActiveTab,
+            EnableAutoConvertExplorerWindows = source.EnableAutoConvertExplorerWindows,
             PersistExplorerOpenVerbInterceptionAcrossExit = source.PersistExplorerOpenVerbInterceptionAcrossExit,
             RunAtStartup = source.RunAtStartup,
         };
     }
 
-    private Task ConfigureAsync(AppSettings settings)
+    private async Task ConfigureSerializedAsync(AppSettings settings)
     {
+        await _configurationGate.WaitAsync().ConfigureAwait(false);
+
         try
         {
+            ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings);
+
             string openVerbHandlerPath = _resolveLaunchExecutablePath();
             bool hasStableOpenVerbHandlerPath = _isStableOpenVerbHandlerPath(openVerbHandlerPath);
             bool isWin11 = _isWindows11();
@@ -154,7 +173,9 @@ public sealed class ExplorerOpenVerbStartupService
         {
             _logger.Error("Failed to configure Explorer open-verb interception.", ex);
         }
-
-        return Task.CompletedTask;
+        finally
+        {
+            _configurationGate.Release();
+        }
     }
 }

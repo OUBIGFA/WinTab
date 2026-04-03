@@ -15,5 +15,6 @@ public sealed class AppSettingsDefaultsTests
             "fresh installs must not take over Explorer open verbs until the user explicitly enables the feature");
         settings.EnableAutoConvertExplorerWindows.Should().BeFalse(
             "fresh installs must not start auto-converting Explorer windows before the user opts in");
+        settings.SchemaVersion.Should().Be(3);
     }
 }

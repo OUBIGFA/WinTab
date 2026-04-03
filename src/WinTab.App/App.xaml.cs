@@ -249,6 +249,7 @@ public partial class App : Application
                 sp.GetRequiredService<Logger>()));
         services.AddSingleton<IExplorerOpenVerbInterceptor>(sp => sp.GetRequiredService<RegistryOpenVerbInterceptor>());
         services.AddSingleton<ExplorerOpenVerbStartupService>();
+        services.AddSingleton<IExplorerOpenVerbConfigurationController>(sp => sp.GetRequiredService<ExplorerOpenVerbStartupService>());
 
         services.AddSingleton<ExplorerOpenRequestServer>();
 
@@ -302,7 +303,7 @@ public partial class App : Application
     private static bool ShouldDisableExplorerOpenVerbInterceptionOnExit(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        return settings.EnableExplorerOpenVerbInterception;
+        return settings.EnableAutoConvertExplorerWindows;
     }
 
     private static int CaptureShellBaseline()

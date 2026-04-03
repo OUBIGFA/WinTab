@@ -8,7 +8,8 @@
 #define AppPublisher "WinTab Contributors"
 #define AppURL "https://github.com/user/WinTab"
 #define AppExeName "WinTab.exe"
-#define DelegateExecuteClsid "{{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}"
+#define DelegateExecuteClsid "{{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}"
+#define MalformedDelegateExecuteClsid "{{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}"
 
 [Setup]
 AppId={{B8F3D2A1-7E4C-4D9F-A6B2-1C8E5F0D3A7B}
@@ -19,7 +20,6 @@ AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
 AppUpdatesURL={#AppURL}
 DefaultDirName={autopf}\{#AppName}
-DefaultGroupName={#AppName}
 DisableDirPage=no
 UsePreviousAppDir=yes
 AllowNoIcons=yes
@@ -81,15 +81,27 @@ Name: "startup"; Description: "{cm:LaunchAtStartup}"; Flags: unchecked
 Source: "..\publish\win-x64\*"; Excludes: "portable.txt"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
-Name: "{group}\UninsWinTab"; Filename: "{uninstallexe}"
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExeName}"
+Name: "{autoprograms}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
+Filename: "reg.exe"; Parameters: "delete ""HKLM\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"" /f"; Flags: runhidden
+Filename: "reg.exe"; Parameters: "delete ""HKLM\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden
+Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"" /f /reg:64"; Flags: runhidden
+Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden
 Filename: "{app}\{#AppExeName}"; Parameters: "--wintab-capture-shell-baseline"; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Registry]
+; Pre-register the machine-wide DelegateExecute COM bridge so shell surfaces
+; outside the current Explorer process can still take the no-flicker path.
+Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
+Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
+Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\x86\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
+Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
 ; Add startup entry if task selected
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
 
@@ -109,9 +121,13 @@ Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Microsoft\Windows\Curre
 ; Remove HKLM COM registration (machine-wide) - 64-bit and 32-bit
 Filename: "reg.exe"; Parameters: "delete ""HKLM\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanupHKLM64"
 Filename: "reg.exe"; Parameters: "delete ""HKLM\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanupHKLM32"
+Filename: "reg.exe"; Parameters: "delete ""HKLM\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"" /f"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanupBrokenHKLM64"
+Filename: "reg.exe"; Parameters: "delete ""HKLM\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanupBrokenHKLM32"
 ; Remove HKCU COM registration (user-only) - 64-bit and 32-bit
 Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f /reg:64"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanup64"
 Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#DelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanup32"
+Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"" /f /reg:64"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanupBroken64"
+Filename: "reg.exe"; Parameters: "delete ""HKCU\Software\Classes\CLSID\{#MalformedDelegateExecuteClsid}"" /f /reg:32"; Flags: runhidden; RunOnceId: "WinTabDelegateExecuteCleanupBroken32"
 
 [Code]
 var
@@ -499,6 +515,11 @@ var
   DelegateExecuteClsid: String;
 begin
   DelegateExecuteClsid := '{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}';
+  // Also remove the malformed key written by the broken installer variant.
+  Exec('reg.exe', 'delete "HKCU\Software\Classes\CLSID\{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}" /f /reg:64', '', SW_HIDE, ewNoWait, ResultCode);
+  Exec('reg.exe', 'delete "HKCU\Software\Classes\CLSID\{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}" /f /reg:32', '', SW_HIDE, ewNoWait, ResultCode);
+  Exec('reg.exe', 'delete "HKLM\Software\Classes\CLSID\{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}" /f', '', SW_HIDE, ewNoWait, ResultCode);
+  Exec('reg.exe', 'delete "HKLM\Software\Classes\CLSID\{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}}" /f /reg:32', '', SW_HIDE, ewNoWait, ResultCode);
 
   // If app-side backup restore is unavailable, remove every HKCU shell override
   // so Explorer falls back to the native HKCR handlers without leaving empty shells behind.

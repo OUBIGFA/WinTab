@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using WinTab.App.ExplorerTabUtilityPort;
+using WinTab.App.Services;
 using WinTab.Core.Models;
 using WinTab.Persistence;
 
@@ -11,6 +12,7 @@ public partial class BehaviorViewModel : ObservableObject
     private readonly SettingsStore _settingsStore;
     private readonly ExplorerTabMouseHookService _tabMouseHookService;
     private readonly IExplorerAutoConvertController _autoConvertController;
+    private readonly IExplorerOpenVerbConfigurationController _openVerbConfigurationController;
     private bool _isUpdatingCloseTabOnDoubleClickToggle;
 
     [ObservableProperty]
@@ -31,12 +33,14 @@ public partial class BehaviorViewModel : ObservableObject
         AppSettings settings,
         SettingsStore settingsStore,
         ExplorerTabMouseHookService tabMouseHookService,
-        IExplorerAutoConvertController autoConvertController)
+        IExplorerAutoConvertController autoConvertController,
+        IExplorerOpenVerbConfigurationController openVerbConfigurationController)
     {
         _settings = settings;
         _settingsStore = settingsStore;
         _tabMouseHookService = tabMouseHookService;
         _autoConvertController = autoConvertController;
+        _openVerbConfigurationController = openVerbConfigurationController;
 
         _openNewTabFromActiveTabPath = settings.OpenNewTabFromActiveTabPath;
         _openChildFolderInNewTabFromActiveTab = settings.OpenChildFolderInNewTabFromActiveTab;
@@ -59,6 +63,8 @@ public partial class BehaviorViewModel : ObservableObject
     partial void OnEnableAutoConvertExplorerWindowsChanged(bool value)
     {
         _settings.EnableAutoConvertExplorerWindows = value;
+        _settings.EnableExplorerOpenVerbInterception = value;
+        _openVerbConfigurationController.ReconfigureForCurrentSettings(_settings);
         _autoConvertController.SetAutoConvertEnabled(value);
         SaveSettings();
         OnPropertyChanged(nameof(IsOpenChildFolderInNewTabOptionEnabled));

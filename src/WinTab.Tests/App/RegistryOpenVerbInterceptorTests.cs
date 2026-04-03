@@ -100,12 +100,25 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
     {
         string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
 
-        source.Should().Contain("RegisterDelegateExecuteComServerVolatileCurrentUser",
-            "session-only interception should use the direct DelegateExecute bridge first so folder opens can be reused without flashing a temporary Explorer window");
-        source.Should().Contain("volatile DelegateExecute bridge",
-            "logging should make it explicit when the no-flicker session-only DelegateExecute path is active");
+        source.Should().Contain("ShouldUseDelegateExecuteOverride",
+            "session-only interception should still gate the direct DelegateExecute path on whether the no-flicker machine-wide bridge is actually ready");
+        source.Should().Contain("machineWideRegistrationReady",
+            "the runtime interception path must explicitly verify that the machine-wide DelegateExecute bridge is available before claiming no-flicker mode");
         source.Should().Contain("volatile HKCU command overrides",
             "legacy command mode should remain only as the compatibility fallback when the DelegateExecute bridge is unavailable");
+    }
+
+    [Fact]
+    public void RuntimeInterceptorSource_ShouldKeepMachineWideBridgeInstalledAcrossNormalCleanup()
+    {
+        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
+
+        source.Should().Contain("RemoveCurrentUserDelegateExecuteComServerRegistration();",
+            "normal shutdown should only remove any stray per-user COM registration left by older builds");
+        source.Should().Contain("RemoveLegacyDelegateExecuteComServerRegistration",
+            "the source should still retain a dedicated legacy cleanup path for old HKLM registrations without mixing it into normal runtime shutdown");
+        source.Should().NotContain("RestoreFromBackup(baseline);\r\n        RemoveLegacyDelegateExecuteComServerRegistration();",
+            "restoring the user's original Explorer baseline must not delete the installed machine-wide bridge, otherwise the next session falls back to flash-then-merge behavior");
     }
 
     [Fact]

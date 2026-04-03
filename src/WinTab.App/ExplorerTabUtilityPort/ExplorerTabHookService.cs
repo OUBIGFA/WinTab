@@ -1261,9 +1261,15 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         if (_pending.ContainsKey(hwnd) || _knownExplorerTopLevels.ContainsKey(hwnd))
             return;
 
-        // Hide first (fast) to reduce flash; we'll validate later.
-        // Only do this when the top-level window class matches.
-        if (_windowManager.Hide(hwnd))
+        // DWM-cloak first (instant, prevents the window from ever being
+        // composited) then also SW_HIDE as a safety net.  Together these
+        // eliminate the flash that a standalone ShowWindow(SW_HIDE) cannot
+        // prevent due to the inherent race with Explorer's first paint.
+        // Track in _earlyHiddenExplorer whenever we successfully altered
+        // visibility by either mechanism, so the restore paths can find it.
+        bool suppressed = _windowManager.SuppressVisibility(hwnd);
+        bool hidden = _windowManager.Hide(hwnd);
+        if (suppressed || hidden)
             _earlyHiddenExplorer.TryAdd(hwnd, 0);
     }
 
@@ -1517,9 +1523,14 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
             return false;
 
+        // DWM-cloak immediately — takes effect before the next DWM frame,
+        // eliminating any visual flash regardless of subsequent polling.
+        _windowManager.SuppressVisibility(hwnd);
+
         int start = Environment.TickCount;
         while (Environment.TickCount - start < timeoutMs)
         {
+            _windowManager.SuppressVisibility(hwnd);
             if (_windowManager.Hide(hwnd) && !NativeMethods.IsWindowVisible(hwnd))
                 return true;
 
@@ -1536,6 +1547,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
                 return false;
         }
 
+        _windowManager.SuppressVisibility(hwnd);
         return _windowManager.Hide(hwnd);
     }
 
@@ -1644,7 +1656,10 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
             }
 
             if (!sourceHidden)
+            {
+                _windowManager.SuppressVisibility(sourceTopLevel);
                 sourceHidden = _windowManager.Hide(sourceTopLevel);
+            }
 
             visibilitySuppressionTask = KeepWindowHiddenUntilConversionCompletes(sourceTopLevel, visibilitySuppressionCts.Token);
             visibilitySuppressionStarted = true;
@@ -1725,6 +1740,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
                 (sourceHidden || visibilitySuppressionStarted) &&
                 _windowManager.IsAlive(sourceTopLevel))
             {
+                _windowManager.RestoreVisibility(sourceTopLevel);
                 _windowManager.Show(sourceTopLevel);
             }
         }
@@ -1736,6 +1752,10 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         {
             if (hwnd == IntPtr.Zero || !NativeMethods.IsWindow(hwnd))
                 return;
+
+            // Re-cloak every iteration (idempotent, cheap) so DWM never
+            // composites the window even if Explorer toggles WS_VISIBLE.
+            _windowManager.SuppressVisibility(hwnd);
 
             if (NativeMethods.IsWindowVisible(hwnd))
                 _windowManager.Hide(hwnd);
@@ -2601,7 +2621,10 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
             return;
 
         if (_windowManager.IsAlive(hwnd))
+        {
+            _windowManager.RestoreVisibility(hwnd);
             _windowManager.Show(hwnd);
+        }
     }
 
     private static bool IsShellNamespaceLocation(string? location)
@@ -2831,6 +2854,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
                 if (!_windowManager.IsAlive(hwnd))
                     continue;
 
+                _windowManager.RestoreVisibility(hwnd);
                 if (!_windowManager.IsVisible(hwnd))
                     _windowManager.Show(hwnd);
             }

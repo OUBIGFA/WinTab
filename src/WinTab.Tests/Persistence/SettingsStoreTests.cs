@@ -31,7 +31,7 @@ public sealed class SettingsStoreTests
             settings.OpenChildFolderInNewTabFromActiveTab.Should().BeFalse();
             settings.CloseTabOnDoubleClick.Should().BeFalse();
             settings.Theme.Should().Be(ThemeMode.Light);
-            settings.SchemaVersion.Should().Be(2);
+            settings.SchemaVersion.Should().Be(3);
         }
         finally
         {
@@ -41,7 +41,7 @@ public sealed class SettingsStoreTests
     }
 
     [Fact]
-    public void Load_WhenSchemaV1_MigratesPersistFlagFromInterceptionToggle()
+    public void Load_WhenSchemaV2AndAutoConvertEnabled_AlignsInterceptionFlag()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), "WinTabSettingsStoreTests", Guid.NewGuid().ToString("N"));
         string settingsPath = Path.Combine(tempDir, "settings.json");
@@ -52,15 +52,17 @@ public sealed class SettingsStoreTests
             File.WriteAllText(settingsPath, """
 {
   "EnableExplorerOpenVerbInterception": false,
-  "SchemaVersion": 1
+  "EnableAutoConvertExplorerWindows": true,
+  "SchemaVersion": 2
 }
 """);
 
             var store = new SettingsStore(settingsPath);
             AppSettings settings = store.Load();
 
-            settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
-            settings.SchemaVersion.Should().Be(2);
+            settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
+            settings.EnableAutoConvertExplorerWindows.Should().BeTrue();
+            settings.SchemaVersion.Should().Be(3);
         }
         finally
         {
@@ -103,7 +105,7 @@ public sealed class SettingsStoreTests
             restored.CloseTabOnDoubleClick.Should().BeTrue();
             restored.Theme.Should().Be(ThemeMode.Dark);
             restored.Language.Should().Be(Language.English);
-            restored.SchemaVersion.Should().Be(2);
+            restored.SchemaVersion.Should().Be(3);
         }
         finally
         {
@@ -130,7 +132,7 @@ public sealed class SettingsStoreTests
         store.Should().NotBeNull();
 
         AppSettings settings = store!.Load();
-        settings.SchemaVersion.Should().Be(2);
+        settings.SchemaVersion.Should().Be(3);
         settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
         settings.EnableAutoConvertExplorerWindows.Should().BeFalse();
     }

@@ -12,53 +12,52 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
     {
         var settings = new AppSettings
         {
-            OpenChildFolderInNewTabFromActiveTab = false,
-            EnableExplorerOpenVerbInterception = true,
-        };
-
-        bool changed = ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings);
-
-        changed.Should().BeFalse();
-        settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
-    }
-
-    [Fact]
-    public void NormalizeForNativeCurrentDirectoryBehavior_WhenChildFolderNewTabEnabled_ShouldKeepInterceptionFlag()
-    {
-        var settings = new AppSettings
-        {
-            OpenChildFolderInNewTabFromActiveTab = true,
+            EnableAutoConvertExplorerWindows = true,
             EnableExplorerOpenVerbInterception = false,
         };
 
         bool changed = ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings);
 
-        changed.Should().BeFalse();
+        changed.Should().BeTrue();
+        settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
+    }
+
+    [Fact]
+    public void NormalizeForNativeCurrentDirectoryBehavior_WhenAutoConvertDisabled_ShouldClearInterceptionFlag()
+    {
+        var settings = new AppSettings
+        {
+            EnableAutoConvertExplorerWindows = false,
+            EnableExplorerOpenVerbInterception = true,
+        };
+
+        bool changed = ExplorerOpenVerbInterceptionPolicy.NormalizeForNativeCurrentDirectoryBehavior(settings);
+
+        changed.Should().BeTrue();
         settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
     }
 
     [Fact]
-    public void ShouldEnableOpenVerbInterception_WhenChildFolderNewTabDisabled_ShouldBeFalseForNativeBrowsing()
+    public void ShouldEnableOpenVerbInterception_WhenAutoConvertEnabled_ShouldIgnoreChildFolderTabPreference()
     {
         var settings = new AppSettings
         {
+            EnableAutoConvertExplorerWindows = true,
             OpenChildFolderInNewTabFromActiveTab = false,
-            EnableExplorerOpenVerbInterception = true,
         };
 
         bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: true);
 
-        enabled.Should().BeFalse(
-            "when child folders should open with native in-place browsing, WinTab must not register the open-verb interceptor");
+        enabled.Should().BeTrue(
+            "whether child folders stay in the current tab or open a new tab is a handler behavior choice, not a reason to disable the no-flicker interception transport");
     }
 
     [Fact]
-    public void ShouldEnableOpenVerbInterception_WhenAllConditionsSatisfied_ShouldBeTrue()
+    public void ShouldEnableOpenVerbInterception_WhenAutoConvertAndStablePathSatisfied_ShouldBeTrue()
     {
         var settings = new AppSettings
         {
-            OpenChildFolderInNewTabFromActiveTab = true,
-            EnableExplorerOpenVerbInterception = true,
+            EnableAutoConvertExplorerWindows = true,
         };
 
         bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: true);
@@ -71,8 +70,7 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
     {
         var settings = new AppSettings
         {
-            OpenChildFolderInNewTabFromActiveTab = true,
-            EnableExplorerOpenVerbInterception = true,
+            EnableAutoConvertExplorerWindows = true,
         };
 
         bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: false);
@@ -81,12 +79,12 @@ public sealed class ExplorerOpenVerbInterceptionPolicyTests
     }
 
     [Fact]
-    public void ShouldEnableOpenVerbInterception_WhenSettingDisabled_ShouldBeFalse()
+    public void ShouldEnableOpenVerbInterception_WhenAutoConvertDisabled_ShouldBeFalse()
     {
         var settings = new AppSettings
         {
-            OpenChildFolderInNewTabFromActiveTab = true,
-            EnableExplorerOpenVerbInterception = false,
+            EnableAutoConvertExplorerWindows = false,
+            EnableExplorerOpenVerbInterception = true,
         };
 
         bool enabled = ExplorerOpenVerbInterceptionPolicy.ShouldEnableOpenVerbInterception(settings, hasStableOpenVerbHandlerPath: true);
