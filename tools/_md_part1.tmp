@@ -1,0 +1,120 @@
+# WinTab Explorer 破坏分析与修复方案
+
+> 日期：2026-04-03  
+> 系统：Windows 11 25H2 (Build 26300)  
+> 用户：bigfa
+
+---
+
+## 一、WinTab 如何破坏 Explorer
+
+### 1.1 核心破坏机制
+
+WinTab 通过 **注册表 Shell Verb 劫持** 和 **COM DelegateExecute 重定向** 来接管 Windows Explorer 的文件夹打开行为。这是一个深入到 Windows Shell 底层的修改，一旦出错后果严重。
+
+#### 原理图
+
+```
+正常状态:
+  双击文件夹 → Explorer Shell → HKCR\Folder\shell\open\command
+    → DelegateExecute = {11dbb47c-...} (系统 CLSID_ExecuteFolder)
+    → explorerframe.dll 处理 → 在当前窗口打开子文件夹
+
+WinTab 劫持后:
+  双击文件夹 → Explorer Shell → HKCU\...\Folder\shell\open\command  ← HKCU 优先于 HKLM
+    → DelegateExecute = {FD5BF2CD-...} (WinTab 自己的 CLSID)
+    → WinTab.ShellBridge.comhost.dll → 通过命名管道发给 WinTab
+```
+
+### 1.2 WinTab 修改的完整注册表清单
+
+#### HKCU Shell Verb 覆盖 (9 组 × 2 值 = 18 个值)
+
+对 `Folder`、`Directory`、`Drive` 三个类，每个类的 `open`、`explore`、`opennewwindow` 三个动词：
+
+| 注册表路径 | 值名 | 被改为 |
+|-----------|------|--------|
+| `HKCU\Software\Classes\{类}\shell\{动词}\command` | `(Default)` | `""` (空字符串) |
+| `HKCU\Software\Classes\{类}\shell\{动词}\command` | `DelegateExecute` | `{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}` |
+
+#### HKCU 默认动词覆盖 (3 个值)
+
+| 注册表路径 | 值名 | 被改为 |
+|-----------|------|--------|
+| `HKCU\Software\Classes\Folder\shell` | `(Default)` | `open` |
+| `HKCU\Software\Classes\Directory\shell` | `(Default)` | `open` |
+| `HKCU\Software\Classes\Drive\shell` | `(Default)` | `open` |
+
+#### COM CLSID 注册 (4 处)
+
+WinTab COM CLSID `{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}` 注册在：
+
+| 位置 | 视图 | 需要权限 |
+|------|------|---------|
+| `HKCU\Software\Classes\CLSID\{FD5BF2CD-...}` | 64-bit | 用户权限 |
+| `HKCU\Software\Classes\CLSID\{FD5BF2CD-...}` | 32-bit (WOW6432Node) | 用户权限 |
+| `HKLM\Software\Classes\CLSID\{FD5BF2CD-...}` | 64-bit | 管理员权限 |
+| `HKLM\Software\Classes\CLSID\{FD5BF2CD-...}` | 32-bit (WOW6432Node) | 管理员权限 |
+
+每处包含：
+- `(Default)` = "WinTab Open Folder DelegateExecute"
+- `InProcServer32\(Default)` = 安装目录下的 `WinTab.ShellBridge.comhost.dll`
+- `InProcServer32\ThreadingModel` = "Apartment"
+
+#### 其他注册表修改
+
+| 路径 | 用途 |
+|------|------|
+| `HKCU\Software\WinTab\Backups\ExplorerOpenVerb\BackupJson` | 原始值备份 |
+| `HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run\WinTab` | 开机自启 |
+| `HKCU\Software\WinTab\` | 应用配置树 |
+
+### 1.3 破坏造成的具体后果
+
+当 WinTab 被卸载/崩溃/DLL丢失但注册表残留时：
+
+| 症状 | 原因 |
+|------|------|
+| 桌面双击文件夹无反应 | `open` verb 的 DelegateExecute 指向不存在的 COM 对象 |
+| Explorer 窗口内双击子文件夹无反应 | 同上，DelegateExecute COM 调用失败 |
+| 鼠标出现转圈后消失 | Explorer 尝试加载 COM DLL，加载失败后静默放弃 |
+| 右键"打开"无效 | 所有三个动词 (open/explore/opennewwindow) 都被劫持 |
+
+---
+
+## 二、本次修复过程记录
+
+### 2.1 修复步骤时间线
+
+| 步骤 | 操作 | 结果 |
+|------|------|------|
+| 1 | 删除 HKCU 下 Folder/Directory/Drive 的 shell verb 覆盖 | 部分恢复 |
+| 2 | 删除 WinTab COM CLSID (HKCU + HKLM 四处) | ✓ |
+| 3 | 删除 `HKCU\Software\WinTab` 整棵树 | ✓ |
+| 4 | 设置 `HKLM\...\shell` 默认值为 `none` | ✗ 更糟（所有双击失效） |
+| 5 | 恢复 `open\command` 的 DelegateExecute 为系统 CLSID | 桌面恢复，窗口内仍坏 |
+| 6 | 修正 `open\command\(Default)` 为 REG_EXPAND_SZ 类型 | 无改善 |
+| 7 | 新建 TestExplorer 用户测试 → 确认是系统级问题 | 定位到 HKLM |
+| **8** | **删除 shell 默认值空字符串 + 修复 explore\command 的 DelegateExecute** | **✓ 完全恢复** |
+
+### 2.2 根本原因分析
+
+最终修复涉及两个关键问题：
+
+**问题 A：`shell` 默认值被设为空字符串 `""` 而非删除**
+
+在步骤 4 失败后的修复过程中，将 `HKLM\Software\Classes\{Folder|Directory|Drive}\shell` 的默认值设为了空字符串 `""`。
+
+- 空字符串 `""` ≠ 值不存在
+- Windows Shell 将空字符串解释为"显式指定了一个不存在的动词"
+- 正确的默认状态是 **值不存在**（让 Shell 自动选择 `open` 动词）
+
+**问题 B：`Directory\shell\explore\command` 和 `Drive\shell\explore\command` 缺少 DelegateExecute**
+
+这两个键的原始系统默认值使用旧式命令行格式：
+```
+"C:\Windows\Explorer.exe" /separate,/e,/idlist,%I,%L
+```
+但缺少 `DelegateExecute`。添加 `DelegateExecute = {11dbb47c-a525-400b-9e80-a54615a090c0}` 后，窗口内导航恢复正常。
+
+> 注：`{11dbb47c-a525-400b-9e80-a54615a090c0}` 是 Windows 系统自带的 `CLSID_ExecuteFolder`（实现在 `explorerframe.dll` 中），是 Windows 11 用于处理窗口内文件夹导航的核心 COM 组件。

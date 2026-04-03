@@ -12,12 +12,7 @@ public static class AppEnvironment
     internal static Func<string, bool> TryOpenNativeShellTarget = static target => NativeShellLauncher.TryOpen(target);
     internal static Func<string, bool> StartExplorerProcess = static normalizedPath =>
     {
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "explorer.exe",
-            Arguments = $"\"{normalizedPath}\"",
-            UseShellExecute = true,
-        });
+        Process.Start(BuildExplorerStartInfo(normalizedPath));
         return true;
     };
 
@@ -77,6 +72,16 @@ public static class AppEnvironment
             logger?.Error($"Failed to fallback open-folder launch for path: {normalizedPath}", ex);
             return false;
         }
+    }
+
+    private static ProcessStartInfo BuildExplorerStartInfo(string normalizedPath)
+    {
+        return new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"\"{normalizedPath}\"",
+            UseShellExecute = false,
+        };
     }
 
     public static bool TryNormalizeExistingDirectoryPath(string? candidatePath, out string normalizedPath, out string failureReason)

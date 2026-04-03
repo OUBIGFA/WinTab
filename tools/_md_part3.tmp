@@ -1,0 +1,90 @@
+### 4.2 应急修复 .reg 文件
+
+以下 .reg 文件可在 WinTab 卸载失败时手动修复系统（需管理员权限导入）：
+
+```reg
+Windows Registry Editor Version 5.00
+
+; ========== 第一步：删除所有 HKCU 覆盖 ==========
+
+[-HKEY_CURRENT_USER\Software\Classes\Folder\shell\open\command]
+[-HKEY_CURRENT_USER\Software\Classes\Folder\shell\explore\command]
+[-HKEY_CURRENT_USER\Software\Classes\Folder\shell\opennewwindow\command]
+[-HKEY_CURRENT_USER\Software\Classes\Directory\shell\open\command]
+[-HKEY_CURRENT_USER\Software\Classes\Directory\shell\explore\command]
+[-HKEY_CURRENT_USER\Software\Classes\Directory\shell\opennewwindow\command]
+[-HKEY_CURRENT_USER\Software\Classes\Drive\shell\open\command]
+[-HKEY_CURRENT_USER\Software\Classes\Drive\shell\explore\command]
+[-HKEY_CURRENT_USER\Software\Classes\Drive\shell\opennewwindow\command]
+
+; 删除 HKCU 默认动词覆盖
+[HKEY_CURRENT_USER\Software\Classes\Folder\shell]
+@=-
+[HKEY_CURRENT_USER\Software\Classes\Directory\shell]
+@=-
+[HKEY_CURRENT_USER\Software\Classes\Drive\shell]
+@=-
+
+; ========== 第二步：删除 WinTab COM 注册 ==========
+
+[-HKEY_CURRENT_USER\Software\Classes\CLSID\{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}]
+[-HKEY_LOCAL_MACHINE\Software\Classes\CLSID\{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}]
+
+; ========== 第三步：删除 WinTab 配置 ==========
+
+[-HKEY_CURRENT_USER\Software\WinTab]
+
+; ========== 第四步：删除开机自启 ==========
+
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Run]
+"WinTab"=-
+
+; ========== 第五步：确保 HKLM shell 默认值正确（删除空字符串） ==========
+
+[HKEY_LOCAL_MACHINE\Software\Classes\Folder\shell]
+@=-
+[HKEY_LOCAL_MACHINE\Software\Classes\Directory\shell]
+@=-
+[HKEY_LOCAL_MACHINE\Software\Classes\Drive\shell]
+@=-
+
+; ========== 第六步：确保 HKLM open/explore 有正确的 DelegateExecute ==========
+; hex(2) = REG_EXPAND_SZ for "%SystemRoot%\Explorer.exe"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\Folder\shell\open\command]
+@=hex(2):25,00,53,00,79,00,73,00,74,00,65,00,6d,00,52,00,6f,00,6f,00,74,00,25,00,5c,00,45,00,78,00,70,00,6c,00,6f,00,72,00,65,00,72,00,2e,00,65,00,78,00,65,00,00,00
+"DelegateExecute"="{11dbb47c-a525-400b-9e80-a54615a090c0}"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\Directory\shell\open\command]
+@=hex(2):25,00,53,00,79,00,73,00,74,00,65,00,6d,00,52,00,6f,00,6f,00,74,00,25,00,5c,00,45,00,78,00,70,00,6c,00,6f,00,72,00,65,00,72,00,2e,00,65,00,78,00,65,00,00,00
+"DelegateExecute"="{11dbb47c-a525-400b-9e80-a54615a090c0}"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\Drive\shell\open\command]
+@=hex(2):25,00,53,00,79,00,73,00,74,00,65,00,6d,00,52,00,6f,00,6f,00,74,00,25,00,5c,00,45,00,78,00,70,00,6c,00,6f,00,72,00,65,00,72,00,2e,00,65,00,78,00,65,00,00,00
+"DelegateExecute"="{11dbb47c-a525-400b-9e80-a54615a090c0}"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\Folder\shell\explore\command]
+@=hex(2):25,00,53,00,79,00,73,00,74,00,65,00,6d,00,52,00,6f,00,6f,00,74,00,25,00,5c,00,45,00,78,00,70,00,6c,00,6f,00,72,00,65,00,72,00,2e,00,65,00,78,00,65,00,00,00
+"DelegateExecute"="{11dbb47c-a525-400b-9e80-a54615a090c0}"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\Directory\shell\explore\command]
+@=hex(2):25,00,53,00,79,00,73,00,74,00,65,00,6d,00,52,00,6f,00,6f,00,74,00,25,00,5c,00,45,00,78,00,70,00,6c,00,6f,00,72,00,65,00,72,00,2e,00,65,00,78,00,65,00,00,00
+"DelegateExecute"="{11dbb47c-a525-400b-9e80-a54615a090c0}"
+
+[HKEY_LOCAL_MACHINE\Software\Classes\Drive\shell\explore\command]
+@=hex(2):25,00,53,00,79,00,73,00,74,00,65,00,6d,00,52,00,6f,00,6f,00,74,00,25,00,5c,00,45,00,78,00,70,00,6c,00,6f,00,72,00,65,00,72,00,2e,00,65,00,78,00,65,00,00,00
+"DelegateExecute"="{11dbb47c-a525-400b-9e80-a54615a090c0}"
+```
+
+> **使用方法**：以管理员身份运行 `regedit /s <文件路径>` 或双击 .reg 文件确认导入，然后重启 Explorer。
+
+### 4.3 代码修复优先级
+
+| 优先级 | 修改项 | 涉及文件 |
+|--------|--------|---------|
+| P0 | 卸载时以管理员权限清理 HKLM COM 注册 | `UninstallCleanupHandler.cs`, `WinTab.iss` |
+| P0 | 备份时直接读 HKLM 而非 HKCR | `RegistryOpenVerbInterceptor.cs` |
+| P1 | 清理后验证 HKLM shell 状态 | `RegistryOpenVerbInterceptor.cs` |
+| P1 | `ApplySafeDefaultsAndRemoveOverrides` 增加 HKLM 修复逻辑 | `RegistryOpenVerbInterceptor.cs` |
+| P2 | `RemoveOverridesOnly` 清理空的 verb 父键 | `RegistryOpenVerbInterceptor.cs` |
+| P2 | 备份增加过期检测 | `RegistryOpenVerbInterceptor.cs` |

@@ -2783,6 +2783,7 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
         _disposed = true;
         _cts.Cancel();
         _cleanupTimer?.Stop();
+        RestoreTrackedExplorerWindowsOnShutdown();
 
         _winEventHookManager.Dispose();
 
@@ -2813,6 +2814,31 @@ public sealed class ExplorerTabHookService : IDisposable, IExplorerAutoConvertCo
 
         _interceptOpenGate.Dispose();
         _cts.Dispose();
+    }
+
+    private void RestoreTrackedExplorerWindowsOnShutdown()
+    {
+        HashSet<IntPtr> trackedWindows =
+        [
+            .. _earlyHiddenExplorer.Keys,
+            .. _pending.Keys
+        ];
+
+        foreach (IntPtr hwnd in trackedWindows)
+        {
+            try
+            {
+                if (!_windowManager.IsAlive(hwnd))
+                    continue;
+
+                if (!_windowManager.IsVisible(hwnd))
+                    _windowManager.Show(hwnd);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn($"Failed to restore tracked Explorer window during shutdown: 0x{hwnd.ToInt64():X} ({ex.Message})");
+            }
+        }
     }
 
     public bool IsAutoConvertEnabled => _autoConvertEnabled;

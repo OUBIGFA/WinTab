@@ -1,10 +1,7 @@
+using System.Diagnostics;
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Win32;
 using WinTab.Diagnostics;
-using WinTab.Persistence;
 using WinTab.Platform.Win32;
 using WinTab.ShellBridge;
 
@@ -13,7 +10,14 @@ namespace WinTab.App.Services;
 public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 {
     private const string OpenVerb = "open";
-    private const string NoneVerb = "none";
+    private const string DelegateExecuteValueName = "DelegateExecute";
+    private const string DelegateExecuteComDescription = "WinTab Open Folder DelegateExecute";
+    private const string HandlerArgNew = "--wintab-open-folder";
+    private const string HandlerArgLegacy = "--open-folder";
+    private const string CompanionArg = "--wintab-companion";
+    private const string CompanionWatchParentArg = "--watch-parent";
+    private const uint ShcneAssocChanged = 0x08000000;
+    private const uint ShcnfIdList = 0x0000;
 
     private static readonly string[] TargetVerbs =
     [
@@ -22,12 +26,6 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         "opennewwindow"
     ];
 
-    private const string BackupRegistryPath = @"Software\WinTab\Backups\ExplorerOpenVerb";
-    private const string BackupRegistryValueName = "BackupJson";
-    private const string DelegateExecuteValueName = "DelegateExecute";
-    private const string DelegateExecuteComDescription = "WinTab Open Folder DelegateExecute";
-    private const string HandlerArgNew = "--wintab-open-folder";
-    private const string HandlerArgLegacy = "--open-folder";
     private static readonly string[] TargetClasses =
     [
         "Folder",
@@ -41,10 +39,13 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
     private readonly string _comRuntimeConfigPath;
     private readonly string _com32RuntimeConfigPath;
     private readonly Logger _logger;
+    private readonly ExplorerShellBaselineStore _baselineStore;
 
     public RegistryOpenVerbInterceptor(string exePath, Logger logger)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exePath);
+        ArgumentNullException.ThrowIfNull(logger);
+
         _exePath = exePath;
         string baseDirectory = Path.GetDirectoryName(_exePath) ?? string.Empty;
         _comHostPath = Path.Combine(baseDirectory, "WinTab.ShellBridge.comhost.dll");
@@ -52,9 +53,10 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         _comRuntimeConfigPath = Path.Combine(baseDirectory, "WinTab.ShellBridge.runtimeconfig.json");
         _com32RuntimeConfigPath = Path.Combine(baseDirectory, "x86", "WinTab.ShellBridge.runtimeconfig.json");
         _logger = logger;
+        _baselineStore = new ExplorerShellBaselineStore(exePath, logger);
     }
 
-    private static string BackupPath => Path.Combine(AppPaths.BaseDirectory, "explorer-open-verb-backup.json");
+    private static string BackupPath => ExplorerShellBaselineStore.BackupPath;
     private static string DelegateExecuteClsidBraced => "{" + DelegateExecuteIds.OpenFolderDelegateExecuteClsid + "}";
 
     public static string HandlerArgument => HandlerArgNew;
@@ -70,15 +72,14 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             {
                 foreach (string verb in TargetVerbs)
                 {
-                    string? cmd = ReadCommand(cls, verb);
+                    string? command = ReadCommand(cls, verb);
                     string? delegateExecute = ReadDelegateExecute(cls, verb);
-
                     allVerbsDelegateExecute &= DelegateExecutePointsToWinTab(delegateExecute);
-                    allVerbsLegacyCommand &= CommandPointsToWinTab(cmd);
+                    allVerbsLegacyCommand &= CommandPointsToWinTab(command);
                 }
             }
 
-            if (allVerbsDelegateExecute && IsDelegateExecuteComServerRegistered(requireMachineWideRegistration: true))
+            if (allVerbsDelegateExecute && IsCurrentUserDelegateExecuteRegistered())
                 return true;
 
             return allVerbsLegacyCommand;
@@ -91,50 +92,37 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     public void EnableOrRepair(bool persistAcrossReboot)
     {
-        EnsureBackupExists();
-        PersistBackupToRegistry();
+        _baselineStore.EnsureBaselineExists();
         WriteOverride(persistAcrossReboot);
     }
 
     public void DisableAndRestore(bool deleteBackup = true)
     {
-        BackupFile? backup = null;
-
-        if (File.Exists(BackupPath))
+        ExplorerShellBaseline? baseline = _baselineStore.TryLoadBaseline();
+        if (baseline is null)
         {
-            try
-            {
-                backup = LoadBackup();
-            }
-            catch
-            {
-                backup = null;
-            }
-        }
-
-        backup ??= TryLoadBackupFromRegistry();
-
-        if (backup is null)
-        {
-            _logger.Warn("Explorer open-verb backup is missing; applying safe defaults.");
+            _logger.Warn("Explorer shell baseline is missing; removing WinTab overrides only.");
             ApplySafeDefaultsAndRemoveOverrides();
+            if (deleteBackup)
+                _baselineStore.DeletePersistedBaseline();
             return;
         }
 
-        RestoreFromBackup(backup);
+        RestoreFromBackup(baseline);
         RemoveDelegateExecuteComServerRegistration();
 
         if (IsLikelyBrokenOpenVerbState())
         {
-            _logger.Warn("Restored backup produced invalid open-verb state; applying safe defaults.");
+            _logger.Warn("Restored Explorer shell baseline still looks inconsistent; removing WinTab overrides only.");
             ApplySafeDefaultsAndRemoveOverrides();
+        }
+        else
+        {
+            NotifyShellAssociationChanged();
         }
 
         if (deleteBackup)
-        {
-            try { File.Delete(BackupPath); } catch { /* ignore */ }
-            try { DeleteBackupFromRegistry(); } catch { /* ignore */ }
-        }
+            _baselineStore.DeletePersistedBaseline();
     }
 
     public void StartupSelfCheck(bool settingEnabled, bool persistAcrossReboot)
@@ -143,45 +131,39 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         {
             bool registryPointsToUs = IsEnabled();
             bool registryPointsToAnyWinTabHandler = HasAnyWinTabHandlerOverride();
-            bool backupExistsOnDisk = File.Exists(BackupPath);
-            bool backupExistsInRegistry = TryLoadBackupFromRegistry() is not null;
-            bool hasAnyBackup = backupExistsOnDisk || backupExistsInRegistry;
+            bool hasAnyBackup = _baselineStore.TryLoadBaseline() is not null;
 
             if (!settingEnabled && (registryPointsToUs || registryPointsToAnyWinTabHandler))
             {
-                _logger.Warn("Explorer open-verb points to WinTab but setting is disabled; restoring defaults.");
+                _logger.Warn("Explorer open-verb points to WinTab while the feature is disabled; restoring baseline.");
                 DisableAndRestore(deleteBackup: false);
                 return;
             }
 
             if (!settingEnabled && IsLikelyBrokenOpenVerbState())
             {
-                _logger.Warn("Detected invalid Explorer open-verb state while interception is disabled; applying safe defaults.");
+                _logger.Warn("Detected invalid Explorer open-verb state while interception is disabled; removing WinTab overrides.");
                 ApplySafeDefaultsAndRemoveOverrides();
                 return;
             }
 
-            if (settingEnabled)
-            {
-                // Unsafe state: a WinTab override exists but no valid backup source.
-                // Reset override first to avoid backing up already-hijacked values.
-                if (ShouldResetOverrideBeforeRepair(registryPointsToUs, registryPointsToAnyWinTabHandler, hasAnyBackup))
-                {
-                    string warning = registryPointsToUs
-                        ? "Explorer open-verb points to WinTab but no backup exists; resetting override before repair."
-                        : "Explorer open-verb points to an incomplete WinTab override but no backup exists; resetting override before repair.";
-                    _logger.Warn(warning);
-                    DisableAndRestore();
-                    EnableOrRepair(persistAcrossReboot);
-                    return;
-                }
+            if (!settingEnabled)
+                return;
 
-                // If enabled, we should have both a working override and at least one backup source.
-                if (!registryPointsToUs || !hasAnyBackup)
-                {
-                    _logger.Warn("Explorer open-verb interception is enabled but state is inconsistent; repairing.");
-                    EnableOrRepair(persistAcrossReboot);
-                }
+            if (persistAcrossReboot)
+                _logger.Warn("Persistent Explorer interception is no longer supported; runtime-only mode will be used.");
+
+            if (ShouldResetOverrideBeforeRepair(registryPointsToUs, registryPointsToAnyWinTabHandler, hasAnyBackup))
+            {
+                _logger.Warn("Detected residual WinTab shell override without a trusted baseline; clearing override before re-enabling.");
+                DisableAndRestore(deleteBackup: false);
+                return;
+            }
+
+            if (!registryPointsToUs || !hasAnyBackup)
+            {
+                _logger.Warn("Explorer open-verb interception is enabled but state is inconsistent; repairing in runtime-only mode.");
+                EnableOrRepair(persistAcrossReboot: false);
             }
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
@@ -190,208 +172,23 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
     }
 
-    private void EnsureBackupExists()
-    {
-        if (File.Exists(BackupPath))
-            return;
-
-        Directory.CreateDirectory(AppPaths.BaseDirectory);
-
-        BackupFile backup = CreateBackup();
-        File.WriteAllText(BackupPath, JsonSerializer.Serialize(backup, new JsonSerializerOptions { WriteIndented = true }));
-        _logger.Info($"Saved Explorer open-verb backup: {BackupPath}");
-    }
-
-    private BackupFile CreateBackup()
-    {
-        var backup = new BackupFile
-        {
-            ExePath = _exePath,
-            CreatedAtUtc = DateTimeOffset.UtcNow,
-            Entries = TargetClasses.SelectMany(cls => TargetVerbs.Select(verb => new BackupEntry
-            {
-                ClassName = cls,
-                Verb = verb,
-                DefaultVerb = ReadEffectiveDefaultVerb(cls),
-                CommandDefault = ReadEffectiveCommandDefaultValue(cls, verb),
-                DelegateExecute = ReadEffectiveDelegateExecuteValue(cls, verb),
-            })).ToList(),
-        };
-
-        backup.Sha256 = ComputeSha256(JsonSerializer.Serialize(backup with { Sha256 = null }));
-        return backup;
-    }
-
-    private void PersistBackupToRegistry()
-    {
-        BackupFile backup = File.Exists(BackupPath)
-            ? LoadBackup()
-            : CreateBackup();
-
-        string json = JsonSerializer.Serialize(backup);
-
-        using RegistryKey key = Registry.CurrentUser.CreateSubKey(BackupRegistryPath, writable: true)
-            ?? throw new InvalidOperationException("Failed to create backup registry key.");
-
-        key.SetValue(BackupRegistryValueName, json, RegistryValueKind.String);
-    }
-
-    private BackupFile? TryLoadBackupFromRegistry()
-    {
-        try
-        {
-            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(BackupRegistryPath, writable: false);
-            if (key is null)
-                return null;
-
-            string? json = key.GetValue(BackupRegistryValueName) as string;
-            if (string.IsNullOrWhiteSpace(json))
-                return null;
-
-            var backup = JsonSerializer.Deserialize<BackupFile>(json);
-            if (backup is null)
-                return null;
-
-            string expected = ComputeSha256(JsonSerializer.Serialize(backup with { Sha256 = null }));
-            if (!string.Equals(expected, backup.Sha256, StringComparison.OrdinalIgnoreCase))
-                return null;
-
-            return backup;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private void DeleteBackupFromRegistry()
-    {
-        using RegistryKey? root = Registry.CurrentUser.OpenSubKey(@"Software", writable: true);
-        root?.DeleteSubKeyTree(@"WinTab\Backups\ExplorerOpenVerb", throwOnMissingSubKey: false);
-    }
-
-    private BackupFile LoadBackup()
-    {
-        string json = File.ReadAllText(BackupPath);
-        var backup = JsonSerializer.Deserialize<BackupFile>(json) ?? throw new InvalidOperationException("Backup file invalid.");
-
-        string expected = ComputeSha256(JsonSerializer.Serialize(backup with { Sha256 = null }));
-        if (!string.Equals(expected, backup.Sha256, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Backup file hash mismatch.");
-
-        return backup;
-    }
-
     private void WriteOverride(bool persistAcrossReboot)
     {
-        if (!persistAcrossReboot)
-        {
-            WriteSessionOnlyOverride();
-            return;
-        }
+        if (persistAcrossReboot)
+            _logger.Warn("Persistent Explorer interception was requested, but WinTab now enforces runtime-only interception for safety.");
 
-        bool comHostExists = File.Exists(_comHostPath);
-        bool comHost32Exists = File.Exists(_comHost32Path);
-        bool x64RuntimeCompatible = HasCompatibleRuntimeForHost(_comRuntimeConfigPath, RegistryView.Registry64);
-        bool x86RuntimeCompatible = HasCompatibleRuntimeForHost(_com32RuntimeConfigPath, RegistryView.Registry32);
-        bool delegateExecutePrerequisitesSatisfied = ShouldPreferDelegateExecuteOverride(
-            comHostExists,
-            comHost32Exists,
-            x64RuntimeCompatible,
-            x86RuntimeCompatible);
-        bool machineWideRegistrationReady = false;
-
-        if (delegateExecutePrerequisitesSatisfied)
-        {
-            RegisterDelegateExecuteComServer();
-            machineWideRegistrationReady = IsDelegateExecuteComServerRegistered(requireMachineWideRegistration: true);
-
-            if (!machineWideRegistrationReady)
-            {
-                _logger.Warn("DelegateExecute machine-wide COM registration is unavailable, using legacy command override for shell-host compatibility.");
-                RemoveDelegateExecuteComServerRegistration();
-            }
-        }
-        else
-        {
-            RemoveDelegateExecuteComServerRegistration();
-        }
-
-        bool preferDelegateExecute = ShouldUseDelegateExecuteOverride(
-            delegateExecutePrerequisitesSatisfied,
-            machineWideRegistrationReady);
-
-        foreach (string cls in TargetClasses)
-        {
-            foreach (string verb in TargetVerbs)
-            {
-                using RegistryKey key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\shell\{verb}\command", writable: true)
-                    ?? throw new InvalidOperationException("Failed to create registry key.");
-
-                if (preferDelegateExecute)
-                {
-                    key.SetValue(string.Empty, string.Empty, RegistryValueKind.String);
-                    key.SetValue(DelegateExecuteValueName, DelegateExecuteClsidBraced, RegistryValueKind.String);
-                }
-                else
-                {
-                    key.DeleteValue(DelegateExecuteValueName, throwOnMissingValue: false);
-                    key.SetValue(string.Empty, BuildOverrideCommand(), RegistryValueKind.String);
-                }
-            }
-        }
-
-        // Ensure default verb points to open (standard), but we do not touch other verbs.
-        foreach (string cls in TargetClasses)
-        {
-            using RegistryKey key = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\shell", writable: true)
-                ?? throw new InvalidOperationException("Failed to create registry key.");
-
-            key.SetValue(string.Empty, OpenVerb, RegistryValueKind.String);
-        }
-
-        if (preferDelegateExecute)
-        {
-            _logger.Info("Enabled Explorer open-verb interception via DelegateExecute COM bridge (HKCU, x64+x86).");
-        }
-        else
-        {
-            if (comHostExists && !comHost32Exists)
-            {
-                _logger.Warn($"DelegateExecute x86 COM host is missing, using legacy command override: {_comHost32Path}");
-            }
-            else if (!comHostExists && comHost32Exists)
-            {
-                _logger.Warn($"DelegateExecute x64 COM host is missing, using legacy command override: {_comHostPath}");
-            }
-            else if (!comHostExists && !comHost32Exists)
-            {
-                _logger.Warn($"DelegateExecute COM hosts are missing, using legacy command override: {_comHostPath} | {_comHost32Path}");
-            }
-            else if (!x64RuntimeCompatible && !x86RuntimeCompatible)
-            {
-                _logger.Warn($"DelegateExecute bridge runtimes are incompatible for both architectures, using legacy command override: {_comRuntimeConfigPath} | {_com32RuntimeConfigPath}");
-            }
-            else if (!x64RuntimeCompatible)
-            {
-                _logger.Warn($"DelegateExecute x64 runtime is incompatible, using legacy command override: {_comRuntimeConfigPath}");
-            }
-            else if (!x86RuntimeCompatible)
-            {
-                _logger.Warn($"DelegateExecute x86 runtime is incompatible, using legacy command override: {_com32RuntimeConfigPath}");
-            }
-            else
-            {
-                _logger.Warn("DelegateExecute bridge registration is incomplete, using legacy command override for shell-host compatibility.");
-            }
-
-            _logger.Info("Enabled Explorer open-verb interception (legacy command mode, HKCU).");
-        }
+        WriteSessionOnlyOverride();
     }
 
     private void WriteSessionOnlyOverride()
     {
         RemoveOverridesOnly();
+
+        if (!EnsureCompanionCleanupReady())
+        {
+            _logger.Warn("Companion cleanup process could not be started; Explorer interception will remain disabled.");
+            return;
+        }
 
         bool comHostExists = File.Exists(_comHostPath);
         bool comHost32Exists = File.Exists(_comHost32Path);
@@ -407,13 +204,43 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         {
             RegisterDelegateExecuteComServerVolatileCurrentUser();
             WriteSessionOnlyVerbOverrides(preferDelegateExecute: true);
-            _logger.Info("Enabled Explorer open-verb interception in session-only mode via volatile DelegateExecute bridge (HKCU, x64+x86).");
+            NotifyShellAssociationChanged();
+            _logger.Info("Enabled Explorer open-verb interception in runtime-only mode via volatile DelegateExecute bridge.");
             return;
         }
 
         WriteSessionOnlyVerbOverrides(preferDelegateExecute: false);
         LogLegacyDelegateExecuteFallbackReason(comHostExists, comHost32Exists, x64RuntimeCompatible, x86RuntimeCompatible);
-        _logger.Info("Enabled Explorer open-verb interception in session-only mode (volatile HKCU command overrides).");
+        NotifyShellAssociationChanged();
+        _logger.Info("Enabled Explorer open-verb interception in runtime-only mode via volatile HKCU command overrides.");
+    }
+
+    private bool EnsureCompanionCleanupReady()
+    {
+        try
+        {
+            if (!File.Exists(_exePath))
+            {
+                _logger.Warn($"Companion cleanup launcher path is missing: {_exePath}");
+                return false;
+            }
+
+            Process? process = Process.Start(new ProcessStartInfo
+            {
+                FileName = _exePath,
+                Arguments = $"{CompanionArg} {CompanionWatchParentArg} {Environment.ProcessId}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+            });
+
+            return process is not null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or FileNotFoundException)
+        {
+            _logger.Warn($"Failed to start companion cleanup process: {ex.Message}");
+            return false;
+        }
     }
 
     private void WriteSessionOnlyVerbOverrides(bool preferDelegateExecute)
@@ -508,9 +335,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         foreach (string cls in TargetClasses)
         {
             foreach (string verb in TargetVerbs)
-            {
                 root.DeleteSubKeyTree($@"{cls}\{BuildCommandSubKey(verb)}", throwOnMissingSubKey: false);
-            }
         }
 
         RemoveDelegateExecuteComServerRegistration();
@@ -536,7 +361,8 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             TryDeleteEmptyKey(root, cls);
         }
 
-        _logger.Info("Removed WinTab overrides and restored native Explorer defaults.");
+        NotifyShellAssociationChanged();
+        _logger.Info("Removed WinTab overrides and revealed the native Explorer handlers.");
     }
 
     private static void TryDeleteEmptyKey(RegistryKey root, string subKeyPath)
@@ -606,93 +432,52 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         return false;
     }
 
-    private void RestoreFromBackup(BackupFile backup)
+    private void RestoreFromBackup(ExplorerShellBaseline baseline)
     {
-        using RegistryKey? root = Registry.CurrentUser.OpenSubKey(@"Software\Classes", writable: true);
-        if (root is null)
-            return;
-
-        var entriesByClass = backup.Entries
-            .GroupBy(e => e.ClassName, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
-
-        foreach (string cls in TargetClasses)
-        {
-            entriesByClass.TryGetValue(cls, out List<BackupEntry>? classEntries);
-
-            string? defaultVerb = classEntries?.FirstOrDefault()?.DefaultVerb;
-            using (RegistryKey? shell = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{cls}\shell", writable: true))
-            {
-                if (shell is not null)
-                {
-                    if (defaultVerb is null)
-                        shell.DeleteValue(string.Empty, throwOnMissingValue: false);
-                    else
-                        shell.SetValue(string.Empty, defaultVerb, RegistryValueKind.String);
-                }
-            }
-
-            foreach (string verb in TargetVerbs)
-            {
-                BackupEntry? entry = classEntries?.FirstOrDefault(e =>
-                    string.Equals(e.Verb, verb, StringComparison.OrdinalIgnoreCase));
-
-                string commandKey = $@"{cls}\shell\{verb}\command";
-                if (entry is null || ShouldDeleteCommandKeyOnRestore(entry.CommandDefault, entry.DelegateExecute))
-                {
-                    root.DeleteSubKeyTree(commandKey, throwOnMissingSubKey: false);
-                }
-                else
-                {
-                    using RegistryKey k = Registry.CurrentUser.CreateSubKey($@"Software\Classes\{commandKey}", writable: true)
-                        ?? throw new InvalidOperationException("Failed to create registry key.");
-
-                    if (entry.CommandDefault is null)
-                        k.DeleteValue(string.Empty, throwOnMissingValue: false);
-                    else
-                        k.SetValue(string.Empty, entry.CommandDefault, RegistryValueKind.String);
-
-                    if (entry.DelegateExecute is null)
-                        k.DeleteValue(DelegateExecuteValueName, throwOnMissingValue: false);
-                    else
-                        k.SetValue(DelegateExecuteValueName, entry.DelegateExecute, RegistryValueKind.String);
-                }
-            }
-        }
-
-        _logger.Info("Restored Explorer open-verb defaults from backup." );
+        _baselineStore.RestoreCurrentUserBaseline(baseline);
+        _logger.Info("Restored Explorer shell baseline from backup.");
     }
 
     private static string BuildCommandSubKey(string verb) => $@"shell\{verb}\command";
 
     private string? ReadCommand(string className, string verb)
     {
-        using RegistryKey? k = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{className}\{BuildCommandSubKey(verb)}");
-        return k?.GetValue(string.Empty) as string;
+        using RegistryKey? key = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{className}\{BuildCommandSubKey(verb)}");
+        return key?.GetValue(string.Empty) as string;
     }
 
     private string? ReadDelegateExecute(string className, string verb)
     {
-        using RegistryKey? k = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{className}\{BuildCommandSubKey(verb)}");
-        return k?.GetValue(DelegateExecuteValueName) as string;
+        using RegistryKey? key = Registry.CurrentUser.OpenSubKey($@"Software\Classes\{className}\{BuildCommandSubKey(verb)}");
+        return key?.GetValue(DelegateExecuteValueName) as string;
     }
 
     private static string? ReadEffectiveCommandDefaultValue(string className, string verb)
     {
-        using RegistryKey? k = Registry.ClassesRoot.OpenSubKey($@"{className}\{BuildCommandSubKey(verb)}", writable: false);
-        return k?.GetValue(string.Empty) as string;
+        return ReadEffectiveStringValue($@"Software\Classes\{className}\{BuildCommandSubKey(verb)}", string.Empty);
     }
 
     private static string? ReadEffectiveDelegateExecuteValue(string className, string verb)
     {
-        using RegistryKey? k = Registry.ClassesRoot.OpenSubKey($@"{className}\{BuildCommandSubKey(verb)}", writable: false);
-        return k?.GetValue(DelegateExecuteValueName) as string;
+        return ReadEffectiveStringValue($@"Software\Classes\{className}\{BuildCommandSubKey(verb)}", DelegateExecuteValueName);
     }
 
     private static string? ReadEffectiveDefaultVerb(string className)
     {
-        using RegistryKey? k = Registry.ClassesRoot.OpenSubKey($@"{className}\shell", writable: false);
-        return k?.GetValue(string.Empty) as string;
+        return ReadEffectiveStringValue($@"Software\Classes\{className}\shell", string.Empty);
+    }
+
+    private static string? ReadEffectiveStringValue(string subKeyPath, string valueName)
+    {
+        return ReadStringValue(RegistryHive.CurrentUser, RegistryView.Default, subKeyPath, valueName)
+            ?? ReadStringValue(RegistryHive.LocalMachine, RegistryView.Default, subKeyPath, valueName);
+    }
+
+    private static string? ReadStringValue(RegistryHive hive, RegistryView view, string subKeyPath, string valueName)
+    {
+        using RegistryKey baseKey = RegistryKey.OpenBaseKey(hive, view);
+        using RegistryKey? key = baseKey.OpenSubKey(subKeyPath, writable: false);
+        return key?.GetValue(valueName) as string;
     }
 
     private bool CommandPointsToWinTab(string? command)
@@ -708,18 +493,9 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
         string normalized = command.Trim();
         string quotedExe = $"\"{_exePath}\"";
-
-        if (normalized.Contains(quotedExe, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Also allow unquoted exact path formats for compatibility.
-        if (normalized.StartsWith(_exePath + " ", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(normalized, _exePath, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
+        return normalized.Contains(quotedExe, StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith(_exePath + " ", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(normalized, _exePath, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool DelegateExecutePointsToWinTab(string? delegateExecute)
@@ -728,10 +504,7 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             return false;
 
         string normalized = delegateExecute.Trim().Trim('{', '}');
-        return string.Equals(
-            normalized,
-            DelegateExecuteIds.OpenFolderDelegateExecuteClsid,
-            StringComparison.OrdinalIgnoreCase);
+        return string.Equals(normalized, DelegateExecuteIds.OpenFolderDelegateExecuteClsid, StringComparison.OrdinalIgnoreCase);
     }
 
     private string DelegateExecuteClsidKeyPath => $@"Software\Classes\CLSID\{DelegateExecuteClsidBraced}";
@@ -748,51 +521,26 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         return view == RegistryView.Registry32 ? _comHost32Path : _comHostPath;
     }
 
-    private bool IsDelegateExecuteComServerRegistered()
-    {
-        return IsDelegateExecuteComServerRegistered(requireMachineWideRegistration: false);
-    }
-
-    private bool IsDelegateExecuteComServerRegistered(bool requireMachineWideRegistration)
-    {
-        bool currentUserRegistered = IsDelegateExecuteComServerRegistered(RegistryHive.CurrentUser);
-        if (!currentUserRegistered)
-            return false;
-
-        if (!requireMachineWideRegistration)
-            return true;
-
-        return IsDelegateExecuteComServerRegistered(RegistryHive.LocalMachine);
-    }
-
-    private bool IsDelegateExecuteComServerRegistered(RegistryHive hive)
+    private bool IsCurrentUserDelegateExecuteRegistered()
     {
         try
         {
             foreach (RegistryView view in GetDelegateExecuteRegistryViews())
             {
-                using RegistryKey? inproc = RegistryKey.OpenBaseKey(hive, view)
+                using RegistryKey? inproc = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
                     .OpenSubKey($@"{DelegateExecuteClsidKeyPath}\InProcServer32", writable: false);
                 if (inproc is null)
                     return false;
 
                 string? registeredPath = inproc.GetValue(string.Empty) as string;
-                if (string.IsNullOrWhiteSpace(registeredPath))
-                    return false;
-
                 string expectedPath = GetComHostPathForView(view);
-                string normalizedRegistered = Path.GetFullPath(registeredPath).Replace('/', '\\');
-                string normalizedExpected = Path.GetFullPath(expectedPath).Replace('/', '\\');
-
-                if (!string.Equals(normalizedRegistered, normalizedExpected, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(
+                        Path.GetFullPath(registeredPath ?? string.Empty).Replace('/', '\\'),
+                        Path.GetFullPath(expectedPath).Replace('/', '\\'),
+                        StringComparison.OrdinalIgnoreCase))
+                {
                     return false;
-
-                string? threadingModel = inproc.GetValue("ThreadingModel") as string;
-                if (!string.Equals(threadingModel, "Apartment", StringComparison.OrdinalIgnoreCase))
-                    return false;
-
-                if (!File.Exists(normalizedExpected))
-                    return false;
+                }
             }
 
             return true;
@@ -803,48 +551,10 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         }
     }
 
-    private void RegisterDelegateExecuteComServer()
-    {
-        foreach (RegistryView view in GetDelegateExecuteRegistryViews())
-        {
-            string comHostPath = GetComHostPathForView(view);
-
-            // Register in HKLM (machine-wide) - for Windows 11 Start Menu and third-party apps
-            try
-            {
-                using RegistryKey clsidKeyLm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view)
-                    .CreateSubKey(DelegateExecuteClsidKeyPath, writable: true)
-                    ?? throw new InvalidOperationException("Failed to create DelegateExecute CLSID key in HKLM.");
-                clsidKeyLm.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
-
-                using RegistryKey inprocLm = clsidKeyLm.CreateSubKey("InProcServer32", writable: true)
-                    ?? throw new InvalidOperationException("Failed to create DelegateExecute InProcServer32 key in HKLM.");
-                inprocLm.SetValue(string.Empty, comHostPath, RegistryValueKind.String);
-                inprocLm.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
-            {
-                _logger.Warn($"Failed to register DelegateExecute COM server in HKLM (view {view}): {ex.Message}");
-            }
-
-            // Register in HKCU (user-only) - for same-user Explorer
-            using RegistryKey clsidKeyCu = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
-                .CreateSubKey(DelegateExecuteClsidKeyPath, writable: true)
-                ?? throw new InvalidOperationException("Failed to create DelegateExecute CLSID key in HKCU.");
-            clsidKeyCu.SetValue(string.Empty, DelegateExecuteComDescription, RegistryValueKind.String);
-
-            using RegistryKey inprocCu = clsidKeyCu.CreateSubKey("InProcServer32", writable: true)
-                ?? throw new InvalidOperationException("Failed to create DelegateExecute InProcServer32 key in HKCU.");
-            inprocCu.SetValue(string.Empty, comHostPath, RegistryValueKind.String);
-            inprocCu.SetValue("ThreadingModel", "Apartment", RegistryValueKind.String);
-        }
-    }
-
     private void RemoveDelegateExecuteComServerRegistration()
     {
         foreach (RegistryView view in GetDelegateExecuteRegistryViews())
         {
-            // Clean up HKLM COM registration (machine-wide)
             try
             {
                 using RegistryKey? rootLm = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view)
@@ -853,10 +563,9 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
             {
-                _logger.Warn($"Failed to remove DelegateExecute COM registration from HKLM (view {view}): {ex.Message}");
+                _logger.Warn($"Failed to remove legacy DelegateExecute COM registration from HKLM (view {view}): {ex.Message}");
             }
 
-            // Clean up HKCU COM registration (user-only)
             using RegistryKey? rootCu = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, view)
                 .OpenSubKey(@"Software\Classes\CLSID", writable: true);
             rootCu?.DeleteSubKeyTree(DelegateExecuteClsidBraced, throwOnMissingSubKey: false);
@@ -865,7 +574,6 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
     private string BuildOverrideCommand()
     {
-        // Marker argument distinguishes handler invocation from normal startup.
         return $"\"{_exePath}\" {HandlerArgNew} \"%1\"";
     }
 
@@ -876,16 +584,16 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
 
         try
         {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(runtimeConfigPath));
-            JsonElement runtimeOptions = document.RootElement.GetProperty("runtimeOptions");
-            string rollForward = runtimeOptions.TryGetProperty("rollForward", out JsonElement rollForwardElement)
+            using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(runtimeConfigPath));
+            System.Text.Json.JsonElement runtimeOptions = document.RootElement.GetProperty("runtimeOptions");
+            string rollForward = runtimeOptions.TryGetProperty("rollForward", out System.Text.Json.JsonElement rollForwardElement)
                 ? rollForwardElement.GetString() ?? "LatestMinor"
                 : "LatestMinor";
 
-            if (!runtimeOptions.TryGetProperty("frameworks", out JsonElement frameworks) || frameworks.ValueKind != JsonValueKind.Array)
+            if (!runtimeOptions.TryGetProperty("frameworks", out System.Text.Json.JsonElement frameworks) || frameworks.ValueKind != System.Text.Json.JsonValueKind.Array)
                 return false;
 
-            foreach (JsonElement framework in frameworks.EnumerateArray())
+            foreach (System.Text.Json.JsonElement framework in frameworks.EnumerateArray())
             {
                 string? name = framework.GetProperty("name").GetString();
                 string? versionText = framework.GetProperty("version").GetString();
@@ -956,47 +664,24 @@ public sealed class RegistryOpenVerbInterceptor : IExplorerOpenVerbInterceptor
         return comHostExists && comHost32Exists && x64RuntimeCompatible && x86RuntimeCompatible;
     }
 
-    private static bool ShouldUseDelegateExecuteOverride(
-        bool delegateExecutePrerequisitesSatisfied,
-        bool machineWideRegistrationReady)
-    {
-        return delegateExecutePrerequisitesSatisfied && machineWideRegistrationReady;
-    }
-
     private static bool ShouldResetOverrideBeforeRepair(
         bool registryPointsToUs,
         bool registryPointsToAnyWinTabHandler,
         bool hasAnyBackup)
     {
+        _ = registryPointsToUs;
         return registryPointsToAnyWinTabHandler && !hasAnyBackup;
     }
 
-    private static string ComputeSha256(string text)
+    private void NotifyShellAssociationChanged()
     {
-        byte[] bytes = Encoding.UTF8.GetBytes(text);
-        byte[] hash = SHA256.HashData(bytes);
-        return Convert.ToHexString(hash);
-    }
-
-    private static bool ShouldDeleteCommandKeyOnRestore(string? commandDefault, string? delegateExecute)
-    {
-        return commandDefault is null && delegateExecute is null;
-    }
-
-    private sealed record BackupFile
-    {
-        public required string ExePath { get; init; }
-        public required DateTimeOffset CreatedAtUtc { get; init; }
-        public required List<BackupEntry> Entries { get; init; }
-        public string? Sha256 { get; set; }
-    }
-
-    private sealed record BackupEntry
-    {
-        public required string ClassName { get; init; }
-        public required string Verb { get; init; }
-        public string? DefaultVerb { get; init; }
-        public string? CommandDefault { get; init; }
-        public string? DelegateExecute { get; init; }
+        try
+        {
+            NativeMethods.SHChangeNotify(ShcneAssocChanged, ShcnfIdList, IntPtr.Zero, IntPtr.Zero);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Failed to notify shell association change: {ex.Message}");
+        }
     }
 }

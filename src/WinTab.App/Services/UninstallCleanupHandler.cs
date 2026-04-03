@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using Microsoft.Win32;
 using WinTab.Diagnostics;
@@ -11,6 +12,9 @@ namespace WinTab.App.Services;
 public static class UninstallCleanupHandler
 {
     private const string DelegateExecuteClsidBraced = "{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}";
+    private const uint ShcneAssocChanged = 0x08000000;
+    private const uint ShcnfIdList = 0x0000;
+
     public static int RunUninstallCleanup(string exePath)
     {
         Logger? cleanupLogger = null;
@@ -109,11 +113,60 @@ public static class UninstallCleanupHandler
                 }
             }
 
+            NotifyShellAssociationChanged(logger);
+
             logger?.Info("Removed WinTab overrides and restored native Explorer defaults for standalone cleanup.");
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             logger?.Error("Failed to restore Explorer open-verb defaults.", ex);
+        }
+    }
+
+    public static int RunCompanionCleanup(string exePath, int parentProcessId)
+    {
+        Logger? cleanupLogger = null;
+
+        try
+        {
+            cleanupLogger = TryCreateCompanionLogger();
+            if (cleanupLogger is null)
+            {
+                string tempLogPath = Path.Combine(Path.GetTempPath(), "WinTab", "wintab-companion.log");
+                cleanupLogger = new Logger(tempLogPath);
+            }
+
+            if (parentProcessId > 0)
+            {
+                try
+                {
+                    using Process parentProcess = Process.GetProcessById(parentProcessId);
+                    parentProcess.WaitForExit();
+                }
+                catch (ArgumentException)
+                {
+                    cleanupLogger.Info($"Companion cleanup skipped process wait because parent PID {parentProcessId} is no longer running.");
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException)
+                {
+                    cleanupLogger.Warn($"Companion cleanup could not wait for parent PID {parentProcessId}: {ex.Message}");
+                }
+            }
+
+            var interceptor = new RegistryOpenVerbInterceptor(exePath, cleanupLogger);
+            interceptor.DisableAndRestore(deleteBackup: false);
+            cleanupLogger.Info("Companion cleanup restored Explorer shell state after WinTab stopped.");
+            return 0;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            cleanupLogger?.Error("Companion cleanup failed; falling back to safe Explorer override removal.", ex);
+            TryRestoreExplorerOpenVerbDefaults(cleanupLogger);
+            return 1;
+        }
+        finally
+        {
+            cleanupLogger?.Dispose();
         }
     }
 
@@ -125,6 +178,18 @@ public static class UninstallCleanupHandler
 
         if (key.SubKeyCount == 0 && key.ValueCount == 0)
             root.DeleteSubKeyTree(subKeyPath, throwOnMissingSubKey: false);
+    }
+
+    private static void NotifyShellAssociationChanged(Logger? logger)
+    {
+        try
+        {
+            NativeMethods.SHChangeNotify(ShcneAssocChanged, ShcnfIdList, IntPtr.Zero, IntPtr.Zero);
+        }
+        catch (Exception ex)
+        {
+            logger?.Warn($"Failed to notify shell association change: {ex.Message}");
+        }
     }
 
     private static RegistryView[] GetRegistryViews()

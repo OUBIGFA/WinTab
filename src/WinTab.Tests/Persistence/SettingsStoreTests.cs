@@ -25,7 +25,8 @@ public sealed class SettingsStoreTests
             AppSettings settings = store.Load();
 
             settings.RunAtStartup.Should().BeFalse();
-            settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
+            settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
+            settings.EnableAutoConvertExplorerWindows.Should().BeFalse();
             settings.OpenNewTabFromActiveTabPath.Should().BeTrue();
             settings.OpenChildFolderInNewTabFromActiveTab.Should().BeFalse();
             settings.CloseTabOnDoubleClick.Should().BeFalse();
@@ -130,6 +131,7 @@ public sealed class SettingsStoreTests
 
         AppSettings settings = store!.Load();
         settings.SchemaVersion.Should().Be(2);
-        settings.EnableExplorerOpenVerbInterception.Should().BeTrue();
+        settings.EnableExplorerOpenVerbInterception.Should().BeFalse();
+        settings.EnableAutoConvertExplorerWindows.Should().BeFalse();
     }
 }

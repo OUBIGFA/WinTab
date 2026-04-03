@@ -1,0 +1,100 @@
+---
+
+## 三、WinTab 卸载清理代码的缺陷
+
+### 3.1 现有清理逻辑
+
+WinTab 的卸载清理代码位于：
+- `UninstallCleanupHandler.RunUninstallCleanup()` — 卸载入口
+- `RegistryOpenVerbInterceptor.DisableAndRestore()` — 恢复逻辑
+- `RegistryOpenVerbInterceptor.ApplySafeDefaultsAndRemoveOverrides()` — 安全回退
+
+### 3.2 关键缺陷
+
+| # | 缺陷 | 影响 | 严重程度 |
+|---|------|------|---------|
+| 1 | HKLM COM 清理需要管理员权限，失败时静默跳过 | HKLM 残留指向已删除 DLL 的 COM 注册 | 高 |
+| 2 | 备份可能捕获已被劫持的状态（读 HKCR 而非 HKLM） | 恢复时写回 WinTab 自己的 CLSID 而非系统原始值 | 高 |
+| 3 | `RemoveOverridesOnly()` 只删 `command` 子键不删父 `verb` 键 | HKCU 留下空键，可能干扰 Shell 行为 | 中 |
+| 4 | 无法处理 HKLM 已被修改的情况 | 恢复后 HKLM 状态异常但未检测 | 中 |
+| 5 | 崩溃时 volatile 键无法清理（需等待重启） | 会话期间 Explorer 持续异常直到重启 | 低 |
+| 6 | 备份无过期机制 | Windows 更新后旧备份恢复可能不兼容 | 低 |
+
+---
+
+## 四、WinTab 修复方案
+
+### 4.1 卸载清理流程改进
+
+#### 建议 1：卸载时强制要求管理员权限
+
+卸载时应以 UAC 提升方式运行，确保 HKLM COM 注册能被删除。Inno Setup 安装器应配置卸载也以管理员身份执行。
+
+#### 建议 2：增加 HKLM 状态验证
+
+清理完成后，应验证 HKLM 中的 shell verb 键是否处于正常状态：
+
+```csharp
+private static void VerifyHklmShellState()
+{
+    string[] classes = { "Folder", "Directory", "Drive" };
+    string systemClsid = "{11dbb47c-a525-400b-9e80-a54615a090c0}";
+
+    foreach (var cls in classes)
+    {
+        // 1. 验证 shell 默认值不是空字符串
+        using var shellKey = Registry.LocalMachine.OpenSubKey(
+            $@"Software\Classes\{cls}\shell");
+        var defaultVal = shellKey?.GetValue(string.Empty) as string;
+        if (defaultVal == string.Empty)
+            Log.Warning("HKLM {Class}\shell default is empty string, should be absent", cls);
+
+        // 2. 验证 open\command 有系统 DelegateExecute
+        using var cmdKey = Registry.LocalMachine.OpenSubKey(
+            $@"Software\Classes\{cls}\shell\open\command");
+        var delegateExec = cmdKey?.GetValue("DelegateExecute") as string;
+        if (delegateExec != systemClsid)
+            Log.Warning("HKLM DelegateExecute mismatch for {Class}", cls);
+    }
+}
+```
+
+#### 建议 3：安全默认恢复应包含完整的系统默认值
+
+`ApplySafeDefaultsAndRemoveOverrides()` 不应只删除 HKCU 覆盖，还应验证并修复 HKLM 关键值。
+
+推荐的 Windows 11 系统默认值：
+
+```
+[HKLM\Software\Classes\Folder\shell]          (Default) = (值不存在)
+[HKLM\Software\Classes\Folder\shell\open\command]
+    (Default)        = REG_EXPAND_SZ "%SystemRoot%\Explorer.exe"
+    DelegateExecute  = "{11dbb47c-a525-400b-9e80-a54615a090c0}"
+
+[HKLM\Software\Classes\Folder\shell\explore\command]
+    (Default)        = REG_EXPAND_SZ "%SystemRoot%\Explorer.exe"
+    DelegateExecute  = "{11dbb47c-a525-400b-9e80-a54615a090c0}"
+
+[HKLM\Software\Classes\Folder\shell\opennewwindow\command]
+    (Default)        = ""
+    DelegateExecute  = "{11dbb47c-a525-400b-9e80-a54615a090c0}"
+```
+
+同样的模式适用于 `Directory` 和 `Drive`。
+
+#### 建议 4：备份应直接读 HKLM
+
+创建备份时应直接读 HKLM 而非 HKCR 合并视图，避免读到 HKCU 覆盖的值：
+
+```csharp
+private BackupEntry ReadOriginalSystemValue(string cls, string verb)
+{
+    using var key = Registry.LocalMachine.OpenSubKey(
+        $@"Software\Classes\{cls}\shell\{verb}\command");
+    return new BackupEntry
+    {
+        CommandDefault = key?.GetValue(string.Empty) as string,
+        DelegateExecute = key?.GetValue("DelegateExecute") as string,
+    };
+}
+```

@@ -333,6 +333,21 @@ public sealed class ExplorerTabHookServiceHelpersTests
             "fallback should reuse minimized Explorer windows, not arbitrary hidden windows");
     }
 
+    [Fact]
+    public void RuntimeHookSource_ShouldRestoreTrackedExplorerWindowsOnDispose()
+    {
+        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "ExplorerTabUtilityPort", "ExplorerTabHookService.cs"]));
+
+        source.Should().Contain("RestoreTrackedExplorerWindowsOnShutdown();",
+            "disposing the runtime hook must unhide any Explorer windows that WinTab hid during conversion");
+        source.Should().Contain(".. _earlyHiddenExplorer.Keys",
+            "shutdown restore must include Explorer windows hidden by the early anti-flash path");
+        source.Should().Contain(".. _pending.Keys",
+            "shutdown restore must include Explorer windows hidden while a conversion was still in flight");
+        source.Should().Contain("_windowManager.Show(hwnd);",
+            "shutdown restore must explicitly make tracked Explorer windows visible again");
+    }
+
     private static T InvokePrivateStatic<T>(string methodName, params object?[] args)
     {
         MethodInfo method = typeof(ExplorerTabHookService).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)

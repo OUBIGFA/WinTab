@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using System.IO;
 using System.Reflection;
-using System.Text.Json;
 using FluentAssertions;
 using WinTab.App.Services;
 using WinTab.Diagnostics;
@@ -14,19 +12,12 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
 {
     private readonly string _tempDir;
     private readonly Logger _logger;
-    private readonly string _backupPath;
-    private readonly string? _originalBackupContent;
-    private readonly bool _hadOriginalBackup;
 
     public RegistryOpenVerbInterceptorTests()
     {
         _tempDir = Path.Combine(Path.GetTempPath(), "WinTabRegistryInterceptorTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
         _logger = new Logger(Path.Combine(_tempDir, "test.log"));
-
-        _backupPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WinTab", "explorer-open-verb-backup.json");
-        _hadOriginalBackup = File.Exists(_backupPath);
-        _originalBackupContent = _hadOriginalBackup ? File.ReadAllText(_backupPath) : null;
     }
 
     [Fact]
@@ -78,77 +69,16 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
     }
 
     [Fact]
-    public void LoadBackup_ShouldRejectHashMismatch()
-    {
-        string exePath = @"C:\WinTab\WinTab.exe";
-        var interceptor = new RegistryOpenVerbInterceptor(exePath, _logger);
-
-        string backupPath = GetBackupPath();
-        Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
-        File.WriteAllText(backupPath, BuildBackupJsonWithHash(exePath, "BAD_HASH"));
-
-        Action act = () => InvokeLoadBackup(interceptor);
-
-        act.Should().Throw<TargetInvocationException>()
-            .WithInnerException<InvalidOperationException>()
-            .WithMessage("*hash mismatch*");
-    }
-
-    [Fact]
-    public void LoadBackup_ShouldAcceptValidHash()
-    {
-        string exePath = @"C:\WinTab\WinTab.exe";
-        var interceptor = new RegistryOpenVerbInterceptor(exePath, _logger);
-
-        string backupPath = GetBackupPath();
-        Directory.CreateDirectory(Path.GetDirectoryName(backupPath)!);
-
-        DateTimeOffset createdAt = DateTimeOffset.UtcNow;
-        string jsonWithoutHash = BuildBackupJsonWithHash(exePath, null, createdAt);
-        string validHash = ComputeSha256(jsonWithoutHash);
-        File.WriteAllText(backupPath, BuildBackupJsonWithHash(exePath, validHash, createdAt));
-
-        object? backup = InvokeLoadBackup(interceptor);
-        backup.Should().NotBeNull();
-    }
-
-    [Fact]
-    public void RestorePolicy_WhenOnlyDelegateExecuteExists_ShouldKeepCommandKey()
-    {
-        MethodInfo? method = typeof(RegistryOpenVerbInterceptor).GetMethod(
-            "ShouldDeleteCommandKeyOnRestore",
-            BindingFlags.NonPublic | BindingFlags.Static);
-
-        method.Should().NotBeNull("restore policy must preserve DelegateExecute-only handlers");
-
-        object? shouldDelete = method?.Invoke(null, [null, "{A1111111-2222-3333-4444-555555555555}"]);
-        shouldDelete.Should().BeOfType<bool>();
-        ((bool)shouldDelete!).Should().BeFalse(
-            "when DelegateExecute is present, restore must not drop the shell handler");
-    }
-
-    [Fact]
-    public void RuntimeInterceptorSource_ShouldRegisterDelegateExecuteInLocalMachineAndCurrentUserHives()
-    {
-        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
-
-        source.Should().Contain("RegistryHive.LocalMachine",
-            "runtime repair must create machine-wide COM registration so Windows 11 Start Menu and elevated shell hosts do not fail with class-not-registered");
-        source.Should().Contain("RegistryHive.CurrentUser",
-            "runtime repair should still preserve user-scope registration for same-user Explorer scenarios");
-    }
-
-    [Fact]
     public void RuntimeInterceptorSource_ShouldRemoveDelegateExecuteFromLocalMachineAndCurrentUserHives()
     {
         string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
 
-        source.Should().Contain("Failed to remove DelegateExecute COM registration from HKLM",
-            "cleanup logging should explicitly cover machine-wide registration removal failures");
+        source.Should().Contain("Failed to remove legacy DelegateExecute COM registration from HKLM",
+            "cleanup logging should explicitly cover machine-wide legacy registration removal failures");
         source.Should().Contain("rootLm?.DeleteSubKeyTree",
-            "runtime cleanup must attempt to delete the machine-wide COM registration");
+            "runtime cleanup must attempt to delete the machine-wide legacy COM registration");
         source.Should().Contain("rootCu?.DeleteSubKeyTree",
-            "runtime cleanup must still delete the user-scope COM registration");
+            "runtime cleanup must still delete the user-scope registration");
     }
 
     [Fact]
@@ -160,7 +90,7 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
         source.Should().Contain("WriteSessionOnlyOverride",
             "session-only startup should not rely on persistent HKCU Classes overrides");
         source.Should().Contain("persistAcrossReboot",
-            "the interceptor must branch between reboot-persistent and session-only shell registration");
+            "the interceptor must explicitly reject reboot-persistent shell registration");
         helperSource.Should().Contain("REG_OPTION_VOLATILE",
             "session-only shell overrides must be created as volatile registry keys so Windows reboot clears them automatically");
     }
@@ -193,26 +123,34 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
             "broken-state detection should keep the same gating semantics as the reference version");
     }
 
+    [Fact]
+    public void RuntimeInterceptorSource_ShouldNotUseMergedClassesRootForBaselineCapture()
+    {
+        string interceptorSource = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
+        string baselineStoreSource = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "ExplorerShellBaselineStore.cs"]));
+
+        interceptorSource.Should().NotContain("Registry.ClassesRoot.OpenSubKey",
+            "runtime interception must not read the merged HKCR view when deciding what the native shell state is");
+        baselineStoreSource.Should().NotContain("Registry.ClassesRoot.OpenSubKey",
+            "baseline capture must read explicit HKCU/HKLM source hives instead of the merged HKCR view, otherwise WinTab can back up its own hijacked state as the 'default'");
+    }
+
+    [Fact]
+    public void RuntimeInterceptorSource_ShouldUseBaselineStoreAndCompanionCleanup()
+    {
+        string source = File.ReadAllText(TestRepoPaths.GetFile(["src", "WinTab.App", "Services", "RegistryOpenVerbInterceptor.cs"]));
+
+        source.Should().Contain("ExplorerShellBaselineStore",
+            "runtime interception must snapshot and restore the machine-specific Explorer baseline instead of hard-coding default verbs");
+        source.Should().Contain("EnsureCompanionCleanupReady",
+            "runtime interception must refuse to hijack Explorer unless a companion cleanup process is in place");
+        source.Should().Contain("Companion cleanup process could not be started; Explorer interception will remain disabled.",
+            "safety-first startup must fail closed if crash cleanup cannot be armed");
+    }
+
     public void Dispose()
     {
         _logger.Dispose();
-
-        try
-        {
-            if (_hadOriginalBackup)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(_backupPath)!);
-                File.WriteAllText(_backupPath, _originalBackupContent!);
-            }
-            else if (File.Exists(_backupPath))
-            {
-                File.Delete(_backupPath);
-            }
-        }
-        catch
-        {
-            // ignore
-        }
 
         try
         {
@@ -231,54 +169,5 @@ public sealed class RegistryOpenVerbInterceptorTests : IDisposable
 
         object? result = method.Invoke(interceptor, [command]);
         return result is bool b && b;
-    }
-
-    private static object? InvokeLoadBackup(RegistryOpenVerbInterceptor interceptor)
-    {
-        MethodInfo method = typeof(RegistryOpenVerbInterceptor).GetMethod("LoadBackup", BindingFlags.NonPublic | BindingFlags.Instance)
-            ?? throw new InvalidOperationException("Method not found: LoadBackup");
-
-        return method.Invoke(interceptor, null);
-    }
-
-    private static string GetBackupPath()
-    {
-        PropertyInfo property = typeof(RegistryOpenVerbInterceptor).GetProperty("BackupPath", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("Property not found: BackupPath");
-
-        return property.GetValue(null) as string
-            ?? throw new InvalidOperationException("BackupPath is null.");
-    }
-
-    private static string BuildBackupJsonWithHash(string exePath, string? hash, DateTimeOffset? createdAtUtc = null)
-    {
-        var payload = new
-        {
-            ExePath = exePath,
-            CreatedAtUtc = createdAtUtc ?? DateTimeOffset.UtcNow,
-            Entries = new[]
-            {
-                new
-                {
-                    ClassName = "Folder",
-                    Verb = "open",
-                    DefaultVerb = "open",
-                    CommandDefault = "explorer.exe \"%1\"",
-                    DelegateExecute = (string?)null
-                }
-            },
-            Sha256 = hash
-        };
-
-        return JsonSerializer.Serialize(payload);
-    }
-
-    private static string ComputeSha256(string text)
-    {
-        MethodInfo method = typeof(RegistryOpenVerbInterceptor).GetMethod("ComputeSha256", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("Method not found: ComputeSha256");
-
-        object? hash = method.Invoke(null, [text]);
-        return hash as string ?? throw new InvalidOperationException("ComputeSha256 returned null.");
     }
 }

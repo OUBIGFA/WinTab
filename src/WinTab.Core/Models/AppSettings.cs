@@ -17,12 +17,12 @@ public sealed class AppSettings
     public ThemeMode Theme { get; set; } = ThemeMode.Light;
 
     // Behavior
-    public bool EnableExplorerOpenVerbInterception { get; set; } = true;
+    public bool EnableExplorerOpenVerbInterception { get; set; } = false;
     public bool PersistExplorerOpenVerbInterceptionAcrossExit { get; set; } = false;
     public bool OpenNewTabFromActiveTabPath { get; set; } = true;
     public bool OpenChildFolderInNewTabFromActiveTab { get; set; } = false;
     public bool CloseTabOnDoubleClick { get; set; } = false;
-    public bool EnableAutoConvertExplorerWindows { get; set; } = true;
+    public bool EnableAutoConvertExplorerWindows { get; set; } = false;
 
     // Schema version for migration
     public int SchemaVersion { get; set; } = 2;

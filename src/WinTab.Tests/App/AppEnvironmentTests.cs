@@ -159,4 +159,21 @@ public sealed class AppEnvironmentTests
             processField.SetValue(null, originalProcess);
         }
     }
+
+    [Fact]
+    public void BuildExplorerStartInfo_WhenPhysicalFolderFallback_ShouldBypassShellExecuteToAvoidDelegateExecuteRecursion()
+    {
+        Type appEnvironmentType = typeof(AppEnvironment);
+        MethodInfo method = appEnvironmentType.GetMethod("BuildExplorerStartInfo", BindingFlags.Static | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("BuildExplorerStartInfo helper not found.");
+
+        object? result = method.Invoke(null, [@"C:\Windows"]);
+        result.Should().BeOfType<System.Diagnostics.ProcessStartInfo>();
+
+        var startInfo = (System.Diagnostics.ProcessStartInfo)result!;
+        startInfo.FileName.Should().Be("explorer.exe");
+        startInfo.Arguments.Should().Be("\"C:\\Windows\"");
+        startInfo.UseShellExecute.Should().BeFalse(
+            "physical-folder fallback must spawn explorer.exe directly instead of going through the shell open verb again");
+    }
 }

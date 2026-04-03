@@ -69,25 +69,35 @@ public sealed class RegistryOpenVerbCompatibilityPolicyTests : IDisposable
     }
 
     [Fact]
-    public void ShouldUseDelegateExecuteOverride_WhenMachineWideRegistrationIsUnavailable_ShouldStayInLegacyMode()
+    public void ShouldPreferDelegateExecuteOverride_WhenBridgePrerequisitesAreUnavailable_ShouldStayInLegacyMode()
     {
-        bool useDelegateExecute = InvokeShouldUseDelegateExecuteOverride(
-            delegateExecutePrerequisitesSatisfied: true,
-            machineWideRegistrationReady: false);
+        var interceptor = new RegistryOpenVerbInterceptor(@"C:\Program Files\WinTab\WinTab.exe", _logger);
 
-        useDelegateExecute.Should().BeFalse(
-            "a HKCU-only DelegateExecute registration recreates the class-not-registered failure for Windows 11 Start Menu and some third-party shell hosts");
+        bool preferDelegateExecute = InvokeShouldPreferDelegateExecuteOverride(
+            interceptor,
+            comHostExists: true,
+            comHost32Exists: true,
+            x64RuntimeCompatible: false,
+            x86RuntimeCompatible: true);
+
+        preferDelegateExecute.Should().BeFalse(
+            "runtime-only interception must fall back to command overrides whenever the DelegateExecute bridge is incomplete");
     }
 
     [Fact]
-    public void ShouldUseDelegateExecuteOverride_WhenMachineWideRegistrationIsReady_ShouldKeepDelegateExecuteMode()
+    public void ShouldPreferDelegateExecuteOverride_WhenBridgePrerequisitesAreReady_ShouldKeepDelegateExecuteMode()
     {
-        bool useDelegateExecute = InvokeShouldUseDelegateExecuteOverride(
-            delegateExecutePrerequisitesSatisfied: true,
-            machineWideRegistrationReady: true);
+        var interceptor = new RegistryOpenVerbInterceptor(@"C:\Program Files\WinTab\WinTab.exe", _logger);
 
-        useDelegateExecute.Should().BeTrue(
-            "a complete machine-wide registration should preserve the native DelegateExecute path for the full WinTab experience");
+        bool preferDelegateExecute = InvokeShouldPreferDelegateExecuteOverride(
+            interceptor,
+            comHostExists: true,
+            comHost32Exists: true,
+            x64RuntimeCompatible: true,
+            x86RuntimeCompatible: true);
+
+        preferDelegateExecute.Should().BeTrue(
+            "runtime-only interception should still prefer the no-flicker DelegateExecute path when both bridge architectures are usable");
     }
 
     [Fact]
@@ -141,19 +151,6 @@ public sealed class RegistryOpenVerbCompatibilityPolicyTests : IDisposable
             ?? throw new InvalidOperationException("Method not found: ShouldPreferDelegateExecuteOverride");
 
         object? result = method.Invoke(interceptor, [comHostExists, comHost32Exists, x64RuntimeCompatible, x86RuntimeCompatible]);
-        return result is bool value && value;
-    }
-
-    private static bool InvokeShouldUseDelegateExecuteOverride(
-        bool delegateExecutePrerequisitesSatisfied,
-        bool machineWideRegistrationReady)
-    {
-        MethodInfo method = typeof(RegistryOpenVerbInterceptor).GetMethod(
-            "ShouldUseDelegateExecuteOverride",
-            BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException("Method not found: ShouldUseDelegateExecuteOverride");
-
-        object? result = method.Invoke(null, [delegateExecutePrerequisitesSatisfied, machineWideRegistrationReady]);
         return result is bool value && value;
     }
 

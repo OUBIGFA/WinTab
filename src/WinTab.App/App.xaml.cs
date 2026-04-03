@@ -25,6 +25,9 @@ public partial class App : Application
 {
     private static bool _explicitShutdownRequested;
     private const string CleanupArgument = "--wintab-cleanup";
+    private const string CaptureShellBaselineArgument = "--wintab-capture-shell-baseline";
+    private const string CompanionArgument = "--wintab-companion";
+    private const string CompanionWatchParentArgument = "--watch-parent";
     private IServiceProvider? _serviceProvider;
     private TrayIconController? _trayIconController;
     private Logger? _logger;
@@ -53,9 +56,17 @@ public partial class App : Application
             return;
         }
 
-        if (e.Args.Length >= 1 && string.Equals(e.Args[0], "--wintab-companion", StringComparison.OrdinalIgnoreCase))
+        if (e.Args.Length >= 1 && string.Equals(e.Args[0], CaptureShellBaselineArgument, StringComparison.OrdinalIgnoreCase))
         {
-            Shutdown(0);
+            int code = CaptureShellBaseline();
+            Shutdown(code);
+            return;
+        }
+
+        if (e.Args.Length >= 1 && string.Equals(e.Args[0], CompanionArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            int code = RunCompanionCleanup(e.Args);
+            Shutdown(code);
             return;
         }
 
@@ -292,6 +303,48 @@ public partial class App : Application
     {
         ArgumentNullException.ThrowIfNull(settings);
         return settings.EnableExplorerOpenVerbInterception;
+    }
+
+    private static int CaptureShellBaseline()
+    {
+        Logger? logger = null;
+
+        try
+        {
+            logger = new Logger(Path.Combine(AppPaths.LogsDirectory, "wintab-baseline-capture.log"));
+            string exePath = AppEnvironment.ResolveLaunchExecutablePath();
+            var baselineStore = new ExplorerShellBaselineStore(exePath, logger);
+            baselineStore.CaptureAndPersist();
+            logger.Info("Explorer shell baseline capture completed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            logger?.Error("Explorer shell baseline capture failed.", ex);
+            return 1;
+        }
+        finally
+        {
+            logger?.Dispose();
+        }
+    }
+
+    private static int RunCompanionCleanup(IReadOnlyList<string> args)
+    {
+        int watchParentIndex = -1;
+        for (int i = 0; i < args.Count; i++)
+        {
+            if (string.Equals(args[i], CompanionWatchParentArgument, StringComparison.OrdinalIgnoreCase))
+            {
+                watchParentIndex = i;
+                break;
+            }
+        }
+
+        if (watchParentIndex < 0 || watchParentIndex + 1 >= args.Count || !int.TryParse(args[watchParentIndex + 1], out int parentPid))
+            return 1;
+
+        return UninstallCleanupHandler.RunCompanionCleanup(AppEnvironment.ResolveLaunchExecutablePath(), parentPid);
     }
 
     public void SetTrayIconVisibility(bool visible)

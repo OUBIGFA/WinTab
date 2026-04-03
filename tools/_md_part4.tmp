@@ -1,0 +1,30 @@
+---
+
+## 五、附录
+
+### 5.1 Windows 11 Shell Verb 关键 CLSID 参考
+
+| CLSID | 名称 | DLL | 用途 |
+|-------|------|-----|------|
+| `{11dbb47c-a525-400b-9e80-a54615a090c0}` | CLSID_ExecuteFolder | explorerframe.dll | 文件夹窗口内导航 |
+| `{CEFF45EE-C862-41DE-AEE2-A022C81EDA92}` | ExplorerHost | — | 新窗口宿主 |
+| `{a015411a-f97d-4ef3-8425-8a38d022aebc}` | — | — | 搜索/查找功能 |
+
+### 5.2 HKCR 合并规则
+
+```
+HKCR = HKCU\Software\Classes  ∪  HKLM\Software\Classes
+        （HKCU 优先）
+```
+
+HKCU 中的任何同名键值都会覆盖 HKLM 中的对应值。WinTab 正是利用这一机制实现了非管理员权限下的 Shell Verb 劫持。
+
+### 5.3 本次修复创建的临时文件（可安全删除）
+
+| 文件 | 用途 |
+|------|------|
+| `E:\_Free code\WinTab\tools\fix-explorer.reg` | 第一版修复（已过时） |
+| `E:\_Free code\WinTab\tools\fix-explorer3.reg` | 第三版修复（已过时） |
+| `E:\_Free code\WinTab\tools\fix-explorer4.reg` | 最终成功的修复 |
+| `C:\temp-*.txt` | 临时诊断输出文件 |
+| `C:\temp-*-shell.reg` | 注册表导出文件 |

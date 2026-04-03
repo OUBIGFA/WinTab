@@ -41,12 +41,12 @@ public sealed class InstallerUninstallOrderingTests
         // where the installed WinTab cleanup executable cannot run.
         script.Should().Contain("RegDeleteKeyIncludingSubkeys(HKCU, 'Software\\Classes\\Folder\\shell\\open');",
             "uninstall fallback should remove the user-scope Folder open override");
-
         script.Should().Contain("Directory\\shell",
             "uninstall fallback must remove the Directory shell overrides");
-
         script.Should().Contain("Drive\\shell",
             "uninstall fallback must remove the Drive shell overrides");
+        script.Should().Contain("SHChangeNotify($08000000, $0000, 0, 0);",
+            "after clearing overrides, the script fallback should notify Explorer to reload shell associations");
     }
 
     [Fact]

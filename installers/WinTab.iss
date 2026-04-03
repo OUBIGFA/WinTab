@@ -86,28 +86,12 @@ Name: "{group}\UninsWinTab"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
+Filename: "{app}\{#AppExeName}"; Parameters: "--wintab-capture-shell-baseline"; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Registry]
 ; Add startup entry if task selected
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#AppName}"; ValueData: """{app}\{#AppExeName}"""; Flags: uninsdeletevalue; Tasks: startup
-
-; Register DelegateExecute COM host for Explorer open verb interception
-; HKLM (machine-wide) - REQUIRED for Windows 11 Start Menu and third-party apps
-Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
-Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
-Root: HKLM; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
-Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
-Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\x86\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
-Root: HKLM32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
-
-; HKCU (user-only) - for legacy single-user scenarios and same-user Explorer
-Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
-Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
-Root: HKCU64; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
-Root: HKCU32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}"; ValueType: string; ValueData: "WinTab Open Folder DelegateExecute"; Flags: uninsdeletekey
-Root: HKCU32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueData: "{app}\x86\WinTab.ShellBridge.comhost.dll"; Flags: uninsdeletekey
-Root: HKCU32; Subkey: "Software\Classes\CLSID\{#DelegateExecuteClsid}\InProcServer32"; ValueType: string; ValueName: "ThreadingModel"; ValueData: "Apartment"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
@@ -506,6 +490,9 @@ begin
   end;
 end;
 
+procedure SHChangeNotify(wEventId: LongWord; uFlags: UINT; dwItem1: Integer; dwItem2: Integer);
+  external 'SHChangeNotify@shell32.dll stdcall';
+
 procedure RestoreExplorerOpenVerbDefaultsViaReg();
 var
   ResultCode: Integer;
@@ -513,16 +500,19 @@ var
 begin
   DelegateExecuteClsid := '{FD5BF2CD-0B24-4A80-9AF3-E40F9AFC0001}';
 
-  // Remove WinTab user-scope shell overrides so Explorer falls back to the native machine defaults.
+  // If app-side backup restore is unavailable, remove every HKCU shell override
+  // so Explorer falls back to the native HKCR handlers without leaving empty shells behind.
   RegDeleteValue(HKCU, 'Software\Classes\Folder\shell', '');
-  RegDeleteValue(HKCU, 'Software\Classes\Directory\shell', '');
-  RegDeleteValue(HKCU, 'Software\Classes\Drive\shell', '');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\open');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\explore');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Folder\shell\opennewwindow');
+
+  RegDeleteValue(HKCU, 'Software\Classes\Directory\shell', '');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\open');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\explore');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Directory\shell\opennewwindow');
+
+  RegDeleteValue(HKCU, 'Software\Classes\Drive\shell', '');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\open');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\explore');
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Classes\Drive\shell\opennewwindow');
@@ -537,6 +527,9 @@ begin
 
   // Remove WinTab backup registry entries.
   RegDeleteKeyIncludingSubkeys(HKCU, 'Software\WinTab\Backups\ExplorerOpenVerb');
+
+  // Notify Explorer to refresh shell associations immediately.
+  SHChangeNotify($08000000, $0000, 0, 0);
 end;
 
 function TryRunInstalledCleanupBeforeDelete(): Boolean;

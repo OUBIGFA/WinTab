@@ -29,10 +29,12 @@ public sealed class UninstallCleanupHandlerRegressionTests
         string source = File.ReadAllText(sourcePath);
 
         source.Should().Contain("shell?.DeleteValue(string.Empty, throwOnMissingValue: false);",
-            "fallback cleanup should remove the HKCU default verb override");
+            "standalone cleanup should remove the HKCU default verb override so Explorer can fall back to the native Win11 behavior");
         source.Should().Contain("classesRoot.DeleteSubKeyTree($@\"{cls}\\shell\\{verb}\", throwOnMissingSubKey: false);",
             "fallback cleanup should delete the HKCU open/explore/opennewwindow overrides");
         source.Should().Contain("TryDeleteEmptyKey(classesRoot, $@\"{cls}\\shell\");",
             "fallback cleanup should clean up empty HKCU shell keys after removing WinTab overrides");
+        source.Should().Contain("SHChangeNotify",
+            "after removing shell overrides, cleanup must notify the shell so Explorer drops any stale association cache without requiring the user to log off");
     }
 }
