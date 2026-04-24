@@ -1,0 +1,73 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Colors -->
+    <Color x:Key="PrimaryColor">#3F4A56</Color>
+    <Color x:Key="PrimaryLightColor">#5C6875</Color>
+    <Color x:Key="TextPrimaryColor">#20262D</Color>
+    <Color x:Key="TextSecondaryColor">#5B6672</Color>
+    <Color x:Key="TextTertiaryColor">#78828D</Color>
+    <Color x:Key="TextAccentColor">#334155</Color>
+    <Color x:Key="BorderColor">#D2D8DF</Color>
+    <Color x:Key="ControlBackgroundColor">#F6F7F8</Color>
+    <Color x:Key="ControlHoverColor">#ECEFF2</Color>
+    <Color x:Key="DangerColor">#C93F3F</Color>
+    <Color x:Key="DropdownBackgroundColor">#FFFFFF</Color>
+    <Color x:Key="ShadowColor">#9AA4AF</Color>
+    <Color x:Key="SuccessColor">#4B5563</Color>
+    <Color x:Key="WarningColor">#B57B16</Color>
+    <Color x:Key="AccentColor">#4B5563</Color>
+    <Color x:Key="StatusActiveColor">#4B5563</Color>
+    <Color x:Key="StatusInactiveColor">#8D96A0</Color>
+    <Color x:Key="CheckBoxCheckedBackgroundColor">#F8FAFC</Color>
+    <Color x:Key="CheckBoxCheckedBorderColor">#64748B</Color>
+    <Color x:Key="CheckBoxCheckedGlyphColor">#20262D</Color>
+
+    <!-- Brushes -->
+    <SolidColorBrush x:Key="PrimaryBrush" Color="{DynamicResource PrimaryColor}" />
+    <SolidColorBrush x:Key="PrimaryLightBrush" Color="{DynamicResource PrimaryLightColor}" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{DynamicResource TextPrimaryColor}" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{DynamicResource TextSecondaryColor}" />
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="{DynamicResource TextTertiaryColor}" />
+    <SolidColorBrush x:Key="TextAccentBrush" Color="{DynamicResource TextAccentColor}" />
+    <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource BorderColor}" />
+    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{DynamicResource ControlBackgroundColor}" />
+    <SolidColorBrush x:Key="ControlHoverBrush" Color="{DynamicResource ControlHoverColor}" />
+    <SolidColorBrush x:Key="DropdownBackgroundBrush" Color="{DynamicResource DropdownBackgroundColor}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{DynamicResource WarningColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource AccentColor}" />
+    <SolidColorBrush x:Key="StatusActiveBrush" Color="{DynamicResource StatusActiveColor}" />
+    <SolidColorBrush x:Key="StatusInactiveBrush" Color="{DynamicResource StatusInactiveColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckedBackgroundBrush" Color="{DynamicResource CheckBoxCheckedBackgroundColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckedBorderBrush" Color="{DynamicResource CheckBoxCheckedBorderColor}" />
+    <SolidColorBrush x:Key="CheckBoxCheckedGlyphBrush" Color="{DynamicResource CheckBoxCheckedGlyphColor}" />
+
+    <!-- Gradients -->
+    <LinearGradientBrush x:Key="BackgroundGradientBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FFFBFBFA" Offset="0" />
+        <GradientStop Color="#FFF0F2F4" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="TitleBarBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#FFF8F8F7" Offset="0" />
+        <GradientStop Color="#FFECEFF1" Offset="1" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="BorderGradientBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#66D8DDE3" Offset="0.0" />
+        <GradientStop Color="#AAB9C0C9" Offset="0.3" />
+        <GradientStop Color="#CC6F7A86" Offset="0.5" />
+        <GradientStop Color="#AAAEB6BF" Offset="0.7" />
+        <GradientStop Color="#66D8DDE3" Offset="1.0" />
+    </LinearGradientBrush>
+
+    <LinearGradientBrush x:Key="CardGradientBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FFFFFFFF" Offset="0.0" />
+        <GradientStop Color="#FFF9FAFA" Offset="0.3" />
+        <GradientStop Color="#FFF3F4F5" Offset="0.7" />
+        <GradientStop Color="#FFEFF1F3" Offset="1.0" />
+    </LinearGradientBrush>
+
+</ResourceDictionary>

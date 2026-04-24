@@ -1,0 +1,330 @@
+﻿<Window x:Class="WinTab.UI.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WinTab"
+        Width="980"
+        Height="650"
+        MinWidth="820"
+        MinHeight="560"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="CanResizeWithGrip"
+        WindowStyle="None"
+        WindowStartupLocation="CenterScreen"
+        TextElement.Foreground="{DynamicResource TextPrimaryBrush}">
+
+    <Window.Resources>
+        <Style x:Key="PanelBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="18" />
+        </Style>
+
+        <Style x:Key="SettingTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="SettingDescriptionStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+            <Setter Property="LineHeight" Value="20" />
+        </Style>
+
+    </Window.Resources>
+
+    <Border Background="{DynamicResource BackgroundGradientBrush}"
+            BorderBrush="{DynamicResource BorderGradientBrush}"
+            BorderThickness="1"
+            CornerRadius="8">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="60" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="44" />
+            </Grid.RowDefinitions>
+
+            <Border x:Name="TitleBar"
+                    Grid.Row="0"
+                    Background="{DynamicResource TitleBarBrush}"
+                    CornerRadius="8,8,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+                        <Border Width="28"
+                                Height="28"
+                                CornerRadius="6"
+                                Background="{DynamicResource ControlHoverBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="1"
+                                Margin="0,0,10,0">
+                            <Viewbox Width="17" Height="17" Stretch="Uniform">
+                                <Path Fill="{DynamicResource TextAccentBrush}"
+                                      Data="M3,6.5 C3,5.1 4.1,4 5.5,4 L10,4 L12,6 L18.5,6 C19.9,6 21,7.1 21,8.5 L21,17 C21,18.1 20.1,19 19,19 L5,19 C3.9,19 3,18.1 3,17 Z M5,8 L5,17 L19,17 L19,8 L11.2,8 L9.2,6 L5.5,6 C5.2,6 5,6.2 5,6.5 Z" />
+                            </Viewbox>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="AppNameText" Text="WinTab" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock x:Name="AppTaglineText" Text="Explorer tab control" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,12,0" VerticalAlignment="Center">
+                        <Button x:Name="ThemeToggleButton"
+                                Style="{StaticResource IconButtonStyle}"
+                                Width="30"
+                                Height="30"
+                                Margin="0,0,8,0"
+                                Focusable="False">
+                            <TextBlock x:Name="ThemeToggleIcon"
+                                       Text="🌙"
+                                       FontSize="15"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                        </Button>
+                        <Button x:Name="LanguageToggleButton"
+                                Style="{StaticResource IconButtonStyle}"
+                                Width="30"
+                                Height="30"
+                                Margin="0,0,10,0"
+                                Focusable="False">
+                            <TextBlock x:Name="LanguageToggleIcon"
+                                       Text="🌐"
+                                       FontSize="14"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                        </Button>
+                        <Button x:Name="MinimizeButton" Style="{StaticResource IconButtonStyle}" Content="&#x2212;" Focusable="False" />
+                        <Button x:Name="CloseButton" Style="{StaticResource IconButtonStyle}" Content="&#x2715;" Focusable="False" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="22,20,22,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="300" />
+                    <ColumnDefinition Width="20" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Background="{DynamicResource CardGradientBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="7"
+                        Padding="20">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="22" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Image Source="/WinTab;component/wintab-logo.png"
+                               Width="116"
+                               Height="116"
+                               HorizontalAlignment="Center"
+                               Stretch="Uniform" />
+
+                        <StackPanel Grid.Row="2" HorizontalAlignment="Center">
+                            <TextBlock x:Name="HeroTitleText" Text="File Explorer tab manager"
+                                       FontSize="25"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       LineHeight="31"
+                                       TextAlignment="Center" />
+                            <TextBlock x:Name="HeroDescriptionText" Text="WinTab is a focused utility for File Explorer tabs on Windows 11. It merges newly opened folders into existing Explorer windows and reuses tabs when the target path is already open."
+                                       TextWrapping="Wrap"
+                                       TextAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,10,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="4" VerticalAlignment="Bottom">
+                            <TextBlock x:Name="OpenSourceLicenseText"
+                                       Text="Open source license: MIT License"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       FontSize="12"
+                                       LineHeight="18" />
+                            <TextBlock Margin="0,6,0,0"
+                                       TextWrapping="Wrap"
+                                       FontSize="12"
+                                       LineHeight="18">
+                                <Hyperlink x:Name="OpenSourceLink"
+                                           NavigateUri="https://github.com/OUBIGFA/WinTab"
+                                           RequestNavigate="OpenSourceLink_RequestNavigate">
+                                    <Run x:Name="OpenSourceLinkText" Text="https://github.com/OUBIGFA/WinTab" />
+                                </Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <StackPanel Grid.Column="2">
+                    <Border Style="{StaticResource PanelBorderStyle}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="14" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock x:Name="CoreSwitchesTitleText" Text="Core switches" FontSize="19" FontWeight="SemiBold" />
+
+                            <Grid Grid.Row="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="12" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="12" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="12" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="12" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="WindowHookTitleText" Text="Auto-merge new Explorer windows" Style="{StaticResource SettingTitleStyle}" />
+                                        <TextBlock x:Name="WindowHookDescText" Text="Keep new folder opens inside the existing Explorer session."
+                                                   Style="{StaticResource SettingDescriptionStyle}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="WindowHookToggle"
+                                              Grid.Column="1"
+                                              Style="{StaticResource CustomCheckBoxStyle}"
+                                              VerticalAlignment="Center"
+                                              Margin="16,0,0,0" />
+                                </Grid>
+
+                                <Grid Grid.Row="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="ReuseTabsTitleText" Text="Reuse matching tabs" Style="{StaticResource SettingTitleStyle}" />
+                                        <TextBlock x:Name="ReuseTabsDescText" Text="Switch to an existing folder tab instead of duplicating it."
+                                                   Style="{StaticResource SettingDescriptionStyle}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="ReuseTabsToggle"
+                                              Grid.Column="1"
+                                              Style="{StaticResource CustomCheckBoxStyle}"
+                                              VerticalAlignment="Center"
+                                              Margin="16,0,0,0" />
+                                </Grid>
+
+                                <Grid Grid.Row="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="DoubleClickTitleText" Text="Double-click tab title to close" Style="{StaticResource SettingTitleStyle}" />
+                                        <TextBlock x:Name="DoubleClickDescText" Text="Only acts on Explorer tab headers. Blank title bar keeps native behavior."
+                                                   Style="{StaticResource SettingDescriptionStyle}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="DoubleClickCloseToggle"
+                                              Grid.Column="1"
+                                              Style="{StaticResource CustomCheckBoxStyle}"
+                                              VerticalAlignment="Center"
+                                              Margin="16,0,0,0" />
+                                </Grid>
+
+                                <Grid Grid.Row="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="StartupTitleText" Text="Start with Windows" Style="{StaticResource SettingTitleStyle}" />
+                                        <TextBlock x:Name="StartupDescText" Text="Starts WinTab after sign-in for the current Windows user."
+                                                   Style="{StaticResource SettingDescriptionStyle}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="StartupToggle"
+                                              Grid.Column="1"
+                                              Style="{StaticResource CustomCheckBoxStyle}"
+                                              VerticalAlignment="Center"
+                                              Margin="16,0,0,0" />
+                                </Grid>
+
+                                <Grid Grid.Row="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="AutoUpdateTitleText" Text="Automatic updates" Style="{StaticResource SettingTitleStyle}" />
+                                        <TextBlock x:Name="AutoUpdateDescText" Text="Checks WinTab releases on startup."
+                                                   Style="{StaticResource SettingDescriptionStyle}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="AutoUpdateToggle"
+                                              Grid.Column="1"
+                                              Style="{StaticResource CustomCheckBoxStyle}"
+                                              VerticalAlignment="Center"
+                                              Margin="16,0,0,0" />
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <Border Style="{StaticResource PanelBorderStyle}" Margin="0,18,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel>
+                                <TextBlock x:Name="ActionsTitleText" Text="Actions" FontSize="19" FontWeight="SemiBold" />
+                                <TextBlock x:Name="ActionsDescText" Text="Open from tray anytime. Closing this window keeps WinTab running."
+                                           Style="{StaticResource SettingDescriptionStyle}"
+                                           Margin="0,8,0,0" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="CheckUpdatesButton"
+                                        Content="Check Updates"
+                                        Style="{StaticResource FlatButtonStyle}"
+                                        Margin="0,0,10,0" />
+                                <Button x:Name="HideWindowButton"
+                                        Content="Hide to Tray"
+                                        Style="{StaticResource FlatButtonStyle}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="2"
+                    Background="{DynamicResource ControlBackgroundBrush}"
+                    CornerRadius="0,0,8,8"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="0,1,0,0">
+                <Grid Margin="18,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="FooterTipText" Text="Ctrl + Shift while opening a folder keeps that open as a separate Explorer window."
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,8,0,8"
+                               VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
