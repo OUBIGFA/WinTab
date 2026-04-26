@@ -45,8 +45,8 @@ public partial class SystemTrayIcon : UserControl, IDisposable
             : Constants.NotifyIconText;
         OpenSettingsMenu.Header = zh ? "\u6253\u5f00 WinTab" : "Open WinTab";
         WindowHookMenu.Header = zh ? "\u81ea\u52a8\u5408\u5e76\u8d44\u6e90\u7ba1\u7406\u5668\u7a97\u53e3" : "Auto-merge Explorer windows";
-        ReuseTabsMenu.Header = zh ? "\u590d\u7528\u540c\u8def\u5f84\u6807\u7b7e\u9875" : "Reuse matching tabs";
-        DoubleClickCloseMenu.Header = zh ? "\u53cc\u51fb\u6807\u7b7e\u9875\u6807\u9898\u5173\u95ed\u6807\u7b7e\u9875" : "Double-click tab title to close";
+        ReuseTabsMenu.Header = zh ? "\u590d\u7528\u6807\u7b7e" : "Reuse tabs";
+        DoubleClickCloseMenu.Header = zh ? "\u53cc\u51fb\u5173\u95ed\u6807\u7b7e\u9875" : "Double-click to close tab";
         StartupMenu.Header = zh ? "\u5f00\u673a\u542f\u52a8" : "Start with Windows";
         AutoUpdateMenu.Header = zh ? "\u81ea\u52a8\u66f4\u65b0" : "Automatic updates";
         CheckUpdatesMenu.Header = zh ? "\u68c0\u67e5\u66f4\u65b0" : "Check for updates";

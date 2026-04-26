@@ -11,8 +11,8 @@
                 <MenuItem x:Name="OpenSettingsMenu" Header="Open WinTab" />
                 <Separator />
                 <MenuItem x:Name="WindowHookMenu" Header="Auto-merge Explorer windows" IsCheckable="True" StaysOpenOnClick="True" />
-                <MenuItem x:Name="ReuseTabsMenu" Header="Reuse matching tabs" IsCheckable="True" StaysOpenOnClick="True" />
-                <MenuItem x:Name="DoubleClickCloseMenu" Header="Double-click tab title to close" IsCheckable="True" StaysOpenOnClick="True" />
+                <MenuItem x:Name="ReuseTabsMenu" Header="Reuse tabs" IsCheckable="True" StaysOpenOnClick="True" />
+                <MenuItem x:Name="DoubleClickCloseMenu" Header="Double-click to close tab" IsCheckable="True" StaysOpenOnClick="True" />
                 <Separator />
                 <MenuItem x:Name="StartupMenu" Header="Start with Windows" IsCheckable="True" StaysOpenOnClick="True" />
                 <MenuItem x:Name="AutoUpdateMenu" Header="Automatic updates" IsCheckable="True" StaysOpenOnClick="True" />

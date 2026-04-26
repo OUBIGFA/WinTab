@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Runtime.InteropServices;
 using AutoUpdaterDotNET;
 using AutoUpdaterDotNET.Markdown;
 using WinTab.Helpers;
@@ -45,26 +44,11 @@ internal static class UpdateManager
 
     private static string? FindMatchingUpdateAssetUrl(JsonNode jsonNode)
     {
-        var currentRuntime = Environment.Version.Major > 5 ? $"Net{Environment.Version.Major}" : "NetFW";
-        var currentArch = RuntimeInformation.ProcessArchitecture switch
-        {
-            Architecture.X86 => "x86",
-            Architecture.Arm64 => "arm64",
-            _ => "x64"
-        };
-
         var assets = jsonNode["assets"]!.AsArray();
         foreach (var asset in assets)
         {
             var assetName = asset!["name"]!.GetValue<string>();
-            var split = assetName.Split('_');
-            if (split.Length < 4)
-                continue;
-
-            var arch = split[2].Split('.')[0];
-            var runtime = split[3].Replace(".zip", "");
-
-            if (runtime.StartsWith(currentRuntime) && arch == currentArch)
+            if (assetName.EndsWith("_Setup.exe", StringComparison.OrdinalIgnoreCase))
                 return asset["browser_download_url"]!.GetValue<string>();
         }
 
