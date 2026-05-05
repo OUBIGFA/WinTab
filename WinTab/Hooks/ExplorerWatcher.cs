@@ -23,6 +23,8 @@ using WindowEntry = DualKeyEntry<InternetExplorer, nint?, WindowInfo>;
 public sealed class ExplorerWatcher : IHook
 {
     private const int MergeHideGraceMs = 2_500;
+    private const int AutomationRootTtlMs = 5_000;
+    private const int StripBoundsRectMatchSlop = 2; // px tolerance when comparing window rect snapshots
     private static bool _instanceRunning;
     private static Guid ShellBrowserGuid = typeof(IShellBrowser).GUID;
 
@@ -30,6 +32,9 @@ public sealed class ExplorerWatcher : IHook
     private readonly ConcurrentDictionary<nint, byte> _processedHWnds = new();
     private readonly ConcurrentDictionary<nint, byte> _knownExplorerWindows = new();
     private readonly ConcurrentDictionary<nint, long> _mergeHiddenWindows = new();
+    private readonly ConcurrentDictionary<nint, TabStripBounds> _stripBoundsCache = new();
+    private readonly ConcurrentDictionary<nint, byte> _stripBoundsRefreshInflight = new();
+    private readonly ConcurrentDictionary<nint, (AutomationElement element, long expiresAt)> _automationRootCache = new();
     private readonly DualKeyDictionary<InternetExplorer, nint?, WindowInfo> _windowEntryDict = [];
     private readonly object _windowEntryDictLock = new();
     private readonly object _processLock = new();
@@ -39,17 +44,16 @@ public sealed class ExplorerWatcher : IHook
     private ShellPathComparer? _shellPathComparer;
     private StaTaskScheduler? _staTaskScheduler;
     private Timer? _explorerCheckTimer;
-    private Timer? _preHideTimer;
     private Timer? _hiddenRecoveryTimer;
     private DShellWindowsEvents_WindowRegisteredEventHandler? _windowRegisteredHandler;
-    private WinEventDelegate? _eventObjectShowHookCallback;
-    private nint _eventObjectShowHookId;
     private int _mainExplorerProcessId;
     private nint _mainWindowHandle;
     private string _defaultLocation = string.Empty;
     private bool _reuseTabs = true;
     private bool _isForcingTabs;
     private long _suppressPreHideUntil;
+
+    private sealed record TabStripBounds(Rectangle StripRect, Rectangle[] TabRects, RECT WindowRect, long RefreshedAt);
 
     public ExplorerWatcher()
     {
@@ -93,6 +97,193 @@ public sealed class ExplorerWatcher : IHook
     {
         explorerWindow = Helper.IsFileExplorerWindow(explorerWindow) ? explorerWindow : WinApi.GetForegroundWindow();
         return Helper.IsFileExplorerWindow(explorerWindow) && GetExplorerTabItemAtPoint(screenPoint, explorerWindow) != null;
+    }
+
+    /// <summary>
+    /// Cheap, hook-thread-safe predicate. Returns true ONLY when <paramref name="screenPoint"/> sits
+    /// inside an actual Explorer tab title (TabItem rect) of <paramref name="explorerWindow"/>. The
+    /// "+" new-tab button, the empty drag area to the right of the last tab, the title bar, and the
+    /// minimize/maximize/close buttons are all explicitly excluded so a double-click outside a real
+    /// tab keeps Explorer's native behaviour (maximize/restore on title bar, drag, etc.).
+    /// Tab rects come from a per-window UI Automation snapshot computed on a background thread; the
+    /// cache is warmed eagerly when the window is registered. If the cache isn't ready yet we return
+    /// false (no heuristic fallback) — losing one tab-close gesture is far better than swallowing a
+    /// title-bar maximize.
+    /// </summary>
+    public bool IsPointOnTabStrip(Point screenPoint, nint explorerWindow)
+    {
+        if (!Helper.IsFileExplorerWindow(explorerWindow))
+            return false;
+
+        if (!WinApi.GetWindowRect(explorerWindow, out var winRect))
+            return false;
+
+        if (screenPoint.X < winRect.Left || screenPoint.X >= winRect.Right ||
+            screenPoint.Y < winRect.Top)
+            return false;
+
+        if (_stripBoundsCache.TryGetValue(explorerWindow, out var bounds) &&
+            RectsApproxEqual(bounds.WindowRect, winRect))
+        {
+            // Refresh in the background if the snapshot is getting stale (tabs may have been added,
+            // removed, or reordered without resizing the window). The inflight guard makes this cheap.
+            if (Environment.TickCount64 - bounds.RefreshedAt > 1_500)
+                ScheduleStripBoundsRefresh(explorerWindow);
+
+            foreach (var tabRect in bounds.TabRects)
+            {
+                if (tabRect.Contains(screenPoint.X, screenPoint.Y))
+                    return true;
+            }
+
+            return false;
+        }
+
+        if (bounds != null)
+            _stripBoundsCache.TryRemove(explorerWindow, out _);
+
+        ScheduleStripBoundsRefresh(explorerWindow);
+        return false;
+    }
+
+    private static bool RectsApproxEqual(RECT a, RECT b)
+    {
+        return Math.Abs(a.Left - b.Left) <= StripBoundsRectMatchSlop &&
+               Math.Abs(a.Top - b.Top) <= StripBoundsRectMatchSlop &&
+               Math.Abs(a.Right - b.Right) <= StripBoundsRectMatchSlop &&
+               Math.Abs(a.Bottom - b.Bottom) <= StripBoundsRectMatchSlop;
+    }
+
+    private void ScheduleStripBoundsRefresh(nint explorerWindow)
+    {
+        if (!_stripBoundsRefreshInflight.TryAdd(explorerWindow, 0))
+            return;
+
+        Task.Run(() =>
+        {
+            try
+            {
+                ComputeStripBounds(explorerWindow);
+            }
+            catch
+            {
+                //
+            }
+            finally
+            {
+                _stripBoundsRefreshInflight.TryRemove(explorerWindow, out _);
+            }
+        });
+    }
+
+    private void ComputeStripBounds(nint explorerWindow)
+    {
+        if (!Helper.IsFileExplorerWindow(explorerWindow))
+            return;
+
+        var root = GetAutomationRoot(explorerWindow);
+        if (root == null)
+            return;
+
+        var tabItems = root.FindAll(
+            TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+        if (tabItems == null || tabItems.Count == 0)
+            return;
+
+        var tabRects = new List<Rectangle>(tabItems.Count);
+        AutomationElement? firstTabItem = null;
+        foreach (AutomationElement tab in tabItems)
+        {
+            var rect = tab.Current.BoundingRectangle;
+            if (rect.IsEmpty || rect.Width < 24 || rect.Height < 12)
+                continue;
+
+            firstTabItem ??= tab;
+            tabRects.Add(new Rectangle((int)rect.X, (int)rect.Y, (int)rect.Width, (int)rect.Height));
+        }
+
+        if (firstTabItem == null || tabRects.Count == 0)
+            return;
+
+        // Walk up to the Tab control whose BoundingRectangle covers the entire strip — used only as a
+        // diagnostic / cache-key for window-rect mismatch detection. Hit-testing uses tabRects only.
+        var walker = TreeWalker.ControlViewWalker;
+        var element = firstTabItem;
+        System.Windows.Rect? stripRect = null;
+        while (element != null)
+        {
+            if (element.Current.ControlType == ControlType.Tab)
+            {
+                var rect = element.Current.BoundingRectangle;
+                if (!rect.IsEmpty)
+                {
+                    stripRect = rect;
+                    break;
+                }
+            }
+            element = walker.GetParent(element);
+        }
+
+        if (!stripRect.HasValue)
+        {
+            var firstRect = firstTabItem.Current.BoundingRectangle;
+            if (firstRect.IsEmpty)
+                return;
+            stripRect = firstRect;
+        }
+
+        if (!WinApi.GetWindowRect(explorerWindow, out var winSnapshot))
+            return;
+
+        var s = stripRect.Value;
+        _stripBoundsCache[explorerWindow] = new TabStripBounds(
+            new Rectangle((int)s.X, (int)s.Y, (int)s.Width, (int)s.Height),
+            tabRects.ToArray(),
+            winSnapshot,
+            Environment.TickCount64);
+    }
+
+    private void InvalidateStripBounds(nint hWnd)
+    {
+        _stripBoundsCache.TryRemove(hWnd, out _);
+        _stripBoundsRefreshInflight.TryRemove(hWnd, out _);
+    }
+
+    /// <summary>
+    /// Force-refresh the cached tab strip bounds for an Explorer window. Called right after a
+    /// programmatic tab close so the next double-click sees the post-close tab layout (tabs slide
+    /// over to fill the gap).
+    /// </summary>
+    public void RefreshTabStripBounds(nint explorerWindow)
+    {
+        InvalidateStripBounds(explorerWindow);
+        if (Helper.IsFileExplorerWindow(explorerWindow))
+            ScheduleStripBoundsRefresh(explorerWindow);
+    }
+
+    private AutomationElement? GetAutomationRoot(nint explorerWindow)
+    {
+        var now = Environment.TickCount64;
+        if (_automationRootCache.TryGetValue(explorerWindow, out var entry) && entry.expiresAt > now)
+            return entry.element;
+
+        try
+        {
+            var root = AutomationElement.FromHandle(explorerWindow);
+            if (root != null)
+                _automationRootCache[explorerWindow] = (root, now + AutomationRootTtlMs);
+            return root;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void InvalidateAutomationRoot(nint hWnd)
+    {
+        _automationRootCache.TryRemove(hWnd, out _);
     }
 
     private static async Task RestoreExplorerAfterNativeCloseAsync(nint explorerWindow)
@@ -238,7 +429,7 @@ public sealed class ExplorerWatcher : IHook
     {
         try
         {
-            var root = AutomationElement.FromHandle(explorerWindow);
+            var root = GetAutomationRoot(explorerWindow);
             if (root == null)
                 return null;
 
@@ -505,15 +696,6 @@ public sealed class ExplorerWatcher : IHook
             _windowRegisteredHandler = null;
         }
 
-        if (_eventObjectShowHookCallback != null)
-        {
-            WinApi.UnhookWinEvent(_eventObjectShowHookId);
-            _eventObjectShowHookCallback = null;
-            _eventObjectShowHookId = 0;
-        }
-
-        _preHideTimer?.Dispose();
-        _preHideTimer = null;
         _hiddenRecoveryTimer?.Dispose();
         _hiddenRecoveryTimer = null;
 
@@ -541,67 +723,15 @@ public sealed class ExplorerWatcher : IHook
         _processedHWnds.Clear();
         _knownExplorerWindows.Clear();
         _mergeHiddenWindows.Clear();
+        _stripBoundsCache.Clear();
+        _stripBoundsRefreshInflight.Clear();
+        _automationRootCache.Clear();
     }
 
     private void PreventWindowHiding(nint hWnd)
     {
         if (_processedHWnds.TryAdd(hWnd, 0))
             _ = Task.Delay(7_000).ContinueWith(_ => _processedHWnds.TryRemove(hWnd, out var removed), TaskScheduler.Default);
-    }
-
-    private void OnWindowShown(nint hWinEventHook, uint eventType, nint hWnd, int idObject, int idChild, uint eventThread, uint eventTime)
-    {
-        if (!_isForcingTabs || IsPreHideSuppressed() || idObject != 0 || idChild != 0)
-            return;
-
-        if (_processedHWnds.TryRemove(hWnd, out _))
-            return;
-
-        if (!WinApi.IsWindowHasClassName(hWnd, "CabinetWClass"))
-            return;
-
-        if (_windowEntryDict.Count < 2 || Helper.IsCtrlShiftDown() || !HasLiveMergeTarget(hWnd))
-            return;
-
-        // Global pre-hide is intentionally disabled. Candidate windows are now hidden
-        // only through the shell-window registration flow.
-        PreventWindowHiding(hWnd);
-    }
-
-    private void PreHideNewExplorerWindows(object? state)
-    {
-        if (!_isForcingTabs || IsPreHideSuppressed() || Helper.IsCtrlShiftDown())
-            return;
-
-        try
-        {
-            var windows = Helper.GetAllExplorerWindows().ToArray();
-            if (windows.Length < 2 && _windowEntryDict.Count == 0)
-                return;
-
-            foreach (var hWnd in windows)
-            {
-                if (_processedHWnds.ContainsKey(hWnd) || _knownExplorerWindows.ContainsKey(hWnd))
-                    continue;
-
-                if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle)
-                    continue;
-
-                if (!HasLiveMergeTarget(hWnd))
-                {
-                    PreventWindowHiding(hWnd);
-                    continue;
-                }
-
-                // Global pre-hide is intentionally disabled. Candidate windows are now hidden
-                // only through the shell-window registration flow.
-                PreventWindowHiding(hWnd);
-            }
-        }
-        catch
-        {
-            //
-        }
     }
 
     private bool IsPreHideSuppressed()
@@ -779,6 +909,9 @@ public sealed class ExplorerWatcher : IHook
 
     private void RecoverUnexpectedHiddenExplorerWindows(object? state)
     {
+        if (Helper.HiddenWindows.IsEmpty)
+            return;
+
         try
         {
             var now = Environment.TickCount64;
@@ -1052,7 +1185,19 @@ public sealed class ExplorerWatcher : IHook
 
             windowInfo.Location = TryGetLocation(window);
             windowInfo.Name = window.LocationName;
-            _ = window.HWND;
+
+            // Eagerly compute the tab strip bounding rect so the very first double-click on a tab in this
+            // window hits the cache (no UIA on the mouse hook thread, no "click many times to make it work").
+            try
+            {
+                var hWnd = new IntPtr(window.HWND);
+                if (Helper.IsFileExplorerWindow(hWnd))
+                    ScheduleStripBoundsRefresh(hWnd);
+            }
+            catch
+            {
+                //
+            }
         }
         catch
         {
@@ -1102,6 +1247,8 @@ public sealed class ExplorerWatcher : IHook
                     Helper.HiddenWindows.TryRemove(windowHandle, out _);
                     _mergeHiddenWindows.TryRemove(windowHandle, out _);
                     _knownExplorerWindows.TryRemove(windowHandle, out _);
+                    InvalidateAutomationRoot(windowHandle);
+                    InvalidateStripBounds(windowHandle);
                     if (_mainWindowHandle == windowHandle)
                         _mainWindowHandle = 0;
                 }

@@ -418,15 +418,18 @@ public static class Helper
 
     public static bool IsCtrlShiftDown()
     {
-        if (_lastCtrlShiftCheckValue && Environment.TickCount - _lastCtrlShiftCheckAt < 1_000)
+        var lastValue = Volatile.Read(ref _lastCtrlShiftCheckValue);
+        var lastAt = Volatile.Read(ref _lastCtrlShiftCheckAt);
+        if (lastValue && Environment.TickCount - lastAt < 1_000)
             return true;
-        
-        _lastCtrlShiftCheckValue =
+
+        var current =
             (KeyboardSimulator.IsKeyPressed((int)VirtualKey.LeftControl) || KeyboardSimulator.IsKeyPressed((int)VirtualKey.RightControl)) &&
                (KeyboardSimulator.IsKeyPressed((int)VirtualKey.LeftShift) || KeyboardSimulator.IsKeyPressed((int)VirtualKey.RightShift));
-        
-        _lastCtrlShiftCheckAt = Environment.TickCount;
-        return _lastCtrlShiftCheckValue;
+
+        Volatile.Write(ref _lastCtrlShiftCheckAt, Environment.TickCount);
+        Volatile.Write(ref _lastCtrlShiftCheckValue, current);
+        return current;
     }
     public static void BypassWinForegroundRestrictions()
     {

@@ -85,6 +85,9 @@ public static class WinApi
     public static extern int GetSystemMetrics(int nIndex);
 
     [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(nint hWnd);
+
+    [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int X, int Y);
 
     [DllImport("user32.dll", SetLastError = true)]

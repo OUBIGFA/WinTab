@@ -66,12 +66,17 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             explorerWindow = previous.ExplorerWindow;
         }
 
+        var onTabStrip = _explorerWatcher.IsPointOnTabStrip(currentPoint, explorerWindow);
+
         if (previous != null &&
             previous.ExplorerWindow == explorerWindow &&
             IsWithinDoubleClickWindow(previous, currentPoint, now) &&
-            (_explorerWatcher.IsExplorerTabTitleAtScreenPoint(currentPoint, explorerWindow) ||
-             _explorerWatcher.IsExplorerTabTitleAtScreenPoint(previous.Point, explorerWindow)))
+            onTabStrip && previous.OnTabStrip)
         {
+            // Confirmed double-click whose BOTH presses landed on a real tab title. Swallow this second
+            // left-down/up so Explorer does not see a redundant click, then queue a synthesized
+            // middle-click that will close the tab natively. Anything outside a tab title (title bar,
+            // "+" button, drag area, window controls, file content) falls through to native behaviour.
             e.IsHandled = true;
             _suppressNextLeftUp = true;
             _pendingNativeClose = new ClickCandidate(explorerWindow, currentPoint, now);
@@ -79,8 +84,8 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             return;
         }
 
-        _lastClickCandidate = _explorerWatcher.IsExplorerTabTitleAtScreenPoint(currentPoint, explorerWindow)
-            ? new ClickCandidate(explorerWindow, currentPoint, now)
+        _lastClickCandidate = onTabStrip
+            ? new ClickCandidate(explorerWindow, currentPoint, now) { OnTabStrip = true }
             : null;
     }
 
@@ -97,11 +102,32 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         if (pending == null)
             return;
 
+        // Hand off to the threadpool so the hook thread is never blocked. A tiny delay lets the suppressed
+        // mouse-up message drain before we synthesize the middle-click; without it, on slow systems the
+        // injected click can race with the original left-up sequence.
         ThreadPool.QueueUserWorkItem(_ =>
         {
-            Thread.Sleep(160);
-            if (_explorerWatcher.TryCloseTabAtScreenPoint(pending.Point, pending.ExplorerWindow))
-                StatusChanged?.Invoke("Closed Explorer tab by title double-click.");
+            Thread.Sleep(10);
+            try
+            {
+                MouseSimulator.SendMiddleClick(pending.Point);
+                StatusChanged?.Invoke("Closed Explorer tab via middle-click.");
+            }
+            catch
+            {
+                //
+            }
+            finally
+            {
+                try
+                {
+                    _explorerWatcher.RefreshTabStripBounds(pending.ExplorerWindow);
+                }
+                catch
+                {
+                    //
+                }
+            }
         });
     }
 
@@ -141,7 +167,10 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         }
     }
 
-    private sealed record ClickCandidate(nint ExplorerWindow, Point Point, long Tick);
+    private sealed record ClickCandidate(nint ExplorerWindow, Point Point, long Tick)
+    {
+        public bool OnTabStrip { get; init; }
+    }
 
     private enum VirtualKey
     {

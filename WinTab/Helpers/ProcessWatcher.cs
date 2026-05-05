@@ -45,7 +45,7 @@ public class ProcessWatcher : IDisposable
     /// <param name="processName">Name of the process to monitor (without .exe extension)</param>
     /// <param name="scanIntervalMs">How often to scan for processes in milliseconds</param>
     /// <param name="sessionFilter">Whether to monitor all sessions or only the current session</param>
-    public ProcessWatcher(string processName, int scanIntervalMs = 500, SessionFilter sessionFilter = SessionFilter.Current)
+    public ProcessWatcher(string processName, int scanIntervalMs = 5000, SessionFilter sessionFilter = SessionFilter.Current)
     {
         _processName = processName ?? throw new ArgumentNullException(nameof(processName));
         _scanInterval = TimeSpan.FromMilliseconds(Math.Max(100, scanIntervalMs)); // Minimum 100ms
