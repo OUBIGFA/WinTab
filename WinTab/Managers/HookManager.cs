@@ -22,7 +22,6 @@ public sealed class HookManager : IDisposable
         _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher);
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
-        _explorerWatcher.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
         _doubleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
 
         System.Windows.Application.Current.SessionEnding += (_, _) => Dispose();

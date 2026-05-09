@@ -5,6 +5,7 @@ using System.Windows;
 using System.ComponentModel;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using WinTab.Models;
 
 namespace WinTab.Managers;
 
@@ -61,6 +62,24 @@ public static class SettingsManager
     {
         get => Settings.HaveThemeIssue;
         set => SetProperty(Settings.HaveThemeIssue, value, v => Settings.HaveThemeIssue = v);
+    }
+
+    public static bool SaveClosedHistory
+    {
+        get => Settings.SaveClosedWindows;
+        set => SetProperty(Settings.SaveClosedWindows, value, v => Settings.SaveClosedWindows = v);
+    }
+
+    public static bool RestorePreviousWindows
+    {
+        get => Settings.RestorePreviousWindows;
+        set => SetProperty(Settings.RestorePreviousWindows, value, v => Settings.RestorePreviousWindows = v);
+    }
+
+    public static WindowRecord[]? ClosedWindows
+    {
+        get => Settings.ClosedWindows;
+        set => SetProperty(Settings.ClosedWindows, value, v => Settings.ClosedWindows = v, notify: false);
     }
 
     public static bool AutoUpdate
@@ -125,6 +144,9 @@ internal sealed class AppSettings
     public bool ReuseTabs { get; set; } = true;
     public bool DoubleClickCloseTab { get; set; } = true;
     public bool HaveThemeIssue { get; set; }
+    public bool SaveClosedWindows { get; set; }
+    public bool RestorePreviousWindows { get; set; }
+    public WindowRecord[]? ClosedWindows { get; set; }
     public bool AutoUpdate { get; set; } = true;
     public bool IsFirstRun { get; set; } = true;
     public string Language { get; set; } = "zh-CN";

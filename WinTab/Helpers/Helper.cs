@@ -383,17 +383,22 @@ public static class Helper
     }
     public static void HideWindow(nint hWnd, bool keepTheme = false)
     {
-        if (!HiddenWindows.TryGetValue(hWnd, out var originalPos) || originalPos == null)
+        HiddenWindows.GetOrAdd(hWnd, static (hWnd, keepTheme) =>
         {
-            WinApi.GetWindowRect(hWnd, out var currentPos);
-            HiddenWindows[hWnd] = currentPos;
-        }
+            if (keepTheme)
+            {
+                WinApi.GetWindowRect(hWnd, out var originalPos);
+                HiddenWindows[hWnd] = originalPos;
 
-        // Always use a true hidden state for Explorer merge candidates.
-        // This prevents alpha-zero layered windows that can stay on taskbar but appear non-interactive.
-        UpdateWindowLayered(hWnd, remove: true);
-        const uint flags = WinApi.SWP_HIDEWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
-        WinApi.SetWindowPos(hWnd, 0, -32_000, -32_000, 0, 0, flags);
+                const uint flags = WinApi.SWP_HIDEWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
+                WinApi.SetWindowPos(hWnd, 0, -32_000, -32_000, 0, 0, flags);
+                return originalPos;
+            }
+
+            UpdateWindowLayered(hWnd, remove: false);
+            WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
+            return null;
+        }, keepTheme);
     }
     public static bool ShowWindow(nint hWnd, bool removeCache)
     {
@@ -403,8 +408,6 @@ public static class Helper
         if (removeCache)
             HiddenWindows.TryRemove(hWnd, out _);
 
-        UpdateWindowLayered(hWnd, remove: true);
-
         if (originalPos != null)
         {
             const uint flags = WinApi.SWP_SHOWWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
@@ -412,24 +415,21 @@ public static class Helper
             return true;
         }
 
-        WinApi.ShowWindow(hWnd, WinApi.SW_SHOWNOACTIVATE);
+        WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);
         return true;
     }
 
     public static bool IsCtrlShiftDown()
     {
-        var lastValue = Volatile.Read(ref _lastCtrlShiftCheckValue);
-        var lastAt = Volatile.Read(ref _lastCtrlShiftCheckAt);
-        if (lastValue && Environment.TickCount - lastAt < 1_000)
+        if (_lastCtrlShiftCheckValue && Environment.TickCount - _lastCtrlShiftCheckAt < 1_000)
             return true;
 
-        var current =
+        _lastCtrlShiftCheckValue =
             (KeyboardSimulator.IsKeyPressed((int)VirtualKey.LeftControl) || KeyboardSimulator.IsKeyPressed((int)VirtualKey.RightControl)) &&
                (KeyboardSimulator.IsKeyPressed((int)VirtualKey.LeftShift) || KeyboardSimulator.IsKeyPressed((int)VirtualKey.RightShift));
 
-        Volatile.Write(ref _lastCtrlShiftCheckAt, Environment.TickCount);
-        Volatile.Write(ref _lastCtrlShiftCheckValue, current);
-        return current;
+        _lastCtrlShiftCheckAt = Environment.TickCount;
+        return _lastCtrlShiftCheckValue;
     }
     public static void BypassWinForegroundRestrictions()
     {
