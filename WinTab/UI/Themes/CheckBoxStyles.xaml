@@ -1,7 +1,6 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Switch-style CheckBox used by the settings panel. -->
     <Style x:Key="CustomCheckBoxStyle" TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="Margin" Value="0" />
@@ -10,56 +9,50 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
-                    <Grid Background="Transparent" MinWidth="48" MinHeight="28">
+                    <Grid Background="Transparent" MinWidth="38" MinHeight="22">
                         <Border x:Name="SwitchTrack"
-                                Width="48"
-                                Height="26"
-                                HorizontalAlignment="Right"
-                                Background="{DynamicResource ControlHoverBrush}"
+                                Width="36"
+                                Height="20"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource ControlBackgroundBrush}"
                                 BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="13">
-                            <Grid>
+                                CornerRadius="10">
+                            <Grid Margin="2">
                                 <Ellipse x:Name="SwitchThumb"
-                                         Width="20"
-                                         Height="20"
-                                         Margin="3,0,0,0"
+                                         Width="14"
+                                         Height="14"
                                          HorizontalAlignment="Left"
                                          VerticalAlignment="Center"
-                                         Fill="{DynamicResource DropdownBackgroundBrush}" />
-                                <Path x:Name="CheckMark"
-                                      Data="M5.2,9.3 L8.2,12.2 L14.8,5.8"
-                                      Stroke="{DynamicResource CheckBoxCheckedGlyphBrush}"
-                                      StrokeThickness="1.8"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      Stretch="Uniform"
-                                      Width="10"
-                                      Height="8"
-                                      HorizontalAlignment="Right"
-                                      Margin="0,0,9,0"
-                                      Visibility="Collapsed" />
+                                         Fill="{DynamicResource TextTertiaryBrush}" />
                             </Grid>
                         </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Opacity" Value="0.7" />
+                            <Setter Property="Opacity" Value="0.55" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource AccentBrush}" />
+                            <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource CheckBoxCheckedBackgroundBrush}" />
                             <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource CheckBoxCheckedBorderBrush}" />
                             <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right" />
-                            <Setter TargetName="SwitchThumb" Property="Margin" Value="0,0,3,0" />
                             <Setter TargetName="SwitchThumb" Property="Fill" Value="{DynamicResource CheckBoxCheckedGlyphBrush}" />
-                            <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsFocused" Value="True">
                             <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource PrimaryLightBrush}" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource PrimaryLightBrush}" />
+                            <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
                         </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsMouseOver" Value="True" />
+                                <Condition Property="IsChecked" Value="True" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource CheckBoxCheckedBackgroundBrush}" />
+                        </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>

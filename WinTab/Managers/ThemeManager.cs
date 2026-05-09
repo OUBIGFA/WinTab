@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 
@@ -16,50 +15,34 @@ public static class ThemeManager
 
         var dark = IsDarkTheme;
 
-        SetColor("PrimaryColor", dark ? "#D6A74B" : "#303741");
-        SetColor("PrimaryLightColor", dark ? "#E9C879" : "#596575");
-        SetColor("TextPrimaryColor", dark ? "#EEF2F6" : "#20262D");
-        SetColor("TextSecondaryColor", dark ? "#B7C0CC" : "#66717E");
-        SetColor("TextTertiaryColor", dark ? "#8B97A5" : "#87909B");
-        SetColor("TextAccentColor", dark ? "#F0D08A" : "#2F3B48");
-        SetColor("BorderColor", dark ? "#3F4853" : "#D5DAE1");
-        SetColor("ControlBackgroundColor", dark ? "#202832" : "#F8FAFC");
-        SetColor("ControlHoverColor", dark ? "#2B3541" : "#EEF2F6");
-        SetColor("DangerColor", dark ? "#F06A6A" : "#C93F3F");
-        SetColor("DropdownBackgroundColor", dark ? "#202832" : "#FFFFFF");
-        SetColor("ShadowColor", dark ? "#091018" : "#9AA4AF");
-        SetColor("SuccessColor", dark ? "#E0AC42" : "#4B5563");
-        SetColor("WarningColor", dark ? "#E0AC42" : "#60758E");
-        SetColor("AccentColor", dark ? "#D7A94B" : "#4E627A");
-        SetColor("StatusActiveColor", dark ? "#D7A94B" : "#4E627A");
-        SetColor("StatusInactiveColor", dark ? "#778390" : "#8D96A0");
-        SetColor("CheckBoxCheckedBackgroundColor", dark ? "#3C2E12" : "#F8FAFC");
-        SetColor("CheckBoxCheckedBorderColor", dark ? "#E0AC42" : "#4E627A");
-        SetColor("CheckBoxCheckedGlyphColor", dark ? "#21170A" : "#F5F8FC");
-        SetColor("StatusPillBackgroundColor", dark ? "#342814" : "#EAF0F7");
-        SetColor("StatusPillBorderColor", dark ? "#6F5320" : "#BCC9D9");
-        SetColor("FooterColor", dark ? "#1B232B" : "#EEF2F6");
+        SetColor("PrimaryColor", dark ? "#F2F2F2" : "#202020");
+        SetColor("PrimaryLightColor", dark ? "#CFCFCF" : "#4A4A4A");
+        SetColor("TextPrimaryColor", dark ? "#F2F2F2" : "#1E1E1E");
+        SetColor("TextSecondaryColor", dark ? "#B8B8B8" : "#666666");
+        SetColor("TextTertiaryColor", dark ? "#858585" : "#8A8A8A");
+        SetColor("TextAccentColor", dark ? "#FFFFFF" : "#303030");
+        SetColor("BorderColor", dark ? "#353535" : "#D7D7D7");
+        SetColor("ControlBackgroundColor", dark ? "#202020" : "#F6F6F6");
+        SetColor("ControlHoverColor", dark ? "#2A2A2A" : "#EDEDED");
+        SetColor("DangerColor", dark ? "#B8B8B8" : "#555555");
+        SetColor("DropdownBackgroundColor", dark ? "#181818" : "#FFFFFF");
+        SetColor("ShadowColor", dark ? "#080808" : "#9A9A9A");
+        SetColor("SuccessColor", dark ? "#B8B8B8" : "#4A4A4A");
+        SetColor("WarningColor", dark ? "#B8B8B8" : "#4A4A4A");
+        SetColor("AccentColor", dark ? "#F2F2F2" : "#202020");
+        SetColor("StatusActiveColor", dark ? "#F2F2F2" : "#202020");
+        SetColor("StatusInactiveColor", dark ? "#858585" : "#8A8A8A");
+        SetColor("CheckBoxCheckedBackgroundColor", dark ? "#F2F2F2" : "#202020");
+        SetColor("CheckBoxCheckedBorderColor", dark ? "#F2F2F2" : "#202020");
+        SetColor("CheckBoxCheckedGlyphColor", dark ? "#181818" : "#FFFFFF");
+        SetColor("StatusPillBackgroundColor", dark ? "#202020" : "#F1F1F1");
+        SetColor("StatusPillBorderColor", dark ? "#353535" : "#D7D7D7");
+        SetColor("FooterColor", dark ? "#161616" : "#F6F6F6");
 
-        SetGradient(
-            "BackgroundGradientBrush",
-            dark
-                ? ["#FF151B22", "#FF202832"]
-                : ["#FFFCFDFE", "#FFF1F4F8"]);
-        SetGradient(
-            "TitleBarBrush",
-            dark
-                ? ["#F01B232B", "#F02A333E"]
-                : ["#FFFDFEFF", "#FFF2F5F8"]);
-        SetGradient(
-            "BorderGradientBrush",
-            dark
-                ? ["#333B4652", "#88616E7D", "#CCD7A94B", "#88706040", "#333B4652"]
-                : ["#88E8EDF4", "#BBD4DCE6", "#CC7A8899", "#AACFD7E1", "#66E8EDF4"]);
-        SetGradient(
-            "CardGradientBrush",
-            dark
-                ? ["#FF202832", "#FF26303B", "#FF2D3742", "#FF333F4B"]
-                : ["#FFFFFFFF", "#FFF8FAFD", "#FFF1F4F8", "#FFEBEFF5"]);
+        SetBrush("WindowBackgroundBrush", dark ? "#121212" : "#FAFAFA");
+        SetBrush("WindowTitleBarBrush", dark ? "#161616" : "#FAFAFA");
+        SetBrush("WindowBorderBrush", dark ? "#353535" : "#D7D7D7");
+        SetBrush("SurfaceBrush", dark ? "#181818" : "#FFFFFF");
     }
 
     private static void SetColor(string key, string hex)
@@ -71,30 +54,9 @@ public static class ThemeManager
         Application.Current.Resources[brushKey] = new SolidColorBrush(updated);
     }
 
-    private static void SetGradient(string key, string[] stops)
+    private static void SetBrush(string key, string hex)
     {
-        if (Application.Current.TryFindResource(key) is not LinearGradientBrush brush)
-            return;
-
-        var targetColors = stops.Select(static hex => (Color)ColorConverter.ConvertFromString(hex)).ToArray();
-        if (brush.GradientStops.Count != targetColors.Length)
-            return;
-
-        var replacement = new LinearGradientBrush
-        {
-            StartPoint = brush.StartPoint,
-            EndPoint = brush.EndPoint,
-            MappingMode = brush.MappingMode,
-            SpreadMethod = brush.SpreadMethod,
-            ColorInterpolationMode = brush.ColorInterpolationMode,
-            Opacity = brush.Opacity,
-            Transform = brush.Transform,
-            RelativeTransform = brush.RelativeTransform
-        };
-
-        for (var i = 0; i < targetColors.Length; i++)
-            replacement.GradientStops.Add(new GradientStop(targetColors[i], brush.GradientStops[i].Offset));
-
-        Application.Current.Resources[key] = replacement;
+        var updated = (Color)ColorConverter.ConvertFromString(hex);
+        Application.Current.Resources[key] = new SolidColorBrush(updated);
     }
 }

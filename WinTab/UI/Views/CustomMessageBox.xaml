@@ -27,7 +27,7 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="ButtonBorder"
                                 Background="{StaticResource ControlBackgroundBrush}"
-                                BorderBrush="{StaticResource BorderGradientBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
                                 BorderThickness="1"
                                 CornerRadius="4"
                                 Padding="{TemplateBinding Padding}">
@@ -63,8 +63,8 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="{StaticResource CardGradientBrush}"
-            BorderBrush="{StaticResource BorderGradientBrush}"
+    <Border Background="{StaticResource SurfaceBrush}"
+            BorderBrush="{StaticResource BorderBrush}"
             BorderThickness="1"
             CornerRadius="8">
         <Border.Effect>
@@ -83,7 +83,7 @@
 
             <!-- Title Bar -->
             <Border Grid.Row="0"
-                    Background="{StaticResource TitleBarBrush}"
+                    Background="{StaticResource WindowTitleBarBrush}"
                     CornerRadius="8,8,0,0"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                 <TextBlock x:Name="WindowTitle"
@@ -124,7 +124,7 @@
 
             <!-- Button Area -->
             <Border Grid.Row="2"
-                    Background="#22000000"
+                    Background="{StaticResource ControlBackgroundBrush}"
                     CornerRadius="0,0,8,8"
                     Padding="20,10">
                 <StackPanel x:Name="ButtonPanel"

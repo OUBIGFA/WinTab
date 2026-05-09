@@ -1,30 +1,30 @@
-﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Colors -->
-    <Color x:Key="PrimaryColor">#303741</Color>
-    <Color x:Key="PrimaryLightColor">#596575</Color>
-    <Color x:Key="TextPrimaryColor">#1F252C</Color>
-    <Color x:Key="TextSecondaryColor">#66717E</Color>
-    <Color x:Key="TextTertiaryColor">#87909B</Color>
-    <Color x:Key="TextAccentColor">#2F3B48</Color>
-    <Color x:Key="BorderColor">#D5DAE1</Color>
-    <Color x:Key="ControlBackgroundColor">#F8FAFC</Color>
-    <Color x:Key="ControlHoverColor">#EEF2F6</Color>
-    <Color x:Key="DangerColor">#C93F3F</Color>
+    <!-- Neutral colors only. ThemeManager replaces these at startup for dark mode. -->
+    <Color x:Key="PrimaryColor">#202020</Color>
+    <Color x:Key="PrimaryLightColor">#4A4A4A</Color>
+    <Color x:Key="TextPrimaryColor">#1E1E1E</Color>
+    <Color x:Key="TextSecondaryColor">#666666</Color>
+    <Color x:Key="TextTertiaryColor">#8A8A8A</Color>
+    <Color x:Key="TextAccentColor">#303030</Color>
+    <Color x:Key="BorderColor">#D7D7D7</Color>
+    <Color x:Key="ControlBackgroundColor">#F6F6F6</Color>
+    <Color x:Key="ControlHoverColor">#EDEDED</Color>
+    <Color x:Key="DangerColor">#555555</Color>
     <Color x:Key="DropdownBackgroundColor">#FFFFFF</Color>
-    <Color x:Key="ShadowColor">#9AA4AF</Color>
-    <Color x:Key="SuccessColor">#4B5563</Color>
-    <Color x:Key="WarningColor">#60758E</Color>
-    <Color x:Key="AccentColor">#4E627A</Color>
-    <Color x:Key="StatusActiveColor">#4E627A</Color>
-    <Color x:Key="StatusInactiveColor">#8D96A0</Color>
-    <Color x:Key="CheckBoxCheckedBackgroundColor">#F8FAFC</Color>
-    <Color x:Key="CheckBoxCheckedBorderColor">#4E627A</Color>
-    <Color x:Key="CheckBoxCheckedGlyphColor">#F5F8FC</Color>
-    <Color x:Key="StatusPillBackgroundColor">#EAF0F7</Color>
-    <Color x:Key="StatusPillBorderColor">#BCC9D9</Color>
-    <Color x:Key="FooterColor">#EEF2F6</Color>
+    <Color x:Key="ShadowColor">#9A9A9A</Color>
+    <Color x:Key="SuccessColor">#4A4A4A</Color>
+    <Color x:Key="WarningColor">#4A4A4A</Color>
+    <Color x:Key="AccentColor">#202020</Color>
+    <Color x:Key="StatusActiveColor">#202020</Color>
+    <Color x:Key="StatusInactiveColor">#8A8A8A</Color>
+    <Color x:Key="CheckBoxCheckedBackgroundColor">#202020</Color>
+    <Color x:Key="CheckBoxCheckedBorderColor">#202020</Color>
+    <Color x:Key="CheckBoxCheckedGlyphColor">#FFFFFF</Color>
+    <Color x:Key="StatusPillBackgroundColor">#F1F1F1</Color>
+    <Color x:Key="StatusPillBorderColor">#D7D7D7</Color>
+    <Color x:Key="FooterColor">#F6F6F6</Color>
 
     <!-- Brushes -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{DynamicResource PrimaryColor}" />
@@ -50,30 +50,10 @@
     <SolidColorBrush x:Key="StatusPillBorderBrush" Color="{DynamicResource StatusPillBorderColor}" />
     <SolidColorBrush x:Key="FooterBrush" Color="{DynamicResource FooterColor}" />
 
-    <!-- Gradients -->
-    <LinearGradientBrush x:Key="BackgroundGradientBrush" StartPoint="0,0" EndPoint="0,1">
-        <GradientStop Color="#FFFCFDFE" Offset="0" />
-        <GradientStop Color="#FFF1F4F8" Offset="1" />
-    </LinearGradientBrush>
-
-    <LinearGradientBrush x:Key="TitleBarBrush" StartPoint="0,0" EndPoint="1,0">
-        <GradientStop Color="#FFFDFEFF" Offset="0" />
-        <GradientStop Color="#FFF2F5F8" Offset="1" />
-    </LinearGradientBrush>
-
-    <LinearGradientBrush x:Key="BorderGradientBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#88E8EDF4" Offset="0.0" />
-        <GradientStop Color="#BBD4DCE6" Offset="0.3" />
-        <GradientStop Color="#CC7A8899" Offset="0.5" />
-        <GradientStop Color="#AACFD7E1" Offset="0.7" />
-        <GradientStop Color="#66E8EDF4" Offset="1.0" />
-    </LinearGradientBrush>
-
-    <LinearGradientBrush x:Key="CardGradientBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#FFFFFFFF" Offset="0.0" />
-        <GradientStop Color="#FFF8FAFD" Offset="0.35" />
-        <GradientStop Color="#FFF1F4F8" Offset="0.72" />
-        <GradientStop Color="#FFEBEFF5" Offset="1.0" />
-    </LinearGradientBrush>
+    <!-- Solid surface brushes. -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FAFAFA" />
+    <SolidColorBrush x:Key="WindowTitleBarBrush" Color="#FAFAFA" />
+    <SolidColorBrush x:Key="WindowBorderBrush" Color="#D7D7D7" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
 
 </ResourceDictionary>

@@ -144,33 +144,30 @@ public partial class MainWindow : Window
 
     private void ApplyLanguage()
     {
-        HeroTitleText.Text = T("\u8d44\u6e90\u7ba1\u7406\u5668\u6807\u7b7e\u7ba1\u7406\u5de5\u5177", "File Explorer tab manager");
-        HeroDescriptionText.Text = T("WinTab \u4f1a\u628a\u65b0\u6253\u5f00\u7684\u6587\u4ef6\u5939\u4f18\u5148\u5e76\u5165\u73b0\u6709\u8d44\u6e90\u7ba1\u7406\u5668\u7a97\u53e3\uff0c\u5e76\u5728\u540c\u8def\u5f84\u65f6\u590d\u7528\u6807\u7b7e\u9875\uff0c\u51cf\u5c11\u91cd\u590d\u7a97\u53e3\u3002", "WinTab merges newly opened folders into existing Explorer windows and reuses tabs for paths that are already open.");
-        AppTaglineText.Text = T("\u8d44\u6e90\u7ba1\u7406\u5668\u6807\u7b7e\u63a7\u5236", "Explorer tab control");
-        StatusPillText.Text = T("\u6b63\u5728\u63a5\u7ba1\u8d44\u6e90\u7ba1\u7406\u5668\u6807\u7b7e", "Explorer tabs are being managed");
-        StatusTrayText.Text = T("\u6258\u76d8\u670d\u52a1\u8fd0\u884c\u4e2d", "Tray service running");
-        StatusUpdateText.Text = T("\u81ea\u52a8\u66f4\u65b0\u5df2\u5f00\u542f", "Automatic updates enabled");
-        StatusBypassText.Text = T("Ctrl + Shift \u53ef\u4e34\u65f6\u8df3\u8fc7\u5408\u5e76", "Ctrl + Shift temporarily bypasses merging");
-        OpenSourceLicenseText.Text = T("\u5f00\u6e90\u534f\u8bae\uff1aMIT License", "Open source license: MIT License");
+        HeroTitleText.Text = "WinTab";
+        HeroDescriptionText.Text = T("\u8ba9\u8d44\u6e90\u7ba1\u7406\u5668\u7a97\u53e3\u56de\u5230\u540c\u4e00\u7ec4\u6807\u7b7e\u3002", "Keep File Explorer windows in one tab set.");
+        StatusPillText.Text = T("\u8fd0\u884c\u4e2d", "Running");
+        StatusTrayText.Text = T("\u53ef\u4ece\u6258\u76d8\u6253\u5f00", "Available from the tray");
+        StatusBypassText.Text = T("\u6309\u4f4f Ctrl + Shift \u53ef\u6253\u5f00\u72ec\u7acb\u7a97\u53e3", "Hold Ctrl + Shift to open a separate window");
+        OpenSourceLicenseText.Text = "MIT License";
         OpenSourceVersionText.Text = T($"\u7248\u672c\uff1av{_appVersion}", $"Version: v{_appVersion}");
-        OpenSourceLinkText.Text = "https://github.com/OUBIGFA/WinTab";
+        OpenSourceLinkText.Text = "GitHub";
 
-        WindowHookTitleText.Text = T("\u81ea\u52a8\u5408\u5e76\u65b0\u7684\u8d44\u6e90\u7ba1\u7406\u5668\u7a97\u53e3", "Auto-merge new Explorer windows");
-        WindowHookDescText.Text = T("\u5c06\u65b0\u6253\u5f00\u7684\u6587\u4ef6\u5939\u6536\u56de\u5230\u4e3b\u8d44\u6e90\u7ba1\u7406\u5668\u6807\u7b7e\u7ec4\u3002", "Move newly opened folders back into the main Explorer tab set.");
-        ReuseTabsTitleText.Text = T("\u590d\u7528\u6807\u7b7e", "Reuse tabs");
-        ReuseTabsDescText.Text = T("\u76ee\u6807\u8def\u5f84\u5df2\u6253\u5f00\u65f6\uff0c\u76f4\u63a5\u805a\u7126\u5df2\u6709\u6807\u7b7e\u9875\u3002", "Focus an existing tab when the target path is already open.");
-        DoubleClickTitleText.Text = T("\u53cc\u51fb\u5173\u95ed\u6807\u7b7e\u9875", "Double-click to close tab");
-        DoubleClickDescText.Text = T("\u5728\u8d44\u6e90\u7ba1\u7406\u5668\u6807\u7b7e\u6807\u9898\u533a\u53cc\u51fb\u5373\u53ef\u5173\u95ed\u5f53\u524d\u6807\u7b7e\u3002", "Close the current Explorer tab from the tab title area.");
+        WindowHookTitleText.Text = T("\u5408\u5e76\u65b0\u7a97\u53e3", "Merge new windows");
+        WindowHookDescText.Text = T("\u5c06\u65b0\u6253\u5f00\u7684\u6587\u4ef6\u5939\u6536\u56de\u5f53\u524d\u6807\u7b7e\u7ec4\u3002", "Send new folders back to the active Explorer tab group.");
+        ReuseTabsTitleText.Text = T("\u590d\u7528\u5df2\u6709\u6807\u7b7e", "Reuse existing tabs");
+        ReuseTabsDescText.Text = T("\u8def\u5f84\u5df2\u6253\u5f00\u65f6\uff0c\u76f4\u63a5\u805a\u7126\u5bf9\u5e94\u6807\u7b7e\u3002", "Open a matching path by focusing its current tab.");
+        DoubleClickTitleText.Text = T("\u53cc\u51fb\u5173\u95ed\u6807\u7b7e", "Double-click closes tab");
+        DoubleClickDescText.Text = T("\u5728\u6807\u9898\u533a\u53cc\u51fb\u5173\u95ed\u5f53\u524d\u6807\u7b7e\u3002", "Close the current Explorer tab from its title area.");
         StartupTitleText.Text = T("\u5f00\u673a\u542f\u52a8", "Start with Windows");
-        StartupDescText.Text = T("\u767b\u5f55\u540e\u4fdd\u6301\u5de5\u5177\u5e38\u9a7b\uff0c\u4e0d\u9700\u8981\u6253\u5f00\u6b64\u9762\u677f\u3002", "Keep the utility available after sign-in without opening this panel.");
-        AutoUpdateTitleText.Text = T("\u81ea\u52a8\u66f4\u65b0", "Automatic updates");
-        AutoUpdateDescText.Text = T("\u68c0\u67e5 GitHub Release\uff0c\u5728\u6709\u4fee\u590d\u65f6\u53ca\u65f6\u63d0\u793a\u3002", "Check GitHub releases so fixes are offered without manual polling.");
+        StartupDescText.Text = T("\u767b\u5f55\u540e\u9759\u9ed8\u8fd0\u884c\u3002", "Run quietly after sign-in.");
+        AutoUpdateTitleText.Text = T("\u68c0\u67e5\u66f4\u65b0", "Check for updates");
+        AutoUpdateDescText.Text = T("\u6709 GitHub Release \u65f6\u63d0\u793a\u3002", "Notify when a GitHub release is available.");
 
-        ActionsTitleText.Text = T("\u64cd\u4f5c", "Actions");
-        ActionsDescText.Text = T("\u53ef\u968f\u65f6\u4ece\u6258\u76d8\u6253\u5f00\u3002\u5173\u95ed\u7a97\u53e3\u4e0d\u4f1a\u9000\u51fa WinTab\u3002", "Open from tray anytime. Closing this window keeps WinTab running.");
-        CheckUpdatesButton.Content = T("\u68c0\u67e5\u66f4\u65b0", "Check Updates");
-        HideWindowButton.Content = T("\u9690\u85cf\u5230\u6258\u76d8", "Hide to Tray");
-        FooterTipText.Text = T("\u6253\u5f00\u6587\u4ef6\u5939\u65f6\u6309\u4f4f Ctrl + Shift\uff0c\u53ef\u4fdd\u6301\u4e3a\u72ec\u7acb\u8d44\u6e90\u7ba1\u7406\u5668\u7a97\u53e3\u3002", "Ctrl + Shift while opening a folder keeps that open as a separate Explorer window.");
+        ActionsTitleText.Text = T("\u7ef4\u62a4", "Maintenance");
+        ActionsDescText.Text = T("\u5173\u95ed\u6b64\u7a97\u53e3\u540e\uff0cWinTab \u7ee7\u7eed\u7559\u5728\u6258\u76d8\u3002", "The app stays in the tray when this window closes.");
+        CheckUpdatesButton.Content = T("\u68c0\u67e5", "Check");
+        HideWindowButton.Content = T("\u9690\u85cf", "Hide");
 
         LanguageToggleButton.ToolTip = IsChinese ? "Switch to English" : "\u5207\u6362\u5230\u4e2d\u6587";
         _trayIcon.ApplyLanguage(IsChinese);
