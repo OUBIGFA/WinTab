@@ -443,13 +443,22 @@ public static class Helper
         if (location.IndexOf('%') > -1)
             location = Environment.ExpandEnvironmentVariables(location);
 
+        location = location.Trim(' ', '/', '\\', '\n', '\'', '"');
+
+        if (Uri.TryCreate(location, UriKind.Absolute, out var uri) &&
+            (location.Contains("://", StringComparison.Ordinal) || location.StartsWith("file:", StringComparison.OrdinalIgnoreCase)))
+        {
+            return uri.IsFile ? uri.LocalPath.TrimEnd('\\', '/') : location;
+        }
+
+        if (location.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+            return location;
+
         if (location.StartsWith("::", StringComparison.Ordinal))
             location = $"shell:{location}";
 
         else if (location.StartsWith("{", StringComparison.Ordinal))
             location = $"shell:::{location}";
-
-        location = location.Trim(' ', '/', '\\', '\n', '\'', '"');
 
         return location.Replace('/', '\\');
     }
