@@ -383,22 +383,29 @@ public static class Helper
     }
     public static void HideWindow(nint hWnd, bool keepTheme = false)
     {
-        HiddenWindows.GetOrAdd(hWnd, static (hWnd, keepTheme) =>
+        var originalPos = HiddenWindows.GetOrAdd(hWnd, static (hWnd, keepTheme) =>
         {
-            if (keepTheme)
-            {
-                WinApi.GetWindowRect(hWnd, out var originalPos);
-                HiddenWindows[hWnd] = originalPos;
+            if (!keepTheme)
+                return null;
 
-                const uint flags = WinApi.SWP_HIDEWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
-                WinApi.SetWindowPos(hWnd, 0, -32_000, -32_000, 0, 0, flags);
-                return originalPos;
-            }
+            return WinApi.GetWindowRect(hWnd, out var originalPos) ? originalPos : null;
+        }, keepTheme);
 
+        if (!keepTheme)
+        {
             UpdateWindowLayered(hWnd, remove: false);
             WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
-            return null;
-        }, keepTheme);
+            return;
+        }
+
+        if (originalPos == null && WinApi.GetWindowRect(hWnd, out var currentPos))
+        {
+            originalPos = currentPos;
+            HiddenWindows[hWnd] = currentPos;
+        }
+
+        const uint flags = WinApi.SWP_HIDEWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
+        WinApi.SetWindowPos(hWnd, 0, -32_000, -32_000, 0, 0, flags);
     }
     public static bool ShowWindow(nint hWnd, bool removeCache)
     {
@@ -412,7 +419,6 @@ public static class Helper
         {
             const uint flags = WinApi.SWP_SHOWWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
             WinApi.SetWindowPos(hWnd, 0, originalPos.Value.Left, originalPos.Value.Top, 0, 0, flags);
-            return true;
         }
 
         WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);

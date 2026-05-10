@@ -15,10 +15,16 @@ public static class WinApi
 {
     public const int EVENT_OBJECT_CREATE = 0x8000;
     public const int EVENT_OBJECT_SHOW = 0x8002;
+    public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+    public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
 
+    public const uint WM_QUIT = 0x0012;
     public const int WM_COMMAND = 0x111; // Send a command
 
+    public const uint PM_NOREMOVE = 0x0000;
+
     public const int SW_SHOWNOACTIVATE = 4; // Show window but not activated
+    public const int SW_HIDE = 0;
 
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOZORDER = 0x0004;
@@ -31,6 +37,8 @@ public static class WinApi
     public const int WS_EX_LAYERED = 0x80000; // Layered window.
     public const int LWA_ALPHA = 0x2; // Determine the opacity of a layered window
 
+    public const uint GA_ROOT = 2;
+
     public const uint SIGDN_URL = 0x80068000;
 
     [DllImport("user32.dll")]
@@ -38,6 +46,24 @@ public static class WinApi
 
     [DllImport("user32.dll")]
     public static extern bool UnhookWinEvent(nint hWinEventHook);
+
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    public static extern bool PostThreadMessage(uint idThread, uint msg, nint wParam, nint lParam);
+
+    [DllImport("user32.dll")]
+    public static extern int GetMessage(out MSG lpMsg, nint hWnd, uint wMsgFilterMin, uint wMsgFilterMax);
+
+    [DllImport("user32.dll")]
+    public static extern bool PeekMessage(out MSG lpMsg, nint hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
+
+    [DllImport("user32.dll")]
+    public static extern bool TranslateMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    public static extern nint DispatchMessage(ref MSG lpMsg);
 
     [DllImport("user32.dll")]
     public static extern nint GetParent(nint hWnd);
@@ -104,6 +130,9 @@ public static class WinApi
 
     [DllImport("user32.dll")]
     public static extern bool SetLayeredWindowAttributes(nint hWnd, uint crKey, byte bAlpha, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetLayeredWindowAttributes(nint hWnd, out uint crKey, out byte bAlpha, out uint dwFlags);
 
     [DllImport("user32.dll")]
     public static extern uint RealGetWindowClass(nint hwnd, StringBuilder pszType, uint cchType);
