@@ -20,6 +20,11 @@ public static class Helper
 {
     private static int _lastCtrlShiftCheckAt;
     private static bool _lastCtrlShiftCheckValue;
+    private const int SM_XVIRTUALSCREEN = 76;
+    private const int SM_YVIRTUALSCREEN = 77;
+    private const int SM_CXVIRTUALSCREEN = 78;
+    private const int SM_CYVIRTUALSCREEN = 79;
+    private const int OffscreenRestoreMargin = 120;
     public static readonly ConcurrentDictionary<nint, RECT?> HiddenWindows = new();
 
     public static Task DoDelayedBackgroundAsync(Action action, int delayMs = 2_000, CancellationToken cancellationToken = default)
@@ -409,20 +414,100 @@ public static class Helper
     }
     public static bool ShowWindow(nint hWnd, bool removeCache)
     {
-        if (!HiddenWindows.TryGetValue(hWnd, out var originalPos))
+        var restored = RestoreHiddenExplorerWindow(hWnd, removeCache, removeLayeredStyle: false);
+        if (restored)
+            WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);
+
+        return restored;
+    }
+    public static int RestoreHiddenExplorerWindows(bool removeLayeredStyle = true)
+    {
+        var restored = 0;
+        var candidates = GetAllExplorerWindows()
+            .Concat(HiddenWindows.Keys)
+            .Distinct()
+            .ToArray();
+
+        foreach (var hWnd in candidates)
+        {
+            if (RestoreHiddenExplorerWindow(hWnd, removeCache: true, removeLayeredStyle))
+                restored++;
+        }
+
+        return restored;
+    }
+    public static bool RestoreHiddenExplorerWindow(nint hWnd, bool removeCache = true, bool removeLayeredStyle = true)
+    {
+        if (hWnd == 0 || !IsFileExplorerWindow(hWnd))
+        {
+            if (removeCache)
+                HiddenWindows.TryRemove(hWnd, out _);
+
+            return false;
+        }
+
+        var hasCache = HiddenWindows.TryGetValue(hWnd, out var originalPos);
+        var exStyle = WinApi.GetWindowLong(hWnd, WinApi.GWL_EXSTYLE);
+        var isLayered = (exStyle & WinApi.WS_EX_LAYERED) != 0;
+        var alpha = (byte)255;
+        var alphaFlags = 0u;
+        var isTransparent = isLayered &&
+                            WinApi.GetLayeredWindowAttributes(hWnd, out _, out alpha, out alphaFlags) &&
+                            (alphaFlags & (uint)WinApi.LWA_ALPHA) != 0 &&
+                            alpha == 0;
+        var isVisible = WinApi.IsWindowVisible(hWnd);
+        var hasRect = WinApi.GetWindowRect(hWnd, out var rect);
+        var isOffscreen = hasRect && IsExplorerWindowOffscreen(rect);
+
+        if (!hasCache && !isTransparent && isVisible && !isOffscreen)
             return false;
 
         if (removeCache)
             HiddenWindows.TryRemove(hWnd, out _);
 
+        const uint showFlags = WinApi.SWP_SHOWWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
         if (originalPos != null)
         {
-            const uint flags = WinApi.SWP_SHOWWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
-            WinApi.SetWindowPos(hWnd, 0, originalPos.Value.Left, originalPos.Value.Top, 0, 0, flags);
+            WinApi.SetWindowPos(hWnd, 0, originalPos.Value.Left, originalPos.Value.Top, 0, 0, showFlags);
+        }
+        else if (isOffscreen)
+        {
+            var x = WinApi.GetSystemMetrics(SM_XVIRTUALSCREEN) + OffscreenRestoreMargin;
+            var y = WinApi.GetSystemMetrics(SM_YVIRTUALSCREEN) + OffscreenRestoreMargin;
+            WinApi.SetWindowPos(hWnd, 0, x, y, 0, 0, showFlags);
+        }
+        else
+        {
+            WinApi.ShowWindow(hWnd, WinApi.SW_SHOWNOACTIVATE);
+            if (hasRect)
+                WinApi.SetWindowPos(hWnd, 0, rect.Left, rect.Top, 0, 0, showFlags);
         }
 
-        WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);
+        if (isLayered)
+        {
+            WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);
+            if (removeLayeredStyle)
+                UpdateWindowLayered(hWnd, remove: true);
+        }
+
         return true;
+    }
+    private static bool IsExplorerWindowOffscreen(RECT rect)
+    {
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        if (width < 80 || height < 80)
+            return false;
+
+        var virtualLeft = WinApi.GetSystemMetrics(SM_XVIRTUALSCREEN);
+        var virtualTop = WinApi.GetSystemMetrics(SM_YVIRTUALSCREEN);
+        var virtualRight = virtualLeft + WinApi.GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        var virtualBottom = virtualTop + WinApi.GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+        return rect.Right < virtualLeft - OffscreenRestoreMargin ||
+               rect.Bottom < virtualTop - OffscreenRestoreMargin ||
+               rect.Left > virtualRight + OffscreenRestoreMargin ||
+               rect.Top > virtualBottom + OffscreenRestoreMargin;
     }
 
     public static bool IsCtrlShiftDown()

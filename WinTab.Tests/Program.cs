@@ -17,6 +17,10 @@ if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--stres
     return await ExplorerStressTest.RunAsync(args);
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--activation-stress"))
     return await ExplorerStressTest.RunActivationAsync(args);
+if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--recovery-stress"))
+    return await ExplorerStressTest.RunRecoveryAsync(args);
+if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--reuse-stress"))
+    return await ExplorerStressTest.RunReuseAsync(args);
 
 return await ExplorerLaunchLocationResolverTests.RunAll();
 
@@ -35,7 +39,11 @@ internal static class ExplorerLaunchLocationResolverTests
             ("tab merge uses the ExplorerTabUtility fast path", ExplorerTabSelectionTests.TabMergeUsesExplorerTabUtilityFastPath),
             ("failed navigation closes the transient This PC tab", ExplorerTabSelectionTests.FailedNavigationClosesTransientThisPcTab),
             ("ExplorerTabUtility-style show hook does not hide independent windows", ExplorerTabSelectionTests.ShowHookDoesNotHideIndependentWindows),
-            ("HideWindow reapplies transparency after Explorer resets styles", ExplorerTabSelectionTests.HideWindowReappliesTransparency)
+            ("HideWindow reapplies transparency after Explorer resets styles", ExplorerTabSelectionTests.HideWindowReappliesTransparency),
+            ("hidden Explorer windows are restored on lifecycle boundaries", ExplorerTabSelectionTests.HiddenExplorerWindowsAreRestoredOnLifecycleBoundaries),
+            ("orphaned transparent Explorer windows are recovered without cache", ExplorerTabSelectionTests.OrphanedTransparentExplorerWindowsAreRecoveredWithoutCache),
+            ("tab reuse excludes only the merge source instead of young tabs", ExplorerTabSelectionTests.TabReuseExcludesMergeSourceInsteadOfYoungTabs),
+            ("tab reuse never creates a duplicate after finding an existing path", ExplorerTabSelectionTests.TabReuseDoesNotDuplicateAfterSelectionFailure)
         };
 
         var failed = 0;
@@ -262,6 +270,91 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
+    public static Task HiddenExplorerWindowsAreRestoredOnLifecycleBoundaries()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var initializeBody = ExtractMethodBody(source, "private void InitializeShellObjects");
+        var stopBody = ExtractMethodBody(source, "public void StopHook");
+        var disposeBody = ExtractMethodBody(source, "private void DisposeShellObjects");
+        var showIndependentBody = ExtractMethodBody(source, "private void TryShowAsIndependentWindow");
+        var removeBody = ExtractMethodBody(source, "private void RemoveWindowAndUnhookEvents");
+
+        var startupRestoreIndex = initializeBody.IndexOf("RecoverHiddenExplorerWindows", StringComparison.Ordinal);
+        var eventHookIndex = initializeBody.IndexOf("WindowRegistered +=", StringComparison.Ordinal);
+        Assert(startupRestoreIndex >= 0 && eventHookIndex >= 0 && startupRestoreIndex < eventHookIndex,
+            "Startup must recover orphaned hidden Explorer windows before registering new merge hooks.");
+        Assert(stopBody.Contains("RecoverHiddenExplorerWindows", StringComparison.Ordinal),
+            "StopHook must release hidden Explorer windows before disabling forced tabs.");
+        Assert(disposeBody.Contains("RecoverHiddenExplorerWindows", StringComparison.Ordinal),
+            "DisposeShellObjects must release hidden Explorer windows before COM objects are dropped.");
+        Assert(showIndependentBody.Contains("RestoreHiddenExplorerWindowAsync", StringComparison.Ordinal),
+            "Windows that stop being merge candidates must be restored through the guarded restore path.");
+        Assert(removeBody.Contains("Helper.RestoreHiddenExplorerWindow", StringComparison.Ordinal),
+            "Removing a live shell window must restore it unless the caller intentionally closes it.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task OrphanedTransparentExplorerWindowsAreRecoveredWithoutCache()
+    {
+        var helperPath = FindRepoFile("WinTab", "Helpers", "Helper.cs");
+        var helper = File.ReadAllText(helperPath);
+        var restoreBody = ExtractMethodBody(helper, "public static bool RestoreHiddenExplorerWindow");
+        var recoveryBody = ExtractMethodBody(helper, "public static int RestoreHiddenExplorerWindows");
+
+        Assert(restoreBody.Contains("GetLayeredWindowAttributes", StringComparison.Ordinal) &&
+               restoreBody.Contains("alpha == 0", StringComparison.Ordinal) &&
+               restoreBody.Contains("SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA)", StringComparison.Ordinal),
+            "RestoreHiddenExplorerWindow must repair alpha=0 Explorer windows even when HiddenWindows has no cache entry.");
+        Assert(recoveryBody.Contains("GetAllExplorerWindows()", StringComparison.Ordinal),
+            "RestoreHiddenExplorerWindows must scan live Explorer windows, not only the in-process hidden-window cache.");
+        Assert(recoveryBody.Contains("RestoreHiddenExplorerWindow", StringComparison.Ordinal),
+            "RestoreHiddenExplorerWindows must route every candidate through the same restore primitive.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task TabReuseExcludesMergeSourceInsteadOfYoungTabs()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var searchBody = ExtractMethodBody(source, "private bool TrySearchForTab");
+        var openBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection");
+
+        Assert(!searchBody.Contains("CreatedAt", StringComparison.Ordinal),
+            "Tab reuse must not exclude freshly-created real target tabs by age.");
+        Assert(searchBody.Contains("windowInfo.CanAutoMerge", StringComparison.Ordinal),
+            "Tab reuse should exclude pending merge-source windows by state.");
+        Assert(searchBody.Contains("excludedTopLevelWindow", StringComparison.Ordinal),
+            "Tab reuse should exclude the specific top-level source window being merged.");
+        Assert(openBody.Contains("TrySearchForTab(windowToOpen.Location, windowToOpen.Handle", StringComparison.Ordinal),
+            "Auto-merge must pass the source window handle into tab reuse search.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task TabReuseDoesNotDuplicateAfterSelectionFailure()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var openBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection");
+        var selectBody = ExtractMethodBody(source, "private async Task<bool> SelectTabByUniqueNameVerified") +
+                         ExtractMethodBody(source, "private async Task<bool> TrySelectTabByKnownOrderAsync");
+
+        var failureLogIndex = openBody.IndexOf("OpenTab reuse-select-failed", StringComparison.Ordinal);
+        var duplicateOpenIndex = openBody.IndexOf("RequestToOpenNewTab", StringComparison.Ordinal);
+        var returnTrueAfterFailureIndex = openBody.IndexOf("return true;", failureLogIndex >= 0 ? failureLogIndex : 0, StringComparison.Ordinal);
+        Assert(failureLogIndex >= 0 && returnTrueAfterFailureIndex > failureLogIndex && returnTrueAfterFailureIndex < duplicateOpenIndex,
+            "Once reuse finds an existing path, selection failure must not fall through to opening a duplicate tab.");
+        Assert(selectBody.Contains("GetActiveTabHandle(windowHandle) == tabHandle", StringComparison.Ordinal),
+            "Reuse selection should succeed immediately when the target tab is already active.");
+        Assert(selectBody.Contains("TrySelectTabByKnownOrderAsync", StringComparison.Ordinal),
+            "Duplicate tab titles need a non-title fallback that still avoids tab-by-tab cycling.");
+
+        return Task.CompletedTask;
+    }
+
     private static string FindRepoFile(params string[] relativeParts)
     {
         foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
@@ -341,7 +434,9 @@ internal static class ExplorerStressTest
         var before = GetShellWindows();
         var beforeDefaultCount = before.Count(IsDefaultLocation);
         var beforeBaselineDefaultCount = before.Count(window => IsDefaultLocation(window));
-        var baselineTopLevelWindows = before.Select(window => (nint)window.Hwnd).ToHashSet();
+        var baselineTopLevelWindows = Helper.GetAllExplorerWindows()
+            .Concat(before.Select(window => (nint)window.Hwnd))
+            .ToHashSet();
         VisibleExplorerWindowMonitor? visibleWindowMonitor = null;
         TransientDefaultTabMonitor? transientDefaultTabMonitor = null;
         ExplorerProcessMonitor? explorerProcessMonitor = null;
@@ -528,6 +623,151 @@ internal static class ExplorerStressTest
         }
     }
 
+    public static async Task<int> RunRecoveryAsync(string[] args)
+    {
+        var appPath = GetOption(args, "--app");
+        if (string.IsNullOrWhiteSpace(appPath) || !File.Exists(appPath))
+            throw new InvalidOperationException("Pass --app with the WinTab.exe path to recovery-test.");
+
+        var startupDelayMs = int.TryParse(GetOption(args, "--startup-delay"), out var parsedStartupDelay) ? parsedStartupDelay : 2_500;
+        var stressRoot = Path.Combine(Path.GetTempPath(), "WinTabExplorerStress");
+        KillExistingWinTabProcesses();
+        CloseTestShellWindows(stressRoot);
+
+        var root = Path.Combine(stressRoot, DateTime.Now.ToString("yyyyMMddHHmmssfff"));
+        var debugLog = Path.Combine(root, "wintab-recovery-debug.log");
+        var baseline = CreateBaseline(root);
+        StartExplorerNewWindow(baseline);
+        await WaitForFolderWindowAsync(baseline);
+
+        nint concealedWindow = 0;
+        Process? app = null;
+        try
+        {
+            var baselineWindow = GetShellWindows().FirstOrDefault(window => IsSameFolder(window, baseline));
+            if (baselineWindow == null)
+            {
+                Console.Error.WriteLine("Explorer recovery test failed: no baseline Explorer window found.");
+                return 1;
+            }
+
+            concealedWindow = (nint)baselineWindow.Hwnd;
+            ConcealExplorerWindowAsOrphan(concealedWindow);
+            await Helper.DoUntilConditionAsync(
+                () => IsFullyTransparent(concealedWindow),
+                transparent => transparent,
+                1_500,
+                50);
+
+            if (!IsFullyTransparent(concealedWindow))
+            {
+                Console.Error.WriteLine("Explorer recovery test failed: could not reproduce alpha=0 Explorer window.");
+                DumpShellWindows(GetShellWindows());
+                return 1;
+            }
+
+            app = StartWinTab(appPath, debugLog);
+            await Task.Delay(startupDelayMs);
+
+            var restored = await Helper.DoUntilConditionAsync(
+                () => IsExplorerWindowRestored(concealedWindow),
+                isRestored => isRestored,
+                6_000,
+                50);
+
+            if (!restored)
+            {
+                Console.Error.WriteLine("Explorer recovery test failed: WinTab did not restore an orphaned alpha=0 Explorer window.");
+                DumpWindowVisibility(concealedWindow);
+                DumpShellWindows(GetShellWindows());
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
+            Console.WriteLine("PASS Explorer recovery: orphaned alpha=0 Explorer window was restored by WinTab startup.");
+            return 0;
+        }
+        finally
+        {
+            TryRestoreExplorerWindow(concealedWindow);
+            if (app != null)
+                TryKill(app);
+            CloseTestShellWindows(root);
+            TryDelete(root);
+        }
+    }
+
+    public static async Task<int> RunReuseAsync(string[] args)
+    {
+        var appPath = GetOption(args, "--app");
+        if (string.IsNullOrWhiteSpace(appPath) || !File.Exists(appPath))
+            throw new InvalidOperationException("Pass --app with the WinTab.exe path to reuse-test.");
+
+        var targetOverride = GetOption(args, "--target");
+        var startupDelayMs = int.TryParse(GetOption(args, "--startup-delay"), out var parsedStartupDelay) ? parsedStartupDelay : 2_500;
+        var repeatDelayMs = int.TryParse(GetOption(args, "--repeat-delay"), out var parsedRepeatDelay) ? parsedRepeatDelay : 250;
+        var stressRoot = Path.Combine(Path.GetTempPath(), "WinTabExplorerStress");
+        KillExistingWinTabProcesses();
+        CloseTestShellWindows(stressRoot);
+
+        var root = Path.Combine(stressRoot, DateTime.Now.ToString("yyyyMMddHHmmssfff"));
+        var debugLog = Path.Combine(root, "wintab-reuse-debug.log");
+        var baseline = CreateBaseline(root);
+        var target = string.IsNullOrWhiteSpace(targetOverride)
+            ? Path.Combine(root, "新建文件夹")
+            : targetOverride;
+
+        if (!Directory.Exists(target))
+            Directory.CreateDirectory(target);
+        if (!string.IsNullOrWhiteSpace(targetOverride))
+            CloseShellWindowsByFolder(target);
+
+        StartExplorer(baseline);
+        await WaitForFolderWindowAsync(baseline);
+
+        using var app = StartWinTab(appPath, debugLog);
+        try
+        {
+            await Task.Delay(startupDelayMs);
+
+            StartExplorer(target);
+            var firstTargetWindow = await WaitForTargetCountAsync(target, expectedCount: 1, timeoutMs: 12_000);
+            if (firstTargetWindow.Count(window => IsSameFolder(window, target)) != 1)
+            {
+                Console.Error.WriteLine("Explorer reuse test failed: first open did not create exactly one target tab.");
+                DumpShellWindows(firstTargetWindow);
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
+            await Task.Delay(repeatDelayMs);
+            StartExplorer(target);
+            var finalWindows = await WaitForTargetCountAsync(target, expectedCount: 1, timeoutMs: 12_000);
+            var targetTabs = finalWindows.Where(window => IsSameFolder(window, target)).ToArray();
+
+            if (targetTabs.Length != 1)
+            {
+                Console.Error.WriteLine("Explorer reuse test failed: reopening the same folder created duplicate target tabs.");
+                Console.Error.WriteLine($"Target='{target}' Count={targetTabs.Length}");
+                DumpShellWindows(finalWindows);
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
+            Console.WriteLine($"PASS Explorer reuse: reopening '{target}' reused the existing tab without creating a duplicate.");
+            return 0;
+        }
+        finally
+        {
+            TryKill(app);
+            if (string.IsNullOrWhiteSpace(targetOverride))
+                CloseTestShellWindows(root);
+            else
+                CloseShellWindowsByFolder(target);
+            TryDelete(root);
+        }
+    }
+
     private static string[] CreateTargets(string root, int count)
     {
         Directory.CreateDirectory(root);
@@ -553,8 +793,7 @@ internal static class ExplorerStressTest
 
     private static Process StartWinTab(string appPath, string debugLog)
     {
-        foreach (var existingProcess in Process.GetProcessesByName("WinTab"))
-            TryKill(existingProcess);
+        KillExistingWinTabProcesses();
 
         var startInfo = new ProcessStartInfo(appPath, "--background")
         {
@@ -573,6 +812,10 @@ internal static class ExplorerStressTest
     private static void StartExplorer(string target)
     {
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{target}\"") { UseShellExecute = false });
+    }
+    private static void StartExplorerNewWindow(string target)
+    {
+        Process.Start(new ProcessStartInfo("explorer.exe", $"/n,\"{target}\"") { UseShellExecute = false });
     }
     private static async Task WaitForFolderWindowAsync(string folder)
     {
@@ -630,6 +873,53 @@ internal static class ExplorerStressTest
         }
 
         return last;
+    }
+
+    private static async Task<IReadOnlyList<ShellWindowSnapshot>> WaitForTargetCountAsync(string target, int expectedCount, int timeoutMs)
+    {
+        var timeoutAt = Environment.TickCount64 + timeoutMs;
+        var last = GetShellWindows();
+        while (Environment.TickCount64 < timeoutAt)
+        {
+            last = GetShellWindows();
+            if (last.Count(window => IsSameFolder(window, target)) == expectedCount)
+                return last;
+
+            await Task.Delay(100);
+        }
+
+        return last;
+    }
+
+    private static async Task<IReadOnlyList<ShellWindowSnapshot>> WaitForStableShellWindowsAsync(int timeoutMs)
+    {
+        var timeoutAt = Environment.TickCount64 + timeoutMs;
+        var last = GetShellWindows();
+        while (Environment.TickCount64 < timeoutAt)
+        {
+            await Task.Delay(150);
+            var current = GetShellWindows();
+            if (ShellWindowSnapshotsEqual(last, current))
+                return current;
+
+            last = current;
+        }
+
+        return last;
+    }
+
+    private static bool ShellWindowSnapshotsEqual(IReadOnlyList<ShellWindowSnapshot> left, IReadOnlyList<ShellWindowSnapshot> right)
+    {
+        var leftKeys = left
+            .Select(window => $"{window.Hwnd}|{window.TabHwnd}|{NormalizePath(window.Path)}|{window.LocationUrl}")
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var rightKeys = right
+            .Select(window => $"{window.Hwnd}|{window.TabHwnd}|{NormalizePath(window.Path)}|{window.LocationUrl}")
+            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return leftKeys.SequenceEqual(rightKeys, StringComparer.OrdinalIgnoreCase);
     }
 
     private static ShellWindowSnapshot[] GetUnexpectedTargetTopLevelWindows(
@@ -835,6 +1125,135 @@ internal static class ExplorerStressTest
         }
     }
 
+    private static void CloseShellWindowsByFolder(string folder)
+    {
+        var shellType = Type.GetTypeFromProgID("Shell.Application");
+        if (shellType == null)
+            return;
+
+        object? shell = null;
+        object? windows = null;
+        try
+        {
+            shell = Activator.CreateInstance(shellType);
+            windows = shellType.InvokeMember("Windows", System.Reflection.BindingFlags.InvokeMethod, null, shell, []);
+            var count = Convert.ToInt32(windows!.GetType().InvokeMember("Count", System.Reflection.BindingFlags.GetProperty, null, windows, []));
+
+            for (var i = count - 1; i >= 0; i--)
+            {
+                object? window = null;
+                try
+                {
+                    window = windows.GetType().InvokeMember("Item", System.Reflection.BindingFlags.InvokeMethod, null, windows, [i]);
+                    if (window == null || !IsSameFolder(ReadShellWindow(window), folder))
+                        continue;
+
+                    window.GetType().InvokeMember("Quit", System.Reflection.BindingFlags.InvokeMethod, null, window, []);
+                }
+                catch
+                {
+                    //
+                }
+                finally
+                {
+                    ReleaseComObject(window);
+                }
+            }
+        }
+        finally
+        {
+            ReleaseComObject(windows);
+            ReleaseComObject(shell);
+        }
+    }
+
+    private static void ConcealExplorerWindowAsOrphan(nint hWnd)
+    {
+        if (hWnd == 0)
+            return;
+
+        Helper.UpdateWindowLayered(hWnd, remove: false);
+        WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
+        if (WinApi.GetWindowRect(hWnd, out var rect))
+        {
+            const uint flags = WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
+            WinApi.SetWindowPos(hWnd, 0, rect.Left, rect.Top, 0, 0, flags);
+            WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
+        }
+    }
+
+    private static bool IsExplorerWindowRestored(nint hWnd)
+    {
+        return hWnd != 0 &&
+               Helper.IsFileExplorerWindow(hWnd) &&
+               WinApi.IsWindowVisible(hWnd) &&
+               !IsFullyTransparent(hWnd) &&
+               WinApi.GetWindowRect(hWnd, out var rect) &&
+               IsOnScreen(rect);
+    }
+
+    private static void TryRestoreExplorerWindow(nint hWnd)
+    {
+        if (hWnd == 0)
+            return;
+
+        try
+        {
+            WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);
+            Helper.UpdateWindowLayered(hWnd, remove: true);
+            WinApi.ShowWindow(hWnd, WinApi.SW_SHOWNOACTIVATE);
+            if (WinApi.GetWindowRect(hWnd, out var rect))
+            {
+                var flags = WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_SHOWWINDOW | WinApi.SWP_FRAMECHANGED;
+                if (IsOnScreen(rect))
+                    WinApi.SetWindowPos(hWnd, 0, rect.Left, rect.Top, 0, 0, flags);
+                else
+                    WinApi.SetWindowPos(hWnd, 0, 120, 120, 0, 0, flags);
+            }
+        }
+        catch
+        {
+            //
+        }
+    }
+
+    private static bool IsFullyTransparent(nint window)
+    {
+        var exStyle = WinApi.GetWindowLong(window, WinApi.GWL_EXSTYLE);
+        return (exStyle & WinApi.WS_EX_LAYERED) != 0 &&
+               WinApi.GetLayeredWindowAttributes(window, out _, out var alpha, out var flags) &&
+               (flags & (uint)WinApi.LWA_ALPHA) != 0 &&
+               alpha == 0;
+    }
+
+    private static bool IsOnScreen(RECT rect)
+    {
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+
+        return width >= 80 &&
+               height >= 80 &&
+               rect.Right > 0 &&
+               rect.Bottom > 0 &&
+               rect.Left > -1_000 &&
+               rect.Top > -1_000;
+    }
+
+    private static void DumpWindowVisibility(nint hWnd)
+    {
+        var exStyle = WinApi.GetWindowLong(hWnd, WinApi.GWL_EXSTYLE);
+        var layered = (exStyle & WinApi.WS_EX_LAYERED) != 0;
+        var alphaText = "n/a";
+        if (layered && WinApi.GetLayeredWindowAttributes(hWnd, out _, out var alpha, out var flags))
+            alphaText = $"{alpha} flags={flags}";
+
+        var rectText = WinApi.GetWindowRect(hWnd, out var rect)
+            ? $"{rect.Left},{rect.Top},{rect.Right},{rect.Bottom}"
+            : "n/a";
+
+        Console.Error.WriteLine($"HWND={hWnd} Explorer={Helper.IsFileExplorerWindow(hWnd)} Visible={WinApi.IsWindowVisible(hWnd)} Layered={layered} Alpha={alphaText} Rect={rectText}");
+    }
+
     private static bool IsDefaultLocation(ShellWindowSnapshot window)
     {
         return window.LocationName is "This PC" or "此电脑" ||
@@ -899,7 +1318,13 @@ internal static class ExplorerStressTest
             return;
 
         Console.Error.WriteLine("WinTab debug log:");
-        foreach (var line in File.ReadLines(debugLog).TakeLast(800))
+        using var stream = new FileStream(debugLog, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        var lines = new List<string>();
+        while (reader.ReadLine() is { } line)
+            lines.Add(line);
+
+        foreach (var line in lines.TakeLast(800))
             Console.Error.WriteLine(line);
     }
 
@@ -946,6 +1371,12 @@ internal static class ExplorerStressTest
         {
             //
         }
+    }
+
+    private static void KillExistingWinTabProcesses()
+    {
+        foreach (var existingProcess in Process.GetProcessesByName("WinTab"))
+            TryKill(existingProcess);
     }
 
     private static void TryDelete(string path)
@@ -1165,27 +1596,6 @@ internal static class ExplorerStressTest
             }
         }
 
-        private static bool IsOnScreen(RECT rect)
-        {
-            var width = rect.Right - rect.Left;
-            var height = rect.Bottom - rect.Top;
-
-            return width >= 80 &&
-                   height >= 80 &&
-                   rect.Right > 0 &&
-                   rect.Bottom > 0 &&
-                   rect.Left > -1_000 &&
-                   rect.Top > -1_000;
-        }
-
-        private static bool IsFullyTransparent(nint window)
-        {
-            var exStyle = WinApi.GetWindowLong(window, WinApi.GWL_EXSTYLE);
-            return (exStyle & WinApi.WS_EX_LAYERED) != 0 &&
-                   WinApi.GetLayeredWindowAttributes(window, out _, out var alpha, out var flags) &&
-                   (flags & (uint)WinApi.LWA_ALPHA) != 0 &&
-                   alpha == 0;
-        }
     }
 
     private sealed record VisibleExplorerWindowSighting(
