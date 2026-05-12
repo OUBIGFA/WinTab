@@ -21,6 +21,8 @@ if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--recov
     return await ExplorerStressTest.RunRecoveryAsync(args);
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--reuse-stress"))
     return await ExplorerStressTest.RunReuseAsync(args);
+if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--default-location-stress"))
+    return await ExplorerStressTest.RunDefaultLocationAsync(args);
 
 return await ExplorerLaunchLocationResolverTests.RunAll();
 
@@ -39,6 +41,8 @@ internal static class ExplorerLaunchLocationResolverTests
             ("tab merge uses the ExplorerTabUtility fast path", ExplorerTabSelectionTests.TabMergeUsesExplorerTabUtilityFastPath),
             ("failed navigation closes the transient This PC tab", ExplorerTabSelectionTests.FailedNavigationClosesTransientThisPcTab),
             ("ExplorerTabUtility-style show hook does not hide independent windows", ExplorerTabSelectionTests.ShowHookDoesNotHideIndependentWindows),
+            ("ShellWindows registration callback stays non-blocking", ExplorerTabSelectionTests.ShellWindowRegistrationCallbackStaysNonBlocking),
+            ("default-location Explorer windows are released instead of hidden indefinitely", ExplorerTabSelectionTests.DefaultLocationWindowsAreReleasedInsteadOfHiddenIndefinitely),
             ("HideWindow reapplies transparency after Explorer resets styles", ExplorerTabSelectionTests.HideWindowReappliesTransparency),
             ("hidden Explorer windows are restored on lifecycle boundaries", ExplorerTabSelectionTests.HiddenExplorerWindowsAreRestoredOnLifecycleBoundaries),
             ("orphaned transparent Explorer windows are recovered without cache", ExplorerTabSelectionTests.OrphanedTransparentExplorerWindowsAreRecoveredWithoutCache),
@@ -249,6 +253,43 @@ internal static class ExplorerTabSelectionTests
             "The merge path should not depend on custom high-frequency window sweeps.");
         Assert(methodBody.Contains("Priority = ThreadPriority.Highest", StringComparison.Ordinal),
             "The WinEvent hook thread should run at high priority so conceal events are handled before Explorer paints.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task ShellWindowRegistrationCallbackStaysNonBlocking()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private void OnShellWindowRegistered");
+
+        Assert(methodBody.Contains("SchedulePendingAutoMerge(1)", StringComparison.Ordinal),
+            "ShellWindows registration should schedule merge work after returning to Explorer.");
+        Assert(!methodBody.Contains("AdoptNewShellWindowsForImmediateConceal", StringComparison.Ordinal),
+            "ShellWindows registration must not synchronously enumerate ShellWindows from Explorer's COM event callback.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task DefaultLocationWindowsAreReleasedInsteadOfHiddenIndefinitely()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private async Task<bool> TryAutoMergePendingWindow");
+        var hideBody = ExtractMethodBody(source, "private bool TryHideIncomingExplorerWindow");
+
+        var firstStartupIndex = methodBody.IndexOf("IsStartupExplorerLocation(firstLocation)", StringComparison.Ordinal);
+        var graceIndex = methodBody.IndexOf("PendingStartupLocationGraceMs", firstStartupIndex >= 0 ? firstStartupIndex : 0, StringComparison.Ordinal);
+        var releaseIndex = methodBody.IndexOf("TryShowAsIndependentWindow(window, windowInfo)", graceIndex >= 0 ? graceIndex : 0, StringComparison.Ordinal);
+        var resolveIndex = methodBody.IndexOf("ResolveInitialLocation(window)", StringComparison.Ordinal);
+        Assert(firstStartupIndex >= 0 && graceIndex > firstStartupIndex && releaseIndex > graceIndex,
+            "A pending Explorer window that stays at the default location must be released after a short startup grace window.");
+        Assert(resolveIndex > releaseIndex,
+            "Default-location waits must not block the global merge queue while other new Explorer windows need concealment.");
+        Assert(!methodBody.Contains("180_000", StringComparison.Ordinal),
+            "Hidden merge candidates must not stay concealed for minutes.");
+        Assert(hideBody.Contains("HasTrackedIndependentTopLevelWindow(hWnd)", StringComparison.Ordinal),
+            "The early WinEvent hide path must not conceal already-tracked stable Explorer windows.");
 
         return Task.CompletedTask;
     }
@@ -768,6 +809,79 @@ internal static class ExplorerStressTest
         }
     }
 
+    public static async Task<int> RunDefaultLocationAsync(string[] args)
+    {
+        var appPath = GetOption(args, "--app");
+        if (string.IsNullOrWhiteSpace(appPath) || !File.Exists(appPath))
+            throw new InvalidOperationException("Pass --app with the WinTab.exe path to default-location-test.");
+
+        var startupDelayMs = int.TryParse(GetOption(args, "--startup-delay"), out var parsedStartupDelay) ? parsedStartupDelay : 2_500;
+        var observeMs = int.TryParse(GetOption(args, "--observe-ms"), out var parsedObserveMs) ? parsedObserveMs : 5_500;
+        var stressRoot = Path.Combine(Path.GetTempPath(), "WinTabExplorerStress");
+        KillExistingWinTabProcesses();
+        CloseTestShellWindows(stressRoot);
+
+        var root = Path.Combine(stressRoot, DateTime.Now.ToString("yyyyMMddHHmmssfff"));
+        var debugLog = Path.Combine(root, "wintab-default-location-debug.log");
+        var baseline = CreateBaseline(root);
+        StartExplorer(baseline);
+        await WaitForFolderWindowAsync(baseline);
+
+        using var app = StartWinTab(appPath, debugLog);
+        var defaultWindowsBefore = GetShellWindows()
+            .Where(IsDefaultLocation)
+            .Select(window => (nint)window.Hwnd)
+            .ToHashSet();
+        var defaultWindowsOpenedByTest = new HashSet<nint>();
+
+        try
+        {
+            await Task.Delay(startupDelayMs);
+
+            StartExplorerDefault();
+            await Task.Delay(observeMs);
+
+            var windows = GetShellWindows();
+            var defaultWindows = windows.Where(IsDefaultLocation).ToArray();
+            foreach (var window in defaultWindows)
+            {
+                var hWnd = (nint)window.Hwnd;
+                if (!defaultWindowsBefore.Contains(hWnd))
+                    defaultWindowsOpenedByTest.Add(hWnd);
+            }
+
+            var transparentDefaultWindows = defaultWindows
+                .Where(window => IsFullyTransparent((nint)window.Hwnd))
+                .ToArray();
+
+            if (defaultWindows.Length == 0 || transparentDefaultWindows.Length > 0)
+            {
+                Console.Error.WriteLine("Explorer default-location test failed.");
+                Console.Error.WriteLine($"Default windows found={defaultWindows.Length}, transparent defaults={transparentDefaultWindows.Length}.");
+                DumpShellWindows(windows);
+                foreach (var window in transparentDefaultWindows)
+                    DumpWindowVisibility((nint)window.Hwnd);
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
+            Console.WriteLine("PASS Explorer default-location: opening This PC did not leave a transparent hidden Explorer window.");
+            return 0;
+        }
+        finally
+        {
+            foreach (var hWnd in defaultWindowsOpenedByTest)
+            {
+                TryRestoreExplorerWindow(hWnd);
+                CloseShellWindowByHwnd(hWnd);
+            }
+
+            TryKill(app);
+            CloseTestShellWindows(root);
+            TryDelete(root);
+        }
+    }
+
     private static string[] CreateTargets(string root, int count)
     {
         Directory.CreateDirectory(root);
@@ -816,6 +930,10 @@ internal static class ExplorerStressTest
     private static void StartExplorerNewWindow(string target)
     {
         Process.Start(new ProcessStartInfo("explorer.exe", $"/n,\"{target}\"") { UseShellExecute = false });
+    }
+    private static void StartExplorerDefault()
+    {
+        Process.Start(new ProcessStartInfo("explorer.exe") { UseShellExecute = false });
     }
     private static async Task WaitForFolderWindowAsync(string folder)
     {

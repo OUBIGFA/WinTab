@@ -26,6 +26,26 @@
   #define OutputDir "..\dist"
 #endif
 
+; When Arch is defined ("x64" | "x86" | "arm64"), build a per-arch installer
+; that only includes that architecture's files. When undefined, the installer
+; bundles all three and chooses at install time.
+#ifdef Arch
+  #if (Arch != "x64") && (Arch != "x86") && (Arch != "arm64")
+    #error Arch must be one of: x64, x86, arm64
+  #endif
+  #define OutputSuffix "_" + Arch
+  #if Arch == "x64"
+    #define ArchInstallIn64Bit "x64"
+  #elif Arch == "arm64"
+    #define ArchInstallIn64Bit "arm64"
+  #else
+    #define ArchInstallIn64Bit ""
+  #endif
+#else
+  #define OutputSuffix ""
+  #define ArchInstallIn64Bit "x64 arm64"
+#endif
+
 [Setup]
 AppId={{E1F2A3C4-F5D4-3B2E-1D5A-8F7B2F8D3E7A}
 AppName={#MyAppName}
@@ -39,14 +59,14 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 PrivilegesRequired=lowest
 OutputDir={#OutputDir}
-OutputBaseFilename={#MyAppName}_{#MyAppVersion}_Setup
+OutputBaseFilename={#MyAppName}_{#MyAppVersion}{#OutputSuffix}_Setup
 SetupIconFile=..\{#MyAppName}\Icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 LanguageDetectionMethod=uilanguage
 ShowLanguageDialog=no
-ArchitecturesInstallIn64BitMode=x64 arm64
+ArchitecturesInstallIn64BitMode={#ArchInstallIn64Bit}
 UninstallDisplayIcon={app}\{#MyAppRelativePath}
 UninstallDisplayName={#MyAppName}
 CloseApplications=yes
@@ -75,9 +95,13 @@ Name: "startupicon"; Description: "{cm:StartWithWindows}"; GroupDescription: "{c
 
 [Files]
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+#ifdef Arch
+Source: "{#PublishRoot}\{#Arch}\*"; DestDir: "{app}\{#MyAppName}"; Flags: ignoreversion recursesubdirs createallsubdirs
+#else
 Source: "{#PublishRoot}\x86\*"; DestDir: "{app}\{#MyAppName}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsX86
 Source: "{#PublishRoot}\x64\*"; DestDir: "{app}\{#MyAppName}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsX64
 Source: "{#PublishRoot}\arm64\*"; DestDir: "{app}\{#MyAppName}"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: IsArm64
+#endif
 
 [Dirs]
 Name: "{app}"; Flags: uninsalwaysuninstall
@@ -142,32 +166,56 @@ end;
 
 function GetArchitectureString: String;
 begin
+#ifdef Arch
+  #if Arch == "x86"
+  Result := 'x86';
+  #elif Arch == "arm64"
+  Result := 'ARM64';
+  #else
+  Result := 'x64';
+  #endif
+#else
   if IsX86 then
     Result := 'x86'
   else if IsArm64 then
     Result := 'ARM64'
   else
     Result := 'x64';
+#endif
 end;
 
 function GetDotNet9Url(Param: string): string;
 begin
+#ifdef Arch
+  #if Arch == "x86"
+  Result := '{#DotNet9InstallerUrlX86}';
+  #elif Arch == "arm64"
+  Result := '{#DotNet9InstallerUrlArm64}';
+  #else
+  Result := '{#DotNet9InstallerUrl}';
+  #endif
+#else
   if IsX86 then
     Result := '{#DotNet9InstallerUrlX86}'
   else if IsArm64 then
     Result := '{#DotNet9InstallerUrlArm64}'
   else
     Result := '{#DotNet9InstallerUrl}';
+#endif
 end;
 
 function GetDotNet9Filename: string;
 begin
+#ifdef Arch
+  Result := 'dotnet9-{#Arch}.exe';
+#else
   if IsX86 then
     Result := 'dotnet9-x86.exe'
   else if IsArm64 then
     Result := 'dotnet9-arm64.exe'
   else
     Result := 'dotnet9-x64.exe';
+#endif
 end;
 
 function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
@@ -314,3 +362,32 @@ begin
            mbInformation, MB_OK);
   end;
 end;
+
+#ifdef Arch
+function InitializeSetup(): Boolean;
+begin
+  Result := True;
+  #if Arch == "x64"
+  if not IsX64 then
+  begin
+    SuppressibleMsgBox('This installer is for x64 (64-bit Intel/AMD) Windows. Please download the matching installer for your CPU architecture.',
+                       mbError, MB_OK, IDOK);
+    Result := False;
+  end;
+  #elif Arch == "arm64"
+  if not IsArm64 then
+  begin
+    SuppressibleMsgBox('This installer is for ARM64 Windows. Please download the matching installer for your CPU architecture.',
+                       mbError, MB_OK, IDOK);
+    Result := False;
+  end;
+  #elif Arch == "x86"
+  if IsArm64 then
+  begin
+    SuppressibleMsgBox('This installer is for x86 (32-bit) Windows. ARM64 Windows users should download the ARM64 installer.',
+                       mbError, MB_OK, IDOK);
+    Result := False;
+  end;
+  #endif
+end;
+#endif

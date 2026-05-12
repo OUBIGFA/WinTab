@@ -27,6 +27,8 @@ using DrawingRectangle = System.Drawing.Rectangle;
 public class ExplorerWatcher : IHook
 {
     private const int AutomationRootTtlMs = 5_000;
+    private const int PendingStartupLocationGraceMs = 3_000;
+    private const int PendingAutoMergeMaxAgeMs = 12_000;
     private const int StripBoundsRectMatchSlop = 2;
     private static readonly string? DebugLogPath = Environment.GetEnvironmentVariable("WINTAB_DEBUG_LOG");
     private static bool _instanceRunning;
@@ -712,6 +714,7 @@ public class ExplorerWatcher : IHook
         if (!WinApi.IsWindowHasClassName(hWnd, "CabinetWClass")) return false;
         if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle) return false;
         if (IsRegisteredIndependentExplorerWindow(hWnd)) return false;
+        if (HasTrackedIndependentTopLevelWindow(hWnd)) return false;
         if (Helper.GetAnotherExplorerWindow(hWnd) == 0) return false;
 
         Helper.HideWindow(hWnd, SettingsManager.HaveThemeIssue);
@@ -720,6 +723,71 @@ public class ExplorerWatcher : IHook
     private bool IsRegisteredIndependentExplorerWindow(nint hWnd)
     {
         return _registeredIndependentHWnds.ContainsKey(hWnd);
+    }
+    private bool HasTrackedIndependentTopLevelWindow(nint hWnd)
+    {
+        lock (_windowEntryDictLock)
+        {
+            foreach (var (window, windowInfo, _) in _windowEntryDict)
+            {
+                if (windowInfo.CanAutoMerge)
+                    continue;
+
+                try
+                {
+                    if (new IntPtr(window.HWND) == hWnd)
+                        return true;
+                }
+                catch
+                {
+                    //
+                }
+            }
+        }
+
+        return false;
+    }
+    private bool HasTrackedTopLevelWindow(nint hWnd)
+    {
+        lock (_windowEntryDictLock)
+        {
+            foreach (var (window, _, _) in _windowEntryDict)
+            {
+                try
+                {
+                    if (new IntPtr(window.HWND) == hWnd)
+                        return true;
+                }
+                catch
+                {
+                    //
+                }
+            }
+        }
+
+        return false;
+    }
+    private void ReleaseTopLevelTrackingIfUnused(nint hWnd)
+    {
+        if (hWnd == 0)
+            return;
+
+        if (HasTrackedTopLevelWindow(hWnd) || Helper.IsFileExplorerWindow(hWnd))
+        {
+            _ = Task.Delay(5_000).ContinueWith(_ =>
+            {
+                if (!HasTrackedTopLevelWindow(hWnd) && !Helper.IsFileExplorerWindow(hWnd))
+                    ReleaseTopLevelTracking(hWnd);
+            }, TaskScheduler.Default);
+            return;
+        }
+
+        ReleaseTopLevelTracking(hWnd);
+    }
+    private void ReleaseTopLevelTracking(nint hWnd)
+    {
+        _independentHWnds.TryRemove(hWnd, out _);
+        _registeredIndependentHWnds.TryRemove(hWnd, out _);
     }
     private sealed class WinEventHookThread : IDisposable
     {
@@ -906,8 +974,10 @@ public class ExplorerWatcher : IHook
     }
     private void OnShellWindowRegistered(int __)
     {
-        AdoptNewShellWindowsForImmediateConceal();
-        SchedulePendingAutoMerge(50);
+        // Keep the ShellWindows COM event callback non-blocking. Explorer can
+        // raise this while it is committing shell-view edits such as renames,
+        // and synchronous enumeration here can leave explorer.exe waiting on us.
+        SchedulePendingAutoMerge(1);
     }
     private Task<string> ResolveInitialLocation(InternetExplorer window)
     {
@@ -924,6 +994,17 @@ public class ExplorerWatcher : IHook
         catch
         {
             return string.Empty;
+        }
+    }
+    private static nint SafeGetWindowHandle(InternetExplorer window)
+    {
+        try
+        {
+            return new IntPtr(window.HWND);
+        }
+        catch
+        {
+            return 0;
         }
     }
     private bool IsStartupExplorerLocation(string location)
@@ -1036,8 +1117,9 @@ public class ExplorerWatcher : IHook
     }
     private async Task<bool> TryAutoMergePendingWindow(InternetExplorer window, WindowInfo windowInfo)
     {
-        if (Helper.IsTimeUp(windowInfo.CreatedAt, 180_000))
+        if (Helper.IsTimeUp(windowInfo.CreatedAt, PendingAutoMergeMaxAgeMs))
         {
+            DebugLog($"Merge release-timeout hwnd={SafeGetWindowHandle(window)}");
             TryShowAsIndependentWindow(window, windowInfo);
             return false;
         }
@@ -1076,12 +1158,26 @@ public class ExplorerWatcher : IHook
         var firstLocation = TryGetLocation(window);
         if (IsStartupExplorerLocation(firstLocation))
         {
-            DebugLog($"Merge pending-startup hwnd={hWnd} location={firstLocation}");
+            if (!Helper.IsTimeUp(windowInfo.CreatedAt, PendingStartupLocationGraceMs))
+            {
+                DebugLog($"Merge pending-startup hwnd={hWnd} location={firstLocation}");
+                return false;
+            }
+
+            DebugLog($"Merge release-startup hwnd={hWnd} location={firstLocation}");
+            TryShowAsIndependentWindow(window, windowInfo);
             return false;
         }
 
         var location = await ResolveInitialLocation(window);
         DebugLog($"Merge resolved hwnd={hWnd} location={location}");
+        if (IsStartupExplorerLocation(location))
+        {
+            DebugLog($"Merge release-startup hwnd={hWnd} location={location}");
+            TryShowAsIndependentWindow(window, windowInfo);
+            return false;
+        }
+
         if (string.IsNullOrWhiteSpace(location) ||
             location.StartsWith("shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}"))
         {
@@ -1215,8 +1311,7 @@ public class ExplorerWatcher : IHook
                 Helper.RestoreHiddenExplorerWindow(hWnd, removeCache: true, removeLayeredStyle: !SettingsManager.HaveThemeIssue);
 
             _processedHWnds.TryRemove(hWnd, out _);
-            _independentHWnds.TryRemove(hWnd, out _);
-            _registeredIndependentHWnds.TryRemove(hWnd, out _);
+            ReleaseTopLevelTrackingIfUnused(hWnd);
             InvalidateAutomationRoot(hWnd);
             InvalidateStripBounds(hWnd);
             if (_mainWindowHandle == hWnd && !Helper.IsFileExplorerWindow(hWnd))

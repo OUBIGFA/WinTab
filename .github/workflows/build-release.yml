@@ -56,27 +56,20 @@ jobs:
   build-installer:
     needs: build
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        arch: [x64, x86, arm64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download x64 publish output
+      - name: Download publish output
         uses: actions/download-artifact@v4
         with:
-          name: publish-x64
-          path: publish/net9.0-windows/x64
-
-      - name: Download x86 publish output
-        uses: actions/download-artifact@v4
-        with:
-          name: publish-x86
-          path: publish/net9.0-windows/x86
-
-      - name: Download arm64 publish output
-        uses: actions/download-artifact@v4
-        with:
-          name: publish-arm64
-          path: publish/net9.0-windows/arm64
+          name: publish-${{ matrix.arch }}
+          path: publish/net9.0-windows/${{ matrix.arch }}
 
       - name: Install Inno Setup
         shell: pwsh
@@ -89,13 +82,14 @@ jobs:
             /DMyAppVersion="${{ env.VERSION }}" `
             /DPublishRoot="..\publish\net9.0-windows" `
             /DOutputDir="..\dist" `
+            /DArch="${{ matrix.arch }}" `
             "installers\installer.iss"
 
       - name: Upload unsigned installer
         id: upload-unsigned-installer
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.PROJECT_NAME }}_${{ env.VERSION }}_Setup-unsigned
+          name: ${{ env.PROJECT_NAME }}_${{ env.VERSION }}_${{ matrix.arch }}_Setup-unsigned
           path: dist/*.exe
 
       - name: Submit installer for signing
@@ -116,7 +110,7 @@ jobs:
       - name: Upload signed installer
         uses: actions/upload-artifact@v4
         with:
-          name: signed-installer
+          name: signed-installer-${{ matrix.arch }}
           path: ./signed-installer/*.exe
 
   create-release:
@@ -129,10 +123,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download signed installer
+      - name: Download all signed installers
         uses: actions/download-artifact@v4
         with:
-          name: signed-installer
+          pattern: signed-installer-*
+          merge-multiple: true
           path: release-artifacts
 
       - name: Generate changelog
@@ -176,6 +171,12 @@ jobs:
           body: |
             ${{ steps.generate_changelog.outputs.changelog }}
 
-            **Note:** Most users should download `${{ env.PROJECT_NAME }}_${{ env.VERSION }}_Setup.exe`.
+            ## Downloads
+
+            Pick the installer that matches your CPU architecture:
+
+            - `${{ env.PROJECT_NAME }}_${{ env.VERSION }}_x64_Setup.exe` — 64-bit Intel/AMD (most users)
+            - `${{ env.PROJECT_NAME }}_${{ env.VERSION }}_arm64_Setup.exe` — ARM64 Windows (Surface Pro X, Snapdragon laptops)
+            - `${{ env.PROJECT_NAME }}_${{ env.VERSION }}_x86_Setup.exe` — 32-bit Windows
           files: |
             release-artifacts/*.exe
