@@ -715,10 +715,34 @@ public class ExplorerWatcher : IHook
         if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle) return false;
         if (IsRegisteredIndependentExplorerWindow(hWnd)) return false;
         if (HasTrackedIndependentTopLevelWindow(hWnd)) return false;
+        if (!HasStableMergeTarget(hWnd)) return false;
         if (Helper.GetAnotherExplorerWindow(hWnd) == 0) return false;
 
         Helper.HideWindow(hWnd, SettingsManager.HaveThemeIssue);
         return true;
+    }
+    private bool HasStableMergeTarget(nint excluded)
+    {
+        lock (_windowEntryDictLock)
+        {
+            foreach (var (window, info, _) in _windowEntryDict)
+            {
+                if (info.CanAutoMerge)
+                    continue;
+
+                try
+                {
+                    if (new IntPtr(window.HWND) != excluded)
+                        return true;
+                }
+                catch
+                {
+                    //
+                }
+            }
+        }
+
+        return false;
     }
     private bool IsRegisteredIndependentExplorerWindow(nint hWnd)
     {
@@ -937,6 +961,11 @@ public class ExplorerWatcher : IHook
 
                 PreventWindowHiding(hWnd);
                 HookWindowEvents(window, windowInfo);
+
+                // WinEvent's early conceal pass may have hidden this window before Adopt
+                // classified it as independent. Restore it so the user sees their window.
+                if (Helper.HiddenWindows.ContainsKey(hWnd))
+                    _ = RestoreHiddenExplorerWindowAsync(hWnd);
                 continue;
             }
 

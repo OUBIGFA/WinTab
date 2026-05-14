@@ -49,7 +49,9 @@ internal static class ExplorerLaunchLocationResolverTests
             ("hidden Explorer windows are restored on lifecycle boundaries", ExplorerTabSelectionTests.HiddenExplorerWindowsAreRestoredOnLifecycleBoundaries),
             ("orphaned transparent Explorer windows are recovered without cache", ExplorerTabSelectionTests.OrphanedTransparentExplorerWindowsAreRecoveredWithoutCache),
             ("tab reuse excludes only the merge source instead of young tabs", ExplorerTabSelectionTests.TabReuseExcludesMergeSourceInsteadOfYoungTabs),
-            ("tab reuse never creates a duplicate after finding an existing path", ExplorerTabSelectionTests.TabReuseDoesNotDuplicateAfterSelectionFailure)
+            ("tab reuse never creates a duplicate after finding an existing path", ExplorerTabSelectionTests.TabReuseDoesNotDuplicateAfterSelectionFailure),
+            ("Adopt restores a window that WinEvent pre-hid before classifying it as independent", ExplorerTabSelectionTests.AdoptRestoresPreHiddenIndependentWindows),
+            ("Early WinEvent hide requires a stable tracked merge target", ExplorerTabSelectionTests.EarlyHideRequiresStableMergeTarget)
         };
 
         var failed = 0;
@@ -394,6 +396,42 @@ internal static class ExplorerTabSelectionTests
             "Reuse selection should succeed immediately when the target tab is already active.");
         Assert(selectBody.Contains("TrySelectTabByKnownOrderAsync", StringComparison.Ordinal),
             "Duplicate tab titles need a non-title fallback that still avoids tab-by-tab cycling.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task AdoptRestoresPreHiddenIndependentWindows()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private void AdoptNewShellWindowsForImmediateConceal");
+
+        var independentBranchIndex = methodBody.IndexOf("if (!canAutoMerge)", StringComparison.Ordinal);
+        Assert(independentBranchIndex >= 0, "AdoptNewShellWindowsForImmediateConceal must keep an !canAutoMerge branch for independent windows.");
+
+        var hideCallIndex = methodBody.IndexOf("Helper.HideWindow", independentBranchIndex, StringComparison.Ordinal);
+        var containsKeyIndex = methodBody.IndexOf("Helper.HiddenWindows.ContainsKey(hWnd)", independentBranchIndex, StringComparison.Ordinal);
+        var restoreIndex = methodBody.IndexOf("RestoreHiddenExplorerWindowAsync(hWnd)", independentBranchIndex, StringComparison.Ordinal);
+
+        Assert(containsKeyIndex >= 0 && restoreIndex >= 0 && containsKeyIndex < hideCallIndex && restoreIndex < hideCallIndex,
+            "Adopt's independent-window branch must restore a window that WinEvent pre-hid so it never gets stuck transparent.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task EarlyHideRequiresStableMergeTarget()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var hideBody = ExtractMethodBody(source, "private bool TryHideIncomingExplorerWindow");
+        var helperBody = ExtractMethodBody(source, "private bool HasStableMergeTarget");
+
+        Assert(hideBody.Contains("HasStableMergeTarget(hWnd)", StringComparison.Ordinal),
+            "Early WinEvent hide must consult a stable tracked merge target so untracked orphan windows can't trick it into hiding user-initiated opens.");
+
+        Assert(helperBody.Contains("_windowEntryDict", StringComparison.Ordinal) &&
+               helperBody.Contains("CanAutoMerge", StringComparison.Ordinal),
+            "HasStableMergeTarget must inspect the tracked dictionary and skip windows that are themselves pending merge candidates.");
 
         return Task.CompletedTask;
     }
