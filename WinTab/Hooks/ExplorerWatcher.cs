@@ -27,7 +27,7 @@ using DrawingRectangle = System.Drawing.Rectangle;
 public class ExplorerWatcher : IHook
 {
     private const int AutomationRootTtlMs = 5_000;
-    private const int PendingStartupLocationGraceMs = 3_000;
+    private const int PendingStartupLocationGraceMs = 500;
     private const int PendingAutoMergeMaxAgeMs = 12_000;
     private const int StripBoundsRectMatchSlop = 2;
     private static readonly string? DebugLogPath = Environment.GetEnvironmentVariable("WINTAB_DEBUG_LOG");
@@ -1058,7 +1058,7 @@ public class ExplorerWatcher : IHook
             }
 
             if (shouldRetry)
-                SchedulePendingAutoMerge();
+                SchedulePendingAutoMerge(150);
         });
     }
     private async Task<bool> MergePendingAutoMergeWindowsAsync()

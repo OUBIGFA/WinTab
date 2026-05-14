@@ -23,6 +23,8 @@ if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--reuse
     return await ExplorerStressTest.RunReuseAsync(args);
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--default-location-stress"))
     return await ExplorerStressTest.RunDefaultLocationAsync(args);
+if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--user-default-stress"))
+    return await ExplorerStressTest.RunUserDefaultAsync(args);
 
 return await ExplorerLaunchLocationResolverTests.RunAll();
 
@@ -871,6 +873,89 @@ internal static class ExplorerStressTest
         finally
         {
             foreach (var hWnd in defaultWindowsOpenedByTest)
+            {
+                TryRestoreExplorerWindow(hWnd);
+                CloseShellWindowByHwnd(hWnd);
+            }
+
+            TryKill(app);
+            CloseTestShellWindows(root);
+            TryDelete(root);
+        }
+    }
+
+    public static async Task<int> RunUserDefaultAsync(string[] args)
+    {
+        var appPath = GetOption(args, "--app");
+        if (string.IsNullOrWhiteSpace(appPath) || !File.Exists(appPath))
+            throw new InvalidOperationException("Pass --app with the WinTab.exe path to user-default-test.");
+
+        var startupDelayMs = int.TryParse(GetOption(args, "--startup-delay"), out var parsedStartupDelay) ? parsedStartupDelay : 2_500;
+        var observeMs = int.TryParse(GetOption(args, "--observe-ms"), out var parsedObserveMs) ? parsedObserveMs : 1_800;
+        var maxHideMs = int.TryParse(GetOption(args, "--max-hide-ms"), out var parsedMaxHideMs) ? parsedMaxHideMs : 900;
+        var stressRoot = Path.Combine(Path.GetTempPath(), "WinTabExplorerStress");
+        KillExistingWinTabProcesses();
+        CloseTestShellWindows(stressRoot);
+
+        var root = Path.Combine(stressRoot, DateTime.Now.ToString("yyyyMMddHHmmssfff"));
+        var debugLog = Path.Combine(root, "wintab-user-default-debug.log");
+        var baseline = CreateBaseline(root);
+        StartExplorer(baseline);
+        await WaitForFolderWindowAsync(baseline);
+
+        using var app = StartWinTab(appPath, debugLog);
+        var baselineDefaultHwnds = GetShellWindows()
+            .Where(IsDefaultLocation)
+            .Select(window => (nint)window.Hwnd)
+            .ToHashSet();
+        var openedByTest = new HashSet<nint>();
+
+        try
+        {
+            await Task.Delay(startupDelayMs);
+
+            var monitor = HiddenDefaultWindowMonitor.Start(baselineDefaultHwnds);
+            StartExplorerDefault();
+            await Task.Delay(observeMs);
+            await monitor.StopAsync();
+
+            foreach (var hwnd in GetShellWindows()
+                         .Where(IsDefaultLocation)
+                         .Select(window => (nint)window.Hwnd)
+                         .Where(hwnd => !baselineDefaultHwnds.Contains(hwnd)))
+            {
+                openedByTest.Add(hwnd);
+            }
+
+            var sightings = monitor.Sightings.ToArray();
+            var offending = sightings.Where(sighting => sighting.HiddenMs > maxHideMs).ToArray();
+            if (sightings.Length == 0)
+            {
+                Console.Error.WriteLine("Explorer user-default test failed: no new default-location window was observed.");
+                DumpShellWindows(GetShellWindows());
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
+            if (offending.Length > 0)
+            {
+                Console.Error.WriteLine("Explorer user-default test failed.");
+                Console.Error.WriteLine($"Threshold={maxHideMs}ms");
+                foreach (var sighting in sightings)
+                {
+                    Console.Error.WriteLine($"HWND={sighting.Hwnd} HiddenMs={sighting.HiddenMs:F1} FirstSeen={sighting.FirstSeen:HH:mm:ss.fff} HiddenAt={(sighting.FirstHiddenAt?.ToString("HH:mm:ss.fff") ?? "none")} ReleasedAt={(sighting.LastHiddenAt?.ToString("HH:mm:ss.fff") ?? "none")}");
+                }
+                DumpShellWindows(GetShellWindows());
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
+            Console.WriteLine($"PASS Explorer user-default: new default-location windows stayed visible within {maxHideMs}ms (max observed={sightings.Max(s => s.HiddenMs):F0}ms).");
+            return 0;
+        }
+        finally
+        {
+            foreach (var hWnd in openedByTest)
             {
                 TryRestoreExplorerWindow(hWnd);
                 CloseShellWindowByHwnd(hWnd);
@@ -1856,6 +1941,99 @@ internal static class ExplorerStressTest
                 DefaultCount = Math.Max(DefaultCount, defaultCount),
                 LastObservedAt = observedAt,
                 Observations = Observations + 1
+            };
+        }
+    }
+
+    private sealed class HiddenDefaultWindowMonitor
+    {
+        private readonly HashSet<nint> _baselineWindows;
+        private readonly CancellationTokenSource _cancellation = new();
+        private readonly ConcurrentDictionary<nint, HiddenDefaultWindowSighting> _sightings = new();
+        private Task? _pollingTask;
+
+        private HiddenDefaultWindowMonitor(IEnumerable<nint> baselineWindows)
+        {
+            _baselineWindows = baselineWindows.ToHashSet();
+        }
+
+        public IEnumerable<HiddenDefaultWindowSighting> Sightings => _sightings.Values
+            .OrderBy(sighting => sighting.FirstSeen);
+
+        public static HiddenDefaultWindowMonitor Start(IEnumerable<nint> baselineWindows)
+        {
+            var monitor = new HiddenDefaultWindowMonitor(baselineWindows);
+            monitor._pollingTask = Task.Run(() => monitor.PollAsync(monitor._cancellation.Token));
+            return monitor;
+        }
+
+        public async Task StopAsync()
+        {
+            _cancellation.Cancel();
+            if (_pollingTask != null)
+            {
+                try
+                {
+                    await _pollingTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    //
+                }
+            }
+
+            _cancellation.Dispose();
+        }
+
+        private async Task PollAsync(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                foreach (var window in GetShellWindows())
+                {
+                    var hWnd = (nint)window.Hwnd;
+                    if (_baselineWindows.Contains(hWnd) || !IsDefaultLocation(window))
+                        continue;
+
+                    var transparent = IsFullyTransparent(hWnd);
+                    var now = DateTime.Now;
+                    _sightings.AddOrUpdate(
+                        hWnd,
+                        new HiddenDefaultWindowSighting(hWnd, now, transparent ? now : null, transparent ? now : null),
+                        (_, existing) => existing.Observe(transparent, now));
+                }
+
+                try
+                {
+                    await Task.Delay(20, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    private sealed record HiddenDefaultWindowSighting(
+        nint Hwnd,
+        DateTime FirstSeen,
+        DateTime? FirstHiddenAt,
+        DateTime? LastHiddenAt)
+    {
+        public double HiddenMs => FirstHiddenAt is { } start && LastHiddenAt is { } end
+            ? (end - start).TotalMilliseconds
+            : 0;
+
+        public HiddenDefaultWindowSighting Observe(bool transparent, DateTime observedAt)
+        {
+            if (!transparent)
+                return this;
+
+            return this with
+            {
+                FirstHiddenAt = FirstHiddenAt ?? observedAt,
+                LastHiddenAt = observedAt
             };
         }
     }
