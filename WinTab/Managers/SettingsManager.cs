@@ -88,6 +88,12 @@ public static class SettingsManager
         set => SetProperty(Settings.AutoUpdate, value, v => Settings.AutoUpdate = v);
     }
 
+    public static bool ShowTrayIcon
+    {
+        get => Settings.ShowTrayIcon;
+        set => SetProperty(Settings.ShowTrayIcon, value, v => Settings.ShowTrayIcon = v);
+    }
+
     public static bool IsFirstRun
     {
         get => Settings.IsFirstRun;
@@ -148,6 +154,7 @@ internal sealed class AppSettings
     public bool RestorePreviousWindows { get; set; }
     public WindowRecord[]? ClosedWindows { get; set; }
     public bool AutoUpdate { get; set; } = true;
+    public bool ShowTrayIcon { get; set; } = true;
     public bool IsFirstRun { get; set; } = true;
     public string Language { get; set; } = "zh-CN";
     public string Theme { get; set; } = "Light";

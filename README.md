@@ -1,14 +1,20 @@
 <div align="center">
-  <img src="Assets/wintab-logo.png" alt="WinTab Logo" width="96" />
+  <img src="Assets/256x256.png" alt="WinTab Logo"/>
+
+  <h1>WinTab</h1>
+
+  <p>File Explorer tab utility for Windows 11</p>
+
+  <p></a>简体中文|  <a href="README.en.md">English</p>
+
+  <p>
+    <img src="https://img.shields.io/badge/platform-Windows%2011-555555" alt="Platform" />
+    <img src="https://img.shields.io/badge/.NET-9.0-555555" alt=".NET" />
+    <img src="https://img.shields.io/badge/license-MIT-555555" alt="License" />
+  </p>
 </div>
 
-# WinTab
-
-Windows 11 资源管理器标签整理工具
-
-简体中文 | [English](README.en.md)
-
-![Platform](https://img.shields.io/badge/platform-Windows%2011-555555) ![.NET](https://img.shields.io/badge/.NET-9.0-555555) ![License](https://img.shields.io/badge/license-MIT-555555)
+---
 
 ![](Assets/UI.png)
 
@@ -18,11 +24,6 @@ Windows 11 资源管理器标签整理工具
 - 复用已打开路径的标签页
 - 双击标签标题关闭当前标签页
 - `Ctrl + Shift` 保留独立资源管理器窗口
-- 系统托盘常驻
-- 中英文界面
-- 浅色 / 深色主题
-- 开机启动
-- GitHub Release 更新检查
 
 ## 下载
 
@@ -65,3 +66,4 @@ WinTab/
 ## 许可
 
 MIT License
+

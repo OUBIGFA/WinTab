@@ -13,7 +13,9 @@ namespace WinTab;
 public partial class App : Application
 {
     private Mutex? _mutex;
+    private EventWaitHandle? _showMainWindowEvent;
     private MainWindow? _mainWindow;
+    private bool _isExiting;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -25,8 +27,10 @@ public partial class App : Application
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             SetupTooltipBehavior();
             ThemeManager.ApplyTheme();
+            _showMainWindowEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Constants.ShowMainWindowEventName);
 
             _mainWindow = new MainWindow();
+            StartShowMainWindowRequestListener();
             if (SettingsManager.IsFirstRun)
                 SettingsManager.IsFirstRun = false;
 
@@ -37,17 +41,62 @@ public partial class App : Application
             return;
         }
 
-        CustomMessageBox.Show("""
-                              Another instance is already running.
-                              Check in System Tray Icons.
-                              """, Constants.AppName, icon: MessageBoxImage.Information);
+        SignalMainWindow();
         Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _isExiting = true;
+        _showMainWindowEvent?.Dispose();
         _mutex?.Dispose();
         base.OnExit(e);
+    }
+
+    private void StartShowMainWindowRequestListener()
+    {
+        var thread = new Thread(() =>
+        {
+            while (!_isExiting)
+            {
+                try
+                {
+                    _showMainWindowEvent?.WaitOne();
+                }
+                catch (ObjectDisposedException)
+                {
+                    return;
+                }
+
+                if (_isExiting)
+                    return;
+
+                Dispatcher.Invoke(() => _mainWindow?.ShowMainWindow());
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "WinTab show window listener"
+        };
+
+        thread.Start();
+    }
+
+    private static void SignalMainWindow()
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                using var showMainWindowEvent = EventWaitHandle.OpenExisting(Constants.ShowMainWindowEventName);
+                showMainWindowEvent.Set();
+                return;
+            }
+            catch (WaitHandleCannotBeOpenedException)
+            {
+                Thread.Sleep(50);
+            }
+        }
     }
 
     private static void SetupTooltipBehavior()

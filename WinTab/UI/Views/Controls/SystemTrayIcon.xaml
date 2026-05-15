@@ -16,6 +16,7 @@
                 <Separator />
                 <MenuItem x:Name="StartupMenu" Header="Start with Windows" IsCheckable="True" StaysOpenOnClick="True" />
                 <MenuItem x:Name="AutoUpdateMenu" Header="Automatic updates" IsCheckable="True" StaysOpenOnClick="True" />
+                <MenuItem x:Name="ShowTrayIconMenu" Header="Show tray icon" IsCheckable="True" StaysOpenOnClick="True" />
                 <Separator />
                 <MenuItem x:Name="CheckUpdatesMenu" Header="Check for updates" />
                 <MenuItem x:Name="ExitMenu" Header="Exit" />

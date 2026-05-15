@@ -296,6 +296,24 @@
                                     </Grid>
                                 </Border>
 
+                                <Border Style="{StaticResource SettingRowStyle}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock x:Name="ShowTrayIconTitleText" Text="Show tray icon" Style="{StaticResource SettingTitleStyle}" />
+                                            <TextBlock x:Name="ShowTrayIconDescText" Text="Keep WinTab available from the notification area." Style="{StaticResource SettingDescriptionStyle}" />
+                                        </StackPanel>
+                                        <CheckBox x:Name="ShowTrayIconToggle"
+                                                  Grid.Column="1"
+                                                  Style="{StaticResource CustomCheckBoxStyle}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="22,0,0,0" />
+                                    </Grid>
+                                </Border>
+
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />

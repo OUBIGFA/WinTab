@@ -44,6 +44,9 @@ Set-StrictMode -Version Latest
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectPath = Join-Path $RepoRoot 'WinTab\WinTab.csproj'
+$AssetsDir = Join-Path $RepoRoot 'Assets'
+$AppIconPath = Join-Path $RepoRoot 'WinTab\Icon.ico'
+$AppLogoPath = Join-Path $RepoRoot 'WinTab\wintab-logo.png'
 $PublishRoot = Join-Path $RepoRoot 'publish\net9.0-windows'
 $DistDir = Join-Path $RepoRoot 'dist'
 $InstallerScript = Join-Path $RepoRoot 'installers\installer.iss'
@@ -98,13 +101,71 @@ function Resolve-MSBuild {
     throw "MSBuild.exe not found. Install Visual Studio with the '.NET desktop development' workload or pass -MSBuildPath."
 }
 
+function ConvertTo-Ico {
+    param(
+        [string]$AssetsPath,
+        [string]$DestinationPath
+    )
+
+    $sizes = @(16, 20, 24, 32, 48, 64, 128, 256)
+    $images = foreach ($size in $sizes) {
+        $path = Join-Path $AssetsPath "$($size)x$($size).png"
+        if (-not (Test-Path $path)) { throw "Missing icon asset: $path" }
+        [pscustomobject]@{
+            Size = $size
+            Bytes = [System.IO.File]::ReadAllBytes($path)
+        }
+    }
+
+    $stream = [System.IO.File]::Open($DestinationPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
+    try {
+        $writer = [System.IO.BinaryWriter]::new($stream)
+        try {
+            $writer.Write([uint16]0)
+            $writer.Write([uint16]1)
+            $writer.Write([uint16]$images.Count)
+
+            $offset = 6 + ($images.Count * 16)
+            foreach ($image in $images) {
+                $directorySize = if ($image.Size -eq 256) { 0 } else { $image.Size }
+                $writer.Write([byte]$directorySize)
+                $writer.Write([byte]$directorySize)
+                $writer.Write([byte]0)
+                $writer.Write([byte]0)
+                $writer.Write([uint16]1)
+                $writer.Write([uint16]32)
+                $writer.Write([uint32]$image.Bytes.Length)
+                $writer.Write([uint32]$offset)
+                $offset += $image.Bytes.Length
+            }
+
+            foreach ($image in $images) {
+                $writer.Write($image.Bytes)
+            }
+        }
+        finally {
+            $writer.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+Write-Host "`n==> Preparing app assets" -ForegroundColor Cyan
+ConvertTo-Ico -AssetsPath $AssetsDir -DestinationPath $AppIconPath
+$sourceLogo = Join-Path $AssetsDir 'logo.png'
+if (Test-Path $sourceLogo) {
+    Copy-Item -Path $sourceLogo -Destination $AppLogoPath -Force
+}
+
 if (-not $SkipPublish) {
     $msbuild = Resolve-MSBuild -Hint $MSBuildPath
     Write-Host "`n==> Publishing $($Arch.Count) arch(es) via $msbuild" -ForegroundColor Cyan
     foreach ($a in $Arch) {
         $out = Join-Path $PublishRoot $a
         Write-Host "    - win-$a -> $out"
-        if (Test-Path $out) { Remove-Item -Recurse -Force $out }
+        if (-not (Test-Path $out)) { New-Item -ItemType Directory -Path $out | Out-Null }
         & $msbuild $ProjectPath `
             /restore `
             /t:Publish `

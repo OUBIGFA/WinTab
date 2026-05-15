@@ -12,6 +12,8 @@ public partial class SystemTrayIcon : UserControl, IDisposable
     private readonly Action _showWindowAction;
     private readonly Action _exitAction;
 
+    public event EventHandler? SettingsChanged;
+
     public SystemTrayIcon(HookManager hookManager, Action showWindowAction, Action exitAction)
     {
         InitializeComponent();
@@ -30,6 +32,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         DoubleClickCloseMenu.Click += DoubleClickCloseMenu_Click;
         StartupMenu.Click += StartupMenu_Click;
         AutoUpdateMenu.Click += AutoUpdateMenu_Click;
+        ShowTrayIconMenu.Click += ShowTrayIconMenu_Click;
         CheckUpdatesMenu.Click += (_, _) => UpdateManager.CheckForUpdates();
         ExitMenu.Click += (_, _) => _exitAction();
 
@@ -49,6 +52,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         DoubleClickCloseMenu.Header = zh ? "\u53cc\u51fb\u5173\u95ed\u6807\u7b7e\u9875" : "Double-click to close tab";
         StartupMenu.Header = zh ? "\u5f00\u673a\u542f\u52a8" : "Start with Windows";
         AutoUpdateMenu.Header = zh ? "\u81ea\u52a8\u66f4\u65b0" : "Automatic updates";
+        ShowTrayIconMenu.Header = zh ? "\u663e\u793a\u6258\u76d8\u56fe\u6807" : "Show tray icon";
         CheckUpdatesMenu.Header = zh ? "\u68c0\u67e5\u66f4\u65b0" : "Check for updates";
         ExitMenu.Header = zh ? "\u9000\u51fa" : "Exit";
     }
@@ -67,6 +71,13 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         DoubleClickCloseMenu.IsChecked = SettingsManager.DoubleClickCloseTab;
         StartupMenu.IsChecked = RegistryManager.IsStartupEnabled;
         AutoUpdateMenu.IsChecked = SettingsManager.AutoUpdate;
+        ShowTrayIconMenu.IsChecked = SettingsManager.ShowTrayIcon;
+        ApplyVisibility();
+    }
+
+    public void ApplyVisibility()
+    {
+        TrayIcon.Visibility = SettingsManager.ShowTrayIcon ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void WindowHookMenu_Click(object sender, RoutedEventArgs e)
@@ -74,6 +85,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         SettingsManager.IsWindowHookActive = WindowHookMenu.IsChecked;
         _hookManager.SetWindowHook(SettingsManager.IsWindowHookActive);
         RefreshState();
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void ReuseTabsMenu_Click(object sender, RoutedEventArgs e)
@@ -81,6 +93,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         SettingsManager.ReuseTabs = ReuseTabsMenu.IsChecked;
         _hookManager.SetReuseTabs(SettingsManager.ReuseTabs);
         RefreshState();
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void DoubleClickCloseMenu_Click(object sender, RoutedEventArgs e)
@@ -88,21 +101,35 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         SettingsManager.DoubleClickCloseTab = DoubleClickCloseMenu.IsChecked;
         _hookManager.SetDoubleClickClose(SettingsManager.DoubleClickCloseTab);
         RefreshState();
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private static void StartupMenu_Click(object sender, RoutedEventArgs e)
+    private void StartupMenu_Click(object sender, RoutedEventArgs e)
     {
         RegistryManager.ToggleStartup();
         if (sender is MenuItem item)
             item.IsChecked = RegistryManager.IsStartupEnabled;
+
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private static void AutoUpdateMenu_Click(object sender, RoutedEventArgs e)
+    private void AutoUpdateMenu_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem item)
             return;
 
         SettingsManager.AutoUpdate = item.IsChecked;
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ShowTrayIconMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem item)
+            return;
+
+        SettingsManager.ShowTrayIcon = item.IsChecked;
+        RefreshState();
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnNotifyIconDoubleClick(object sender, RoutedEventArgs e) => _showWindowAction();

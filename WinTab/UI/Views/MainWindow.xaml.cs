@@ -31,7 +31,7 @@ public partial class MainWindow : Window
         Height = SettingsManager.FormSize.Height;
 
         _hookManager = new HookManager();
-        _trayIcon = new SystemTrayIcon(_hookManager, ShowFromTray, ExitApplication);
+        _trayIcon = new SystemTrayIcon(_hookManager, ShowMainWindow, ExitApplication);
 
         SetupEventHandlers();
         LoadSettingsIntoUi();
@@ -52,6 +52,8 @@ public partial class MainWindow : Window
         Application.Current.Exit += OnApplicationExit;
         _hookManager.StateChanged += RefreshUiState;
         _hookManager.ShellInitialized += OnShellInitialized;
+        _trayIcon.SettingsChanged += TrayIcon_SettingsChanged;
+        SettingsManager.StaticPropertyChanged += SettingsManager_StaticPropertyChanged;
 
         TitleBar.MouseLeftButtonDown += TitleBar_MouseLeftButtonDown;
         MinimizeButton.Click += (_, _) => HideToTray();
@@ -67,6 +69,8 @@ public partial class MainWindow : Window
         ReuseTabsToggle.Unchecked += ReuseTabsToggle_Changed;
         DoubleClickCloseToggle.Checked += DoubleClickCloseToggle_Changed;
         DoubleClickCloseToggle.Unchecked += DoubleClickCloseToggle_Changed;
+        ShowTrayIconToggle.Checked += ShowTrayIconToggle_Changed;
+        ShowTrayIconToggle.Unchecked += ShowTrayIconToggle_Changed;
         AutoUpdateToggle.Checked += AutoUpdateToggle_Changed;
         AutoUpdateToggle.Unchecked += AutoUpdateToggle_Changed;
         StartupToggle.Click += StartupToggle_Click;
@@ -81,6 +85,7 @@ public partial class MainWindow : Window
         WindowHookToggle.IsChecked = SettingsManager.IsWindowHookActive;
         ReuseTabsToggle.IsChecked = SettingsManager.ReuseTabs;
         DoubleClickCloseToggle.IsChecked = SettingsManager.DoubleClickCloseTab;
+        ShowTrayIconToggle.IsChecked = SettingsManager.ShowTrayIcon;
         AutoUpdateToggle.IsChecked = SettingsManager.AutoUpdate;
         StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
     }
@@ -110,6 +115,13 @@ public partial class MainWindow : Window
         SettingsManager.AutoUpdate = AutoUpdateToggle.IsChecked == true;
     }
 
+    private void ShowTrayIconToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        SettingsManager.ShowTrayIcon = ShowTrayIconToggle.IsChecked == true;
+        _trayIcon.RefreshState();
+        ApplyLanguage();
+    }
+
     private void StartupToggle_Click(object sender, RoutedEventArgs e)
     {
         RegistryManager.ToggleStartup();
@@ -134,6 +146,31 @@ public partial class MainWindow : Window
     private void RefreshUiState()
     {
         StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
+        ShowTrayIconToggle.IsChecked = SettingsManager.ShowTrayIcon;
+        _trayIcon.RefreshState();
+    }
+
+    private void SettingsManager_StaticPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        SyncSettingsIntoUi();
+        ApplyLanguage();
+    }
+
+    private void TrayIcon_SettingsChanged(object? sender, EventArgs e)
+    {
+        SyncSettingsIntoUi();
+        ApplyLanguage();
+    }
+
+    private void SyncSettingsIntoUi()
+    {
+        WindowHookToggle.IsChecked = SettingsManager.IsWindowHookActive;
+        ReuseTabsToggle.IsChecked = SettingsManager.ReuseTabs;
+        DoubleClickCloseToggle.IsChecked = SettingsManager.DoubleClickCloseTab;
+        ShowTrayIconToggle.IsChecked = SettingsManager.ShowTrayIcon;
+        AutoUpdateToggle.IsChecked = SettingsManager.AutoUpdate;
+        StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
+        _trayIcon.ApplyVisibility();
         _trayIcon.RefreshState();
     }
 
@@ -147,7 +184,9 @@ public partial class MainWindow : Window
         HeroTitleText.Text = "WinTab";
         HeroDescriptionText.Text = T("\u8ba9\u8d44\u6e90\u7ba1\u7406\u5668\u7a97\u53e3\u56de\u5230\u540c\u4e00\u7ec4\u6807\u7b7e\u3002", "Keep File Explorer windows in one tab set.");
         StatusPillText.Text = T("\u8fd0\u884c\u4e2d", "Running");
-        StatusTrayText.Text = T("\u53ef\u4ece\u6258\u76d8\u6253\u5f00", "Available from the tray");
+        StatusTrayText.Text = SettingsManager.ShowTrayIcon
+            ? T("\u53ef\u4ece\u6258\u76d8\u6253\u5f00", "Available from the tray")
+            : T("\u6258\u76d8\u56fe\u6807\u5df2\u9690\u85cf", "Tray icon is hidden");
         StatusBypassText.Text = T("\u6309\u4f4f Ctrl + Shift \u53ef\u6253\u5f00\u72ec\u7acb\u7a97\u53e3", "Hold Ctrl + Shift to open a separate window");
         OpenSourceLicenseText.Text = "MIT License";
         OpenSourceVersionText.Text = T($"\u7248\u672c\uff1av{_appVersion}", $"Version: v{_appVersion}");
@@ -161,11 +200,15 @@ public partial class MainWindow : Window
         DoubleClickDescText.Text = T("\u5728\u6807\u9898\u533a\u53cc\u51fb\u5173\u95ed\u5f53\u524d\u6807\u7b7e\u3002", "Close the current Explorer tab from its title area.");
         StartupTitleText.Text = T("\u5f00\u673a\u542f\u52a8", "Start with Windows");
         StartupDescText.Text = T("\u767b\u5f55\u540e\u9759\u9ed8\u8fd0\u884c\u3002", "Run quietly after sign-in.");
+        ShowTrayIconTitleText.Text = T("\u663e\u793a\u6258\u76d8\u56fe\u6807", "Show tray icon");
+        ShowTrayIconDescText.Text = T("\u5173\u95ed\u7a97\u53e3\u540e\u53ef\u4ece\u901a\u77e5\u533a\u6253\u5f00\u3002", "Keep WinTab available from the notification area.");
         AutoUpdateTitleText.Text = T("\u68c0\u67e5\u66f4\u65b0", "Check for updates");
         AutoUpdateDescText.Text = T("\u6709 GitHub Release \u65f6\u63d0\u793a\u3002", "Notify when a GitHub release is available.");
 
         ActionsTitleText.Text = T("\u7ef4\u62a4", "Maintenance");
-        ActionsDescText.Text = T("\u5173\u95ed\u6b64\u7a97\u53e3\u540e\uff0cWinTab \u7ee7\u7eed\u7559\u5728\u6258\u76d8\u3002", "The app stays in the tray when this window closes.");
+        ActionsDescText.Text = SettingsManager.ShowTrayIcon
+            ? T("\u5173\u95ed\u6b64\u7a97\u53e3\u540e\uff0cWinTab \u7ee7\u7eed\u7559\u5728\u6258\u76d8\u3002", "The app stays in the tray when this window closes.")
+            : T("\u6258\u76d8\u56fe\u6807\u9690\u85cf\u65f6\uff0cWinTab \u4f1a\u76f4\u63a5\u5728\u540e\u53f0\u8fd0\u884c\u3002", "When the tray icon is hidden, WinTab keeps running in the background.");
         CheckUpdatesButton.Content = T("\u68c0\u67e5", "Check");
         HideWindowButton.Content = T("\u9690\u85cf", "Hide");
 
@@ -193,8 +236,11 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private void ShowFromTray()
+    public void ShowMainWindow()
     {
+        if (WindowState == WindowState.Minimized)
+            WindowState = WindowState.Normal;
+
         Show();
         if (_handle == 0)
             _handle = new WindowInteropHelper(this).Handle;
@@ -212,6 +258,8 @@ public partial class MainWindow : Window
     {
         _isExiting = true;
         Application.Current.Exit -= OnApplicationExit;
+        _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
+        SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
         _trayIcon.Dispose();
         _hookManager.Dispose();
         Application.Current.Shutdown();
@@ -219,6 +267,8 @@ public partial class MainWindow : Window
 
     private void OnApplicationExit(object? sender, ExitEventArgs e)
     {
+        _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
+        SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
         _trayIcon.Dispose();
         _hookManager.Dispose();
     }
