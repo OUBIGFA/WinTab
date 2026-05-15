@@ -6,6 +6,8 @@
     <FontFamily x:Key="DefaultFontFamily">Aptos, Segoe UI Variable, Microsoft YaHei UI, Segoe UI, Arial</FontFamily>
     <FontWeight x:Key="DefaultFontWeight">Normal</FontWeight>
     <system:Double x:Key="DefaultFontSize">16</system:Double>
+    <Duration x:Key="MotionFastDuration">0:0:0.14</Duration>
+    <Duration x:Key="MotionPressDuration">0:0:0.08</Duration>
 
     <!-- Default style for all controls -->
     <Style TargetType="{x:Type Control}">
@@ -66,7 +68,7 @@
         <Setter Property="BorderBrush" Value="{DynamicResource WindowBorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="10,6" />
-        <Setter Property="HasDropShadow" Value="True" />
+        <Setter Property="HasDropShadow" Value="False" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
         <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
         <Setter Property="TextOptions.TextHintingMode" Value="Auto" />
@@ -76,14 +78,14 @@
                     <Border Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4"
+                            CornerRadius="5"
                             Padding="{TemplateBinding Padding}"
                             SnapsToDevicePixels="True">
                         <Border.Effect>
                             <DropShadowEffect Color="{DynamicResource ShadowColor}"
-                                              BlurRadius="10"
-                                              ShadowDepth="3"
-                                              Opacity="0.3"
+                                              BlurRadius="8"
+                                              ShadowDepth="2"
+                                              Opacity="0.16"
                                               Direction="270" />
                         </Border.Effect>
                         <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}"
@@ -112,7 +114,7 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             Padding="{TemplateBinding Padding}">
                         <Border.Effect>
-                            <DropShadowEffect Color="{DynamicResource ShadowColor}" Direction="270" ShadowDepth="3" BlurRadius="5" Opacity="0.3" />
+                            <DropShadowEffect Color="{DynamicResource ShadowColor}" Direction="270" ShadowDepth="2" BlurRadius="8" Opacity="0.18" />
                         </Border.Effect>
                         <ItemsPresenter />
                     </Border>
@@ -123,8 +125,8 @@
         <Style.Resources>
             <!-- System Tray Separator Style -->
             <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
-                <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
-                <Setter Property="Opacity" Value="0.2" />
+                <Setter Property="Background" Value="{DynamicResource DividerBrush}" />
+                <Setter Property="Opacity" Value="1" />
                 <Setter Property="Height" Value="1" />
                 <Setter Property="Margin" Value="5,3" />
             </Style>
@@ -133,9 +135,9 @@
             <Style TargetType="MenuItem">
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                 <Setter Property="Background" Value="Transparent" />
-                <Setter Property="Padding" Value="10,0,10,5" />
-                <Setter Property="FontSize" Value="13" />
-                <Setter Property="Height" Value="32" />
+                <Setter Property="Padding" Value="11,0,12,5" />
+                <Setter Property="FontSize" Value="13.5" />
+                <Setter Property="Height" Value="34" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="Template">
                     <Setter.Value>
@@ -143,7 +145,12 @@
                             <Border x:Name="Border"
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="5"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <Border.RenderTransform>
+                                    <ScaleTransform ScaleX="1" ScaleY="1" />
+                                </Border.RenderTransform>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" MinWidth="24" />
@@ -199,10 +206,11 @@
                                                 Background="{DynamicResource DropdownBackgroundBrush}"
                                                 BorderBrush="{DynamicResource WindowBorderBrush}"
                                                 BorderThickness="1"
-                                                Padding="2">
+                                                Padding="4"
+                                                CornerRadius="6">
                                             <Border.Effect>
-                                                <DropShadowEffect Color="{DynamicResource ShadowColor}" Direction="270" ShadowDepth="3"
-                                                                  BlurRadius="5" Opacity="0.3" />
+                                                <DropShadowEffect Color="{DynamicResource ShadowColor}" Direction="270" ShadowDepth="2"
+                                                                  BlurRadius="8" Opacity="0.18" />
                                             </Border.Effect>
                                             <ScrollViewer CanContentScroll="True">
                                                 <ItemsPresenter />
@@ -222,6 +230,34 @@
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
                                     <Setter Property="Foreground" Value="{DynamicResource TextAccentBrush}" />
+                                    <Trigger.EnterActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="Border"
+                                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                 To="0.995"
+                                                                 Duration="{StaticResource MotionFastDuration}" />
+                                                <DoubleAnimation Storyboard.TargetName="Border"
+                                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                 To="0.995"
+                                                                 Duration="{StaticResource MotionFastDuration}" />
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </Trigger.EnterActions>
+                                    <Trigger.ExitActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="Border"
+                                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                                 To="1"
+                                                                 Duration="{StaticResource MotionFastDuration}" />
+                                                <DoubleAnimation Storyboard.TargetName="Border"
+                                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                                 To="1"
+                                                                 Duration="{StaticResource MotionFastDuration}" />
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </Trigger.ExitActions>
                                 </Trigger>
 
                                 <!-- Disabled Trigger -->

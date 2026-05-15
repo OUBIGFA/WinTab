@@ -19,7 +19,7 @@ public static class HoverBorder
             "BorderBrush",
             typeof(Brush),
             typeof(HoverBorder),
-            new PropertyMetadata(Brushes.DarkSlateBlue));
+            new PropertyMetadata(Brushes.Gray));
 
     private static readonly DependencyProperty OriginalBorderBrushProperty =
         DependencyProperty.RegisterAttached(

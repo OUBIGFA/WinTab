@@ -1,30 +1,32 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Neutral colors only. ThemeManager replaces these at startup for dark mode. -->
-    <Color x:Key="PrimaryColor">#202020</Color>
-    <Color x:Key="PrimaryLightColor">#4A4A4A</Color>
-    <Color x:Key="TextPrimaryColor">#1E1E1E</Color>
-    <Color x:Key="TextSecondaryColor">#666666</Color>
-    <Color x:Key="TextTertiaryColor">#8A8A8A</Color>
-    <Color x:Key="TextAccentColor">#303030</Color>
-    <Color x:Key="BorderColor">#D7D7D7</Color>
-    <Color x:Key="ControlBackgroundColor">#F6F6F6</Color>
-    <Color x:Key="ControlHoverColor">#EDEDED</Color>
-    <Color x:Key="DangerColor">#555555</Color>
-    <Color x:Key="DropdownBackgroundColor">#FFFFFF</Color>
-    <Color x:Key="ShadowColor">#9A9A9A</Color>
-    <Color x:Key="SuccessColor">#4A4A4A</Color>
-    <Color x:Key="WarningColor">#4A4A4A</Color>
-    <Color x:Key="AccentColor">#202020</Color>
-    <Color x:Key="StatusActiveColor">#202020</Color>
-    <Color x:Key="StatusInactiveColor">#8A8A8A</Color>
-    <Color x:Key="CheckBoxCheckedBackgroundColor">#202020</Color>
-    <Color x:Key="CheckBoxCheckedBorderColor">#202020</Color>
-    <Color x:Key="CheckBoxCheckedGlyphColor">#FFFFFF</Color>
-    <Color x:Key="StatusPillBackgroundColor">#F1F1F1</Color>
-    <Color x:Key="StatusPillBorderColor">#D7D7D7</Color>
-    <Color x:Key="FooterColor">#F6F6F6</Color>
+    <!-- Grayscale only. ThemeManager replaces these at startup for dark mode. -->
+    <Color x:Key="PrimaryColor">#1F1F1F</Color>
+    <Color x:Key="PrimaryLightColor">#515151</Color>
+    <Color x:Key="TextPrimaryColor">#1D1D1D</Color>
+    <Color x:Key="TextSecondaryColor">#565656</Color>
+    <Color x:Key="TextTertiaryColor">#767676</Color>
+    <Color x:Key="TextAccentColor">#111111</Color>
+    <Color x:Key="BorderColor">#D4D4D4</Color>
+    <Color x:Key="DividerColor">#E1E1E1</Color>
+    <Color x:Key="ControlBackgroundColor">#F2F2F2</Color>
+    <Color x:Key="ControlHoverColor">#E9E9E9</Color>
+    <Color x:Key="DangerColor">#3A3A3A</Color>
+    <Color x:Key="DropdownBackgroundColor">#FDFDFD</Color>
+    <Color x:Key="ShadowColor">#6A6A6A</Color>
+    <Color x:Key="SuccessColor">#3A3A3A</Color>
+    <Color x:Key="WarningColor">#3A3A3A</Color>
+    <Color x:Key="AccentColor">#1F1F1F</Color>
+    <Color x:Key="StatusActiveColor">#1F1F1F</Color>
+    <Color x:Key="StatusInactiveColor">#767676</Color>
+    <Color x:Key="CheckBoxCheckedBackgroundColor">#1F1F1F</Color>
+    <Color x:Key="CheckBoxCheckedBorderColor">#1F1F1F</Color>
+    <Color x:Key="CheckBoxCheckedGlyphColor">#F8F8F8</Color>
+    <Color x:Key="StatusPillBackgroundColor">#EEEEEE</Color>
+    <Color x:Key="StatusPillBorderColor">#D4D4D4</Color>
+    <Color x:Key="FocusRingColor">#3A3A3A</Color>
+    <Color x:Key="FooterColor">#F2F2F2</Color>
 
     <!-- Brushes -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{DynamicResource PrimaryColor}" />
@@ -34,6 +36,7 @@
     <SolidColorBrush x:Key="TextTertiaryBrush" Color="{DynamicResource TextTertiaryColor}" />
     <SolidColorBrush x:Key="TextAccentBrush" Color="{DynamicResource TextAccentColor}" />
     <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource BorderColor}" />
+    <SolidColorBrush x:Key="DividerBrush" Color="{DynamicResource DividerColor}" />
     <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{DynamicResource ControlBackgroundColor}" />
     <SolidColorBrush x:Key="ControlHoverBrush" Color="{DynamicResource ControlHoverColor}" />
     <SolidColorBrush x:Key="DropdownBackgroundBrush" Color="{DynamicResource DropdownBackgroundColor}" />
@@ -48,12 +51,15 @@
     <SolidColorBrush x:Key="CheckBoxCheckedGlyphBrush" Color="{DynamicResource CheckBoxCheckedGlyphColor}" />
     <SolidColorBrush x:Key="StatusPillBackgroundBrush" Color="{DynamicResource StatusPillBackgroundColor}" />
     <SolidColorBrush x:Key="StatusPillBorderBrush" Color="{DynamicResource StatusPillBorderColor}" />
+    <SolidColorBrush x:Key="FocusRingBrush" Color="{DynamicResource FocusRingColor}" />
     <SolidColorBrush x:Key="FooterBrush" Color="{DynamicResource FooterColor}" />
 
     <!-- Solid surface brushes. -->
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#FAFAFA" />
-    <SolidColorBrush x:Key="WindowTitleBarBrush" Color="#FAFAFA" />
-    <SolidColorBrush x:Key="WindowBorderBrush" Color="#D7D7D7" />
-    <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F7F7F7" />
+    <SolidColorBrush x:Key="WindowTitleBarBrush" Color="#F7F7F7" />
+    <SolidColorBrush x:Key="WindowBorderBrush" Color="#D4D4D4" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FDFDFD" />
+    <SolidColorBrush x:Key="SurfaceMutedBrush" Color="#F2F2F2" />
+    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#FFFFFF" />
 
 </ResourceDictionary>

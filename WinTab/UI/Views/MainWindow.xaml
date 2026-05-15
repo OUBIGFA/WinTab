@@ -16,57 +16,58 @@
     <Window.Resources>
         <Style x:Key="PanelBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="22" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="24" />
         </Style>
 
         <Style x:Key="SoftPanelStyle" TargetType="Border" BasedOn="{StaticResource PanelBorderStyle}">
-            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceMutedBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
         </Style>
 
         <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="16" />
-            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="16.5" />
+            <Setter Property="FontWeight" Value="Medium" />
         </Style>
 
         <Style x:Key="SectionDescriptionStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="FontSize" Value="12.5" />
-            <Setter Property="LineHeight" Value="19" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="LineHeight" Value="20" />
         </Style>
 
         <Style x:Key="SettingTitleStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="14" />
-            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontWeight" Value="Medium" />
         </Style>
 
         <Style x:Key="SettingDescriptionStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="FontSize" Value="12.5" />
-            <Setter Property="LineHeight" Value="19" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="LineHeight" Value="20" />
             <Setter Property="Margin" Value="0,4,0,0" />
         </Style>
 
         <Style x:Key="SettingRowStyle" TargetType="Border">
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
-            <Setter Property="Padding" Value="0,0,0,15" />
-            <Setter Property="Margin" Value="0,0,0,15" />
+            <Setter Property="Padding" Value="0,0,0,17" />
+            <Setter Property="Margin" Value="0,0,0,17" />
         </Style>
 
         <Style x:Key="TinyMetaStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="LineHeight" Value="18" />
+            <Setter Property="FontSize" Value="12.8" />
+            <Setter Property="LineHeight" Value="19" />
         </Style>
     </Window.Resources>
 
     <Border Background="{DynamicResource WindowBackgroundBrush}"
-            BorderBrush="{DynamicResource BorderBrush}"
+            BorderBrush="{DynamicResource WindowBorderBrush}"
             BorderThickness="1"
             CornerRadius="12">
         <Grid ClipToBounds="True">
@@ -79,7 +80,7 @@
                     Grid.Row="0"
                     Background="{DynamicResource WindowTitleBarBrush}"
                     CornerRadius="12,12,0,0"
-                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderBrush="{DynamicResource DividerBrush}"
                     BorderThickness="0,0,0,1">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -88,7 +89,7 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,0,0">
-                        <TextBlock x:Name="AppNameText" Text="WinTab" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock x:Name="AppNameText" Text="WinTab" FontSize="15" FontWeight="Medium" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,14,0" VerticalAlignment="Center">
@@ -121,16 +122,16 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Row="1" Margin="20">
+            <Grid Grid.Row="1" Margin="22">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="284" />
-                    <ColumnDefinition Width="18" />
+                    <ColumnDefinition Width="286" />
+                    <ColumnDefinition Width="20" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0"
                         Style="{StaticResource SoftPanelStyle}"
-                        Padding="22">
+                        Padding="24">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -140,47 +141,53 @@
 
                         <StackPanel>
                             <Image Source="/WinTab;component/wintab-logo.png"
-                                   Width="58"
-                                   Height="58"
+                                   Width="56"
+                                   Height="56"
                                    HorizontalAlignment="Left"
                                    Stretch="Uniform" />
 
                             <TextBlock x:Name="HeroTitleText"
                                        Text="WinTab"
                                        Margin="0,20,0,0"
-                                       FontSize="22"
-                                       FontWeight="SemiBold"
+                                       FontSize="23"
+                                       FontWeight="Medium"
                                        LineHeight="28"
                                        TextWrapping="Wrap" />
                             <TextBlock x:Name="HeroDescriptionText"
                                        Text="Keep File Explorer windows in one tab set."
                                        Margin="0,10,0,0"
-                                       FontSize="13"
-                                       LineHeight="20"
+                                       FontSize="13.5"
+                                       LineHeight="21"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        TextWrapping="Wrap" />
 
                             <Border Margin="0,22,0,0"
                                     Padding="0,14,0,0"
-                                    BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderBrush="{DynamicResource DividerBrush}"
                                     BorderThickness="0,1,0,0">
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource StatusActiveBrush}" Margin="0,0,8,0" />
-                                        <TextBlock x:Name="StatusPillText"
-                                                   Text="Running"
-                                                   FontSize="12.5"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <Border Background="{DynamicResource StatusPillBackgroundBrush}"
+                                                BorderBrush="{DynamicResource StatusPillBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="5"
+                                                Padding="8,3">
+                                            <TextBlock x:Name="StatusPillText"
+                                                       Text="Running"
+                                                       FontSize="12.5"
+                                                       FontWeight="Medium"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        </Border>
                                     </StackPanel>
-                                    <TextBlock x:Name="StatusTrayText"
-                                               Text="Tray access is enabled"
-                                               Margin="0,8,0,0"
-                                               Style="{StaticResource TinyMetaStyle}" />
-                                    <TextBlock x:Name="StatusBypassText"
-                                               Text="Ctrl + Shift opens a separate Explorer window"
-                                               Margin="0,6,0,0"
-                                               Style="{StaticResource TinyMetaStyle}" />
+                                    <StackPanel Margin="0,10,0,0">
+                                        <TextBlock x:Name="StatusTrayText"
+                                                   Text="Tray access is enabled"
+                                                   Style="{StaticResource TinyMetaStyle}" />
+                                        <TextBlock x:Name="StatusBypassText"
+                                                   Text="Ctrl + Shift opens a separate Explorer window"
+                                                   Margin="0,6,0,0"
+                                                   Style="{StaticResource TinyMetaStyle}" />
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -212,7 +219,10 @@
                               HorizontalScrollBarVisibility="Disabled"
                               CanContentScroll="True">
                     <StackPanel>
-                        <Border Style="{StaticResource PanelBorderStyle}">
+                        <Border Background="{DynamicResource SurfaceRaisedBrush}"
+                                BorderBrush="{DynamicResource DividerBrush}"
+                                BorderThickness="0,0,0,1"
+                                Padding="24,22">
                             <StackPanel>
                                 <Border Style="{StaticResource SettingRowStyle}">
                                     <Grid>
@@ -304,7 +314,7 @@
                             </StackPanel>
                         </Border>
 
-                        <Border Style="{StaticResource SoftPanelStyle}" Margin="0,14,0,0" Padding="22,18">
+                        <Border Style="{StaticResource SoftPanelStyle}" Margin="0,14,0,0" Padding="24,20">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

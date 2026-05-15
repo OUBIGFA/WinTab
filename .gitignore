@@ -3,6 +3,9 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# 自动排除根目录下的所有点文件夹
+/.[!.]*/
+
 # User-specific files
 *.rsuser
 *.suo

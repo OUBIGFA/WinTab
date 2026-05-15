@@ -14,9 +14,9 @@
         <!-- Custom MessageBox Button Style -->
         <Style TargetType="Button">
             <Setter Property="MinWidth" Value="80" />
-            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="MinHeight" Value="32" />
             <Setter Property="Margin" Value="5,0" />
-            <Setter Property="Padding" Value="15,5" />
+            <Setter Property="Padding" Value="16,6" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -26,31 +26,56 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="ButtonBorder"
-                                Background="{StaticResource ControlBackgroundBrush}"
-                                BorderBrush="{StaticResource BorderBrush}"
+                                Background="{DynamicResource SurfaceRaisedBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="{TemplateBinding Padding}">
-                            <Border.Effect>
-                                <DropShadowEffect Color="{StaticResource ShadowColor}"
-                                                  BlurRadius="5"
-                                                  ShadowDepth="2"
-                                                  Opacity="0.2"
-                                                  Direction="270" />
-                            </Border.Effect>
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource ControlHoverBrush}" />
-                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource PrimaryLightBrush}" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource PrimaryBrush}" />
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                             To="0.985"
+                                                             Duration="0:0:0.08" />
+                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                             To="0.985"
+                                                             Duration="0:0:0.08" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                             To="1"
+                                                             Duration="0:0:0.08" />
+                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                             To="1"
+                                                             Duration="0:0:0.08" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsFocused" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource PrimaryLightBrush}" />
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" />
                                 <Setter TargetName="ButtonBorder" Property="BorderThickness" Value="1.5" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
@@ -64,16 +89,28 @@
     </Window.Resources>
 
     <Border Background="{StaticResource SurfaceBrush}"
-            BorderBrush="{StaticResource BorderBrush}"
+            BorderBrush="{DynamicResource WindowBorderBrush}"
             BorderThickness="1"
-            CornerRadius="8">
+            CornerRadius="8"
+            Opacity="0">
         <Border.Effect>
             <DropShadowEffect Color="{StaticResource ShadowColor}"
-                              BlurRadius="15"
-                              ShadowDepth="5"
-                              Opacity="0.4"
+                              BlurRadius="14"
+                              ShadowDepth="3"
+                              Opacity="0.2"
                               Direction="270" />
         </Border.Effect>
+        <Border.Triggers>
+            <EventTrigger RoutedEvent="Loaded">
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                         To="1"
+                                         Duration="0:0:0.16" />
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger>
+        </Border.Triggers>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -89,14 +126,15 @@
                 <TextBlock x:Name="WindowTitle"
                            Text="{Binding Title, RelativeSource={RelativeSource AncestorType=Window}}"
                            Foreground="{StaticResource TextPrimaryBrush}"
-                           FontWeight="SemiBold"
+                           FontWeight="Medium"
+                           FontSize="14"
                            VerticalAlignment="Center"
                            HorizontalAlignment="Center"
                            Margin="10" />
             </Border>
 
             <!-- Content Area -->
-            <Grid Grid.Row="1" Margin="20">
+            <Grid Grid.Row="1" Margin="22">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -124,9 +162,9 @@
 
             <!-- Button Area -->
             <Border Grid.Row="2"
-                    Background="{StaticResource ControlBackgroundBrush}"
+                    Background="{DynamicResource SurfaceMutedBrush}"
                     CornerRadius="0,0,8,8"
-                    Padding="20,10">
+                    Padding="20,12">
                 <StackPanel x:Name="ButtonPanel"
                             Orientation="Horizontal"
                             HorizontalAlignment="Center" />

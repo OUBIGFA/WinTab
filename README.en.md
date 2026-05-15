@@ -1,4 +1,4 @@
-<div align="center">
+~~<div align="center">
   <img src="Assets/wintab-logo.png" width="96" alt="WinTab Logo">
   <h1>WinTab</h1>
   <p>File Explorer tab utility for Windows 11</p>
@@ -9,8 +9,10 @@
     <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%2011-2563eb">
     <img alt=".NET" src="https://img.shields.io/badge/.NET-9.0-512bd4">
     <img alt="License" src="https://img.shields.io/badge/license-MIT-111827">
-  </p>
+  </p>~~
 </div>
+
+![](Assets/UI.png)
 
 ## Features
 
@@ -130,3 +132,4 @@ WinTab/
 ## License
 
 MIT License
+

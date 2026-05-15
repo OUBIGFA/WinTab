@@ -23,7 +23,7 @@ public static class HoverBackground
             "HoverColor",
             typeof(Color),
             typeof(HoverBackground),
-            new PropertyMetadata(Colors.DeepPink));
+            new PropertyMetadata(Colors.Gray));
 
     public static readonly DependencyProperty AnimationDurationProperty =
         DependencyProperty.RegisterAttached(

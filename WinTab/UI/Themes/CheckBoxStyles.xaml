@@ -9,23 +9,28 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
-                    <Grid Background="Transparent" MinWidth="38" MinHeight="22">
+                    <Grid Background="Transparent" MinWidth="40" MinHeight="24">
                         <Border x:Name="SwitchTrack"
-                                Width="36"
-                                Height="20"
+                                Width="38"
+                                Height="22"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Background="{DynamicResource ControlBackgroundBrush}"
                                 BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="10">
-                            <Grid Margin="2">
+                                CornerRadius="11">
+                            <Grid Margin="3">
                                 <Ellipse x:Name="SwitchThumb"
                                          Width="14"
                                          Height="14"
                                          HorizontalAlignment="Left"
                                          VerticalAlignment="Center"
-                                         Fill="{DynamicResource TextTertiaryBrush}" />
+                                         Fill="{DynamicResource TextTertiaryBrush}"
+                                         RenderTransformOrigin="0.5,0.5">
+                                    <Ellipse.RenderTransform>
+                                        <TranslateTransform X="0" />
+                                    </Ellipse.RenderTransform>
+                                </Ellipse>
                             </Grid>
                         </Border>
                     </Grid>
@@ -36,14 +41,33 @@
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource CheckBoxCheckedBackgroundBrush}" />
                             <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource CheckBoxCheckedBorderBrush}" />
-                            <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right" />
                             <Setter TargetName="SwitchThumb" Property="Fill" Value="{DynamicResource CheckBoxCheckedGlyphBrush}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="SwitchThumb"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                         To="16"
+                                                         Duration="0:0:0.16" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="SwitchThumb"
+                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                         To="0"
+                                                         Duration="0:0:0.16" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsFocused" Value="True">
-                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource PrimaryLightBrush}" />
+                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource PrimaryLightBrush}" />
+                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" />
                             <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
                         </Trigger>
                         <MultiTrigger>

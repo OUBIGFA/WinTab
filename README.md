@@ -12,6 +12,8 @@
   </p>
 </div>
 
+![](Assets/UI.png)
+
 ## 功能
 
 - 合并新打开的资源管理器窗口
@@ -130,3 +132,4 @@ WinTab/
 ## 许可
 
 MIT License
+
