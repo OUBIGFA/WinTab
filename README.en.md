@@ -1,4 +1,4 @@
-## <div align="center">
+<div align="center">
 
   <img src="Assets/128x128.png" alt="WinTab Logo"/>
 
