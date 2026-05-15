@@ -1,5 +1,6 @@
-<div align="center">
-  <img src="Assets/wintab-logo.png" alt="WinTab Logo" width="96" />
+## <div align="center">
+
+  <img src="Assets/128x128.png" alt="WinTab Logo"/>
 
   <h1>WinTab</h1>
 
@@ -71,3 +72,4 @@ WinTab/
 ## License
 
 MIT License
+

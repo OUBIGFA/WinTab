@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Assets/256x256.png" alt="WinTab Logo"/>
+  <img src="Assets/128x128.png" alt="WinTab Logo"/>
 
   <h1>WinTab</h1>
 
