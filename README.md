@@ -1,14 +1,14 @@
-<div>![WinTab Logo](Assets/wintab-logo.png)   
+<div align="center">
+  <img src="Assets/wintab-logo.png" alt="WinTab Logo" width="96" />
+</div>
 
 # WinTab
 
 Windows 11 资源管理器标签整理工具
 
-     简体中文 | [English](README.en.md)   
+简体中文 | [English](README.en.md)
 
-     ![Platform](https://img.shields.io/badge/platform-Windows%2011-2563eb)     ![.NET](https://img.shields.io/badge/.NET-9.0-512bd4)     ![License](https://img.shields.io/badge/license-MIT-111827)   
-
-</div>
+![Platform](https://img.shields.io/badge/platform-Windows%2011-555555) ![.NET](https://img.shields.io/badge/.NET-9.0-555555) ![License](https://img.shields.io/badge/license-MIT-555555)
 
 ![](Assets/UI.png)
 
@@ -65,4 +65,3 @@ WinTab/
 ## 许可
 
 MIT License
-

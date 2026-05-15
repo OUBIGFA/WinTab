@@ -1,12 +1,16 @@
+<div align="center">
+  <img src="Assets/wintab-logo.png" alt="WinTab Logo" width="96" />
+</div>
+
 # WinTab
 
 File Explorer tab utility for Windows 11
 
-     [简体中文](README.md) | English   
+[简体中文](README.md) | English
 
-     ![Platform](https://img.shields.io/badge/platform-Windows%2011-2563eb)     ![.NET](https://img.shields.io/badge/.NET-9.0-512bd4)     ![License](https://img.shields.io/badge/license-MIT-111827)   
+![Platform](https://img.shields.io/badge/platform-Windows%2011-555555) ![.NET](https://img.shields.io/badge/.NET-9.0-555555) ![License](https://img.shields.io/badge/license-MIT-555555)
 
-\~\~  
+---
 
 ![](Assets/UI.png)
 
@@ -63,4 +67,3 @@ WinTab/
 ## License
 
 MIT License
-
