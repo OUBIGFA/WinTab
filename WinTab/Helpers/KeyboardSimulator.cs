@@ -170,7 +170,6 @@ public static class KeyboardSimulator
 
         SendInputs(inputs);
     }
-
     public static List<INPUT> AddUpEventsForCurrentlyPressedModifiers(this List<INPUT> inputs)
     {
         for (var i = 0; i < ModifierKeys.Length; i++)
@@ -250,7 +249,6 @@ public static class KeyboardSimulator
             }
         };
     }
-
     /// <summary>
     /// Sends the specified array of inputs to the current foreground window.
     /// </summary>

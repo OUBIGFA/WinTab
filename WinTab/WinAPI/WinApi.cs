@@ -13,14 +13,15 @@ namespace WinTab.WinAPI;
 
 public static class WinApi
 {
+    public const int EVENT_SYSTEM_FOREGROUND = 0x0003;
     public const int EVENT_OBJECT_CREATE = 0x8000;
     public const int EVENT_OBJECT_SHOW = 0x8002;
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
 
     public const uint WM_QUIT = 0x0012;
+    public const uint WM_CLOSE = 0x0010;
     public const int WM_COMMAND = 0x111; // Send a command
-
     public const uint PM_NOREMOVE = 0x0000;
 
     public const int SW_SHOWNOACTIVATE = 4; // Show window but not activated

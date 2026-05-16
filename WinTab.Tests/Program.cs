@@ -42,16 +42,17 @@ internal static class ExplorerLaunchLocationResolverTests
             ("SelectTabByHandle does not activate intermediate tabs", ExplorerTabSelectionTests.SelectTabByHandleDoesNotActivateIntermediateTabs),
             ("tab merge uses the ExplorerTabUtility fast path", ExplorerTabSelectionTests.TabMergeUsesExplorerTabUtilityFastPath),
             ("failed navigation closes the transient This PC tab", ExplorerTabSelectionTests.FailedNavigationClosesTransientThisPcTab),
-            ("ExplorerTabUtility-style show hook does not hide independent windows", ExplorerTabSelectionTests.ShowHookDoesNotHideIndependentWindows),
+            ("WinEvent hook hides merge source windows without residuals", ExplorerTabSelectionTests.WinEventHookHidesMergeSourceWindowsWithoutResiduals),
             ("ShellWindows registration callback stays non-blocking", ExplorerTabSelectionTests.ShellWindowRegistrationCallbackStaysNonBlocking),
-            ("default-location Explorer windows are released instead of hidden indefinitely", ExplorerTabSelectionTests.DefaultLocationWindowsAreReleasedInsteadOfHiddenIndefinitely),
+            ("default-location Explorer windows are valid merge targets", ExplorerTabSelectionTests.DefaultLocationWindowsAreValidMergeTargets),
             ("HideWindow reapplies transparency after Explorer resets styles", ExplorerTabSelectionTests.HideWindowReappliesTransparency),
             ("hidden Explorer windows are restored on lifecycle boundaries", ExplorerTabSelectionTests.HiddenExplorerWindowsAreRestoredOnLifecycleBoundaries),
             ("orphaned transparent Explorer windows are recovered without cache", ExplorerTabSelectionTests.OrphanedTransparentExplorerWindowsAreRecoveredWithoutCache),
-            ("tab reuse excludes only the merge source instead of young tabs", ExplorerTabSelectionTests.TabReuseExcludesMergeSourceInsteadOfYoungTabs),
+            ("tab reuse excludes only the merge source", ExplorerTabSelectionTests.TabReuseExcludesMergeSource),
             ("tab reuse never creates a duplicate after finding an existing path", ExplorerTabSelectionTests.TabReuseDoesNotDuplicateAfterSelectionFailure),
-            ("Adopt restores a window that WinEvent pre-hid before classifying it as independent", ExplorerTabSelectionTests.AdoptRestoresPreHiddenIndependentWindows),
-            ("Early WinEvent hide requires a stable tracked merge target", ExplorerTabSelectionTests.EarlyHideRequiresStableMergeTarget)
+            ("WindowRegistered restores pre-hidden windows that are not merged", ExplorerTabSelectionTests.WindowRegisteredRestoresPreHiddenUnmergedWindows),
+            ("Early WinEvent hide requires a stable merge target", ExplorerTabSelectionTests.EarlyHideRequiresStableMergeTarget),
+            ("window merge uses a single registration lifecycle", ExplorerTabSelectionTests.WindowMergeUsesSingleRegistrationLifecycle)
         };
 
         var failed = 0;
@@ -189,6 +190,21 @@ internal static class ExplorerTabSelectionTests
             "Tab reuse should follow ExplorerTabUtility's direct handle activation path.");
         Assert(methodBody.Contains("ListenForNewExplorerTabAsync(mainWindowHWnd, currentTabs, 2_000)", StringComparison.Ordinal),
             "New tab creation should use the short ExplorerTabUtility wait window.");
+        Assert(methodBody.Contains("FindShellWindowByTabHandle(newTabHandle, mainWindowHWnd)", StringComparison.Ordinal) &&
+               methodBody.Contains("2_000", StringComparison.Ordinal),
+            "New tab navigation should bind the ShellWindows object by tab handle without adding slow address-bar fallbacks.");
+        Assert(!source.Contains("NavigateActiveTabByAddressBar", StringComparison.Ordinal) &&
+               !source.Contains("TryPasteAddressText", StringComparison.Ordinal) &&
+               !source.Contains("KeyboardSimulator.SendText", StringComparison.Ordinal),
+            "Opening a tab must not drive Explorer through the address bar or clipboard.");
+        var registrationBody = ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync");
+        var handleIndex = registrationBody.IndexOf("GetTabHandle(window)", StringComparison.Ordinal);
+        var hideIndex = registrationBody.IndexOf("HideMergeSourceWindow(hWnd)", StringComparison.Ordinal);
+        var tabCountIndex = registrationBody.IndexOf("WaitForExplorerTabCount(hWnd)", StringComparison.Ordinal);
+        Assert(hideIndex >= 0 && handleIndex > hideIndex && tabCountIndex > handleIndex,
+            "WindowRegistered must hide the source first, then bind the ShellWindow to its tab handle before slower checks.");
+        Assert(!methodBody.Contains("3_500", StringComparison.Ordinal),
+            "Opening a new target tab must not wait several seconds before sending navigation.");
         Assert(!methodBody.Contains("restore-previous", StringComparison.OrdinalIgnoreCase),
             "The merge path must not restore previous tabs while opening a target tab.");
         Assert(!methodBody.Contains("CloseUnexpectedDefaultTabs", StringComparison.Ordinal),
@@ -211,7 +227,7 @@ internal static class ExplorerTabSelectionTests
                          ExtractMethodBody(source, "private nint GetMainWindowHWnd") +
                          ExtractMethodBody(source, "private bool IsStableMergeTargetWindow") +
                          ExtractMethodBody(source, "private static bool IsFallbackMergeTargetWindow") +
-                         ExtractMethodBody(source, "private async Task<bool> TryAutoMergePendingWindow");
+                         ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync");
 
         Assert(methodBody.Contains("WaitForNavigation(window, targetLocation, 5_000)", StringComparison.Ordinal) &&
                methodBody.Contains("AreLocationsEquivalent(TryGetLocation(window), targetLocation)", StringComparison.Ordinal),
@@ -222,7 +238,8 @@ internal static class ExplorerTabSelectionTests
             "The merge target must prefer the current foreground Explorer instead of a stale background This PC window.");
         Assert(methodBody.Contains("IsStableMergeTargetWindow(foregroundWindow, otherThan)", StringComparison.Ordinal),
             "The foreground window must be a stable merge target, not another transient source window.");
-        Assert(methodBody.Contains("GetMainWindowHWnd(hWnd)", StringComparison.Ordinal),
+        Assert(methodBody.Contains("GetMainWindowHWnd(hWnd)", StringComparison.Ordinal) ||
+               methodBody.Contains("GetMainWindowHWnd(windowToOpen.Handle)", StringComparison.Ordinal),
             "Auto-merge must resolve the target Explorer while excluding the transient source window.");
         Assert(methodBody.Contains("IsFallbackMergeTargetWindow(h, otherThan)", StringComparison.Ordinal),
             "If the strict cached target is unavailable, merge should fall back to ExplorerTabUtility's tagged-window selection instead of opening a new window.");
@@ -233,30 +250,72 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
-    public static Task ShowHookDoesNotHideIndependentWindows()
+    public static Task WinEventHookHidesMergeSourceWindowsWithoutResiduals()
     {
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
         var methodBody = ExtractMethodBody(source, "private bool TryHideIncomingExplorerWindow") +
-                         ExtractMethodBody(source, "private bool IsRegisteredIndependentExplorerWindow") +
-                         ExtractMethodBody(source, "private void PreventWindowHiding") +
+                         ExtractMethodBody(source, "private void TryHideRegisteredMergeSourceWindow") +
                          ExtractMethodBody(source, "private void OnWindowShown") +
+                         ExtractMethodBody(source, "private void OnShellWindowRegistered") +
+                         ExtractMethodBody(source, "private List<(InternetExplorer Window, WindowInfo WindowInfo)> AdoptNewShellWindows") +
+                         ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync") +
+                         ExtractMethodBody(source, "private void HideMergeSourceWindow") +
+                         ExtractMethodBody(source, "private async Task RestoreMergeSourceWindowAsync") +
+                         ExtractMethodBody(source, "private void RemoveMergeSourceTracking") +
+                         ExtractMethodBody(source, "private void StartMergeSourceConcealPulse") +
+                         ExtractMethodBody(source, "private void ConcealMergeSourceWindowsOnce") +
                          ExtractMethodBody(source, "private void InitializeShellObjects") +
                          ExtractMethodBody(source, "private sealed class WinEventHookThread");
 
-        Assert(methodBody.Contains("IsRegisteredIndependentExplorerWindow(hWnd)", StringComparison.Ordinal),
-            "The early conceal path must not hide an Explorer window that was already registered as independent.");
-        Assert(methodBody.Contains("_registeredIndependentHWnds.ContainsKey(hWnd)", StringComparison.Ordinal) &&
-               methodBody.Contains("_registeredIndependentHWnds[hWnd] = 0", StringComparison.Ordinal),
-            "Independent Explorer windows should be protected by an explicit handle cache, not a slow COM scan.");
-        Assert(methodBody.Contains("SetWinEventHook(WinApi.EVENT_OBJECT_SHOW", StringComparison.Ordinal) &&
-               methodBody.Contains("SetWinEventHook(WinApi.EVENT_OBJECT_CREATE", StringComparison.Ordinal),
-            "Window concealment should stay event-driven instead of polling Explorer windows.");
+        Assert(methodBody.Contains("SetWinEventHook(WinApi.EVENT_SYSTEM_FOREGROUND, WinApi.EVENT_SYSTEM_FOREGROUND", StringComparison.Ordinal) &&
+               methodBody.Contains("SetWinEventHook(WinApi.EVENT_OBJECT_CREATE, WinApi.EVENT_OBJECT_SHOW", StringComparison.Ordinal),
+            "WinEvents should wake ShellWindows registration and hide mergeable source windows early.");
+        Assert(methodBody.Contains("ScheduleShellWindowRegistration(1)", StringComparison.Ordinal),
+            "Foreground/create/show events should trigger quick registration processing.");
+        Assert(methodBody.Contains("TryHideIncomingExplorerWindow(hWnd)", StringComparison.Ordinal),
+            "The WinEvent path must conceal mergeable source windows before Explorer paints a visible flash.");
+        Assert(source.Contains("GetExplorerTopLevelWindow(hWnd)", StringComparison.Ordinal) &&
+               source.Contains("WinApi.GetAncestor(hWnd, WinApi.GA_ROOT)", StringComparison.Ordinal),
+            "Early hide must normalize child WinEvent handles to the real Explorer top-level window.");
+        Assert(methodBody.Contains("StartMergeSourceConcealPulse()", StringComparison.Ordinal) &&
+               methodBody.Contains("ConcealMergeSourceWindowsOnce()", StringComparison.Ordinal),
+            "Rapid Explorer bursts need a short event-triggered conceal pulse so late WinEvents do not produce visible flashes.");
+        Assert(methodBody.Contains("HasMergeTargetForEarlyConceal(hWnd)", StringComparison.Ordinal) &&
+               source.Contains("HasStableMergeTarget(excluded) || GetMainWindowHWnd(excluded) != 0", StringComparison.Ordinal),
+            "Early hide must require an existing merge target, with a fast fallback when ShellWindows hooks lag behind WinEvents.");
+        Assert(methodBody.Contains("HasTrackedTopLevelWindow(hWnd)", StringComparison.Ordinal),
+            "Early hide must never conceal a top-level Explorer window that WinTab has already adopted.");
+        Assert(methodBody.Contains("GetAllExplorerTabs(hWnd).Take(2).Count() > 1", StringComparison.Ordinal),
+            "Early hide must not conceal an existing multi-tab target Explorer window.");
+        Assert(methodBody.Contains("TryHideRegisteredMergeSourceWindow(hWnd)", StringComparison.Ordinal),
+            "A ShellWindows registration batch must hide every mergeable source before slow per-window processing.");
+        Assert(methodBody.Contains("wasTrackedTopLevel") && methodBody.Contains("if (!wasTrackedTopLevel)"),
+            "ShellWindows registrations for new tabs inside the target window must not hide the target top-level window.");
+        Assert(methodBody.Contains("_processedHWnds.ContainsKey(hWnd)", StringComparison.Ordinal),
+            "Registered hide must ignore handles that were already released after a successful merge.");
+        Assert(methodBody.Contains("HasOtherTrackedShellWindowForTopLevel(window, hWnd)", StringComparison.Ordinal),
+            "Processing must treat ShellWindows that share an adopted top-level window as tabs, not merge-source windows.");
+        Assert(methodBody.Contains("PublishTabHandleForTrackedShellWindowAsync(window)", StringComparison.Ordinal),
+            "Tab ShellWindows must publish their tab handle before the opener waits for the new tab binding.");
+        Assert(methodBody.Contains("HideMergeSourceWindow(hWnd)", StringComparison.Ordinal) &&
+               methodBody.Contains("_mergeSourceHWnds.TryAdd(hWnd, 0)", StringComparison.Ordinal),
+            "Hidden windows must be explicitly owned as merge sources.");
+        Assert(methodBody.Contains("CloseMergedSourceWindow(window, hWnd)", StringComparison.Ordinal) &&
+               source.Contains("WinApi.WM_CLOSE", StringComparison.Ordinal) &&
+               source.Contains("window.Quit()", StringComparison.Ordinal),
+            "The merge source Explorer window must be closed directly after a successful merge without blocking the merge queue.");
+        Assert(methodBody.Contains("RemoveMergeSourceTracking(hWnd)", StringComparison.Ordinal) &&
+               methodBody.Contains("RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal),
+            "Merge source ownership must be cleared on success and restored on failure.");
+        Assert(methodBody.Contains("PreventWindowHiding(hWnd)", StringComparison.Ordinal),
+            "A source that was closed or released must be protected from late show events re-hiding its handle.");
+        Assert(!source.Contains("ScheduleStaleConcealedWindow", StringComparison.Ordinal) &&
+               !source.Contains("CloseConcealedExplorerWindow", StringComparison.Ordinal),
+            "Hidden source cleanup must be tied to the merge lifecycle, not stale fallback closers.");
         Assert(!source.Contains("RunConcealWatchdog", StringComparison.Ordinal) &&
                !source.Contains("RunConcealSweepAsync", StringComparison.Ordinal),
             "The merge path should not depend on custom high-frequency window sweeps.");
-        Assert(methodBody.Contains("Priority = ThreadPriority.Highest", StringComparison.Ordinal),
-            "The WinEvent hook thread should run at high priority so conceal events are handled before Explorer paints.");
 
         return Task.CompletedTask;
     }
@@ -266,34 +325,34 @@ internal static class ExplorerTabSelectionTests
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
         var methodBody = ExtractMethodBody(source, "private void OnShellWindowRegistered");
+        var scheduleBody = ExtractMethodBody(source, "private void ScheduleShellWindowRegistration");
 
-        Assert(methodBody.Contains("SchedulePendingAutoMerge(1)", StringComparison.Ordinal),
+        Assert(methodBody.Contains("ScheduleShellWindowRegistration(1)", StringComparison.Ordinal),
             "ShellWindows registration should schedule merge work after returning to Explorer.");
-        Assert(!methodBody.Contains("AdoptNewShellWindowsForImmediateConceal", StringComparison.Ordinal),
+        Assert(!methodBody.Contains("AdoptNewShellWindows", StringComparison.Ordinal),
             "ShellWindows registration must not synchronously enumerate ShellWindows from Explorer's COM event callback.");
+        Assert(scheduleBody.Contains("HasUntrackedShellWindows()", StringComparison.Ordinal),
+            "The registration scheduler must rescan after clearing its in-flight flag so rapid windows cannot be dropped.");
 
         return Task.CompletedTask;
     }
 
-    public static Task DefaultLocationWindowsAreReleasedInsteadOfHiddenIndefinitely()
+    public static Task DefaultLocationWindowsAreValidMergeTargets()
     {
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
-        var methodBody = ExtractMethodBody(source, "private async Task<bool> TryAutoMergePendingWindow");
-        var hideBody = ExtractMethodBody(source, "private bool TryHideIncomingExplorerWindow");
+        var methodBody = ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync");
 
-        var firstStartupIndex = methodBody.IndexOf("IsStartupExplorerLocation(firstLocation)", StringComparison.Ordinal);
-        var graceIndex = methodBody.IndexOf("PendingStartupLocationGraceMs", firstStartupIndex >= 0 ? firstStartupIndex : 0, StringComparison.Ordinal);
-        var releaseIndex = methodBody.IndexOf("TryShowAsIndependentWindow(window, windowInfo)", graceIndex >= 0 ? graceIndex : 0, StringComparison.Ordinal);
         var resolveIndex = methodBody.IndexOf("ResolveInitialLocation(window)", StringComparison.Ordinal);
-        Assert(firstStartupIndex >= 0 && graceIndex > firstStartupIndex && releaseIndex > graceIndex,
-            "A pending Explorer window that stays at the default location must be released after a short startup grace window.");
-        Assert(resolveIndex > releaseIndex,
-            "Default-location waits must not block the global merge queue while other new Explorer windows need concealment.");
+        var openIndex = methodBody.IndexOf("OpenTabNavigateWithSelection(record, targetWindow)", StringComparison.Ordinal);
+        Assert(resolveIndex >= 0 && openIndex > resolveIndex,
+            "Default-location windows must resolve through the same target-driven merge path as folders.");
+        Assert(!methodBody.Contains("IsStartupExplorerLocation(location)", StringComparison.Ordinal),
+            "A stable default location is a valid user target, not an automatic release condition.");
         Assert(!methodBody.Contains("180_000", StringComparison.Ordinal),
             "Hidden merge candidates must not stay concealed for minutes.");
-        Assert(hideBody.Contains("HasTrackedIndependentTopLevelWindow(hWnd)", StringComparison.Ordinal),
-            "The early WinEvent hide path must not conceal already-tracked stable Explorer windows.");
+        Assert(methodBody.Contains("OpenTabNavigateWithSelection(record, targetWindow)", StringComparison.Ordinal),
+            "Default-location windows should follow the same merge path and close the source only after a verified target tab opens.");
 
         return Task.CompletedTask;
     }
@@ -322,7 +381,7 @@ internal static class ExplorerTabSelectionTests
         var initializeBody = ExtractMethodBody(source, "private void InitializeShellObjects");
         var stopBody = ExtractMethodBody(source, "public void StopHook");
         var disposeBody = ExtractMethodBody(source, "private void DisposeShellObjects");
-        var showIndependentBody = ExtractMethodBody(source, "private void TryShowAsIndependentWindow");
+        var registrationBody = ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync");
         var removeBody = ExtractMethodBody(source, "private void RemoveWindowAndUnhookEvents");
 
         var startupRestoreIndex = initializeBody.IndexOf("RecoverHiddenExplorerWindows", StringComparison.Ordinal);
@@ -333,8 +392,8 @@ internal static class ExplorerTabSelectionTests
             "StopHook must release hidden Explorer windows before disabling forced tabs.");
         Assert(disposeBody.Contains("RecoverHiddenExplorerWindows", StringComparison.Ordinal),
             "DisposeShellObjects must release hidden Explorer windows before COM objects are dropped.");
-        Assert(showIndependentBody.Contains("RestoreHiddenExplorerWindowAsync", StringComparison.Ordinal),
-            "Windows that stop being merge candidates must be restored through the guarded restore path.");
+        Assert(registrationBody.Contains("RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal),
+            "Windows that stop being merge candidates after being hidden must be restored through the guarded restore path.");
         Assert(removeBody.Contains("Helper.RestoreHiddenExplorerWindow", StringComparison.Ordinal),
             "Removing a live shell window must restore it unless the caller intentionally closes it.");
 
@@ -360,7 +419,7 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
-    public static Task TabReuseExcludesMergeSourceInsteadOfYoungTabs()
+    public static Task TabReuseExcludesMergeSource()
     {
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
@@ -369,8 +428,6 @@ internal static class ExplorerTabSelectionTests
 
         Assert(!searchBody.Contains("CreatedAt", StringComparison.Ordinal),
             "Tab reuse must not exclude freshly-created real target tabs by age.");
-        Assert(searchBody.Contains("windowInfo.CanAutoMerge", StringComparison.Ordinal),
-            "Tab reuse should exclude pending merge-source windows by state.");
         Assert(searchBody.Contains("excludedTopLevelWindow", StringComparison.Ordinal),
             "Tab reuse should exclude the specific top-level source window being merged.");
         Assert(openBody.Contains("TrySearchForTab(windowToOpen.Location, windowToOpen.Handle", StringComparison.Ordinal),
@@ -400,21 +457,21 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
-    public static Task AdoptRestoresPreHiddenIndependentWindows()
+    public static Task WindowRegisteredRestoresPreHiddenUnmergedWindows()
     {
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
-        var methodBody = ExtractMethodBody(source, "private void AdoptNewShellWindowsForImmediateConceal");
+        var methodBody = ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync");
 
-        var independentBranchIndex = methodBody.IndexOf("if (!canAutoMerge)", StringComparison.Ordinal);
-        Assert(independentBranchIndex >= 0, "AdoptNewShellWindowsForImmediateConceal must keep an !canAutoMerge branch for independent windows.");
+        var finallyIndex = methodBody.IndexOf("finally", StringComparison.Ordinal);
+        Assert(finallyIndex >= 0, "WindowRegistered processing must have a finally block.");
 
-        var hideCallIndex = methodBody.IndexOf("Helper.HideWindow", independentBranchIndex, StringComparison.Ordinal);
-        var containsKeyIndex = methodBody.IndexOf("Helper.HiddenWindows.ContainsKey(hWnd)", independentBranchIndex, StringComparison.Ordinal);
-        var restoreIndex = methodBody.IndexOf("RestoreHiddenExplorerWindowAsync(hWnd)", independentBranchIndex, StringComparison.Ordinal);
+        var registerIndex = methodBody.IndexOf("RegisterIndependentWindow(window, windowInfo, hWnd)", finallyIndex, StringComparison.Ordinal);
+        var removedGuardIndex = methodBody.IndexOf("!removed", finallyIndex, StringComparison.Ordinal);
+        var showGuardIndex = methodBody.IndexOf("showAgain", finallyIndex, StringComparison.Ordinal);
 
-        Assert(containsKeyIndex >= 0 && restoreIndex >= 0 && containsKeyIndex < hideCallIndex && restoreIndex < hideCallIndex,
-            "Adopt's independent-window branch must restore a window that WinEvent pre-hid so it never gets stuck transparent.");
+        Assert(registerIndex > finallyIndex && removedGuardIndex > finallyIndex && showGuardIndex > finallyIndex,
+            "An unmerged source window must be kept as an independent visible Explorer window.");
 
         return Task.CompletedTask;
     }
@@ -426,12 +483,52 @@ internal static class ExplorerTabSelectionTests
         var hideBody = ExtractMethodBody(source, "private bool TryHideIncomingExplorerWindow");
         var helperBody = ExtractMethodBody(source, "private bool HasStableMergeTarget");
 
-        Assert(hideBody.Contains("HasStableMergeTarget(hWnd)", StringComparison.Ordinal),
-            "Early WinEvent hide must consult a stable tracked merge target so untracked orphan windows can't trick it into hiding user-initiated opens.");
-
+        Assert(hideBody.Contains("HasMergeTargetForEarlyConceal(hWnd)", StringComparison.Ordinal),
+            "Early WinEvent hide must require a real merge target before concealing a new Explorer window.");
+        Assert(hideBody.Contains("HasTrackedTopLevelWindow(hWnd)", StringComparison.Ordinal),
+            "Early WinEvent hide must skip Explorer windows that already belong to the tracked lifecycle.");
         Assert(helperBody.Contains("_windowEntryDict", StringComparison.Ordinal) &&
-               helperBody.Contains("CanAutoMerge", StringComparison.Ordinal),
-            "HasStableMergeTarget must inspect the tracked dictionary and skip windows that are themselves pending merge candidates.");
+               helperBody.Contains("EventsHooked", StringComparison.Ordinal),
+            "HasStableMergeTarget must inspect only fully tracked, event-hooked Explorer windows.");
+
+        var targetBody = ExtractMethodBody(source, "private bool IsStableMergeTargetWindow");
+        Assert(targetBody.Contains("HasHookedShellWindowForTopLevel(hWnd)", StringComparison.Ordinal),
+            "Merge target selection must not treat another newly-created unhooked Explorer window as a stable target.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task WindowMergeUsesSingleRegistrationLifecycle()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var windowInfoPath = FindRepoFile("WinTab", "Models", "WindowInfo.cs");
+        var source = File.ReadAllText(sourcePath);
+        var windowInfo = File.ReadAllText(windowInfoPath);
+        var registrationBody = ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync");
+
+        Assert(!source.Contains("SchedulePendingAutoMerge", StringComparison.Ordinal) &&
+               !source.Contains("MergePendingAutoMergeWindowsAsync", StringComparison.Ordinal) &&
+               !source.Contains("GetPendingAutoMergeCandidates", StringComparison.Ordinal),
+            "Hidden Explorer windows must not be owned by a background pending merge queue.");
+        Assert(!windowInfo.Contains("CanAutoMerge", StringComparison.Ordinal),
+            "WindowInfo must not carry a long-lived pending merge state.");
+        Assert(source.Contains("private bool HasUntrackedShellWindows()", StringComparison.Ordinal),
+            "Registration processing must close the race where a ShellWindows event arrives during an active drain.");
+
+        var openIndex = registrationBody.IndexOf("OpenTabNavigateWithSelection(record, targetWindow)", StringComparison.Ordinal);
+        var quitIndex = registrationBody.IndexOf("CloseMergedSourceWindow(window, hWnd)", StringComparison.Ordinal);
+        var removeIndex = registrationBody.IndexOf("RemoveWindowAndUnhookEvents(window, windowInfo, restoreHiddenWindow: false)", StringComparison.Ordinal);
+        Assert(openIndex >= 0 && removeIndex > openIndex && quitIndex > removeIndex,
+            "The source Explorer window must be closed only after the target tab open is verified.");
+
+        var hideIndex = registrationBody.IndexOf("HideMergeSourceWindow(hWnd)", StringComparison.Ordinal);
+        var tabHandleIndex = registrationBody.IndexOf("GetTabHandle(window)", StringComparison.Ordinal);
+        var tabCountIndex = registrationBody.IndexOf("WaitForExplorerTabCount(hWnd)", StringComparison.Ordinal);
+        var resolveIndex = registrationBody.IndexOf("ResolveInitialLocation(window)", StringComparison.Ordinal);
+        Assert(hideIndex >= 0 && hideIndex < tabHandleIndex && tabCountIndex > hideIndex && resolveIndex > hideIndex,
+            "A mergeable source window must be hidden before slower tab-handle, tab-count, and location waits can let Explorer paint it.");
+        Assert(registrationBody.Contains("RemoveMergeSourceTracking(hWnd)", StringComparison.Ordinal),
+            "A successfully merged source window must be removed from hidden-source tracking before it is closed.");
 
         return Task.CompletedTask;
     }
@@ -1625,7 +1722,12 @@ internal static class ExplorerStressTest
         try
         {
             if (Directory.Exists(path))
-                Directory.Delete(path, recursive: true);
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                    path,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            }
         }
         catch
         {
