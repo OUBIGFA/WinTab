@@ -95,8 +95,8 @@ public sealed class ExplorerLaunchLocationResolver
     }
 
     public sealed record Options(
-        int DefaultLocationWaitMs = 250,
+        int DefaultLocationWaitMs = 60,
         int StableLocationWaitMs = 160,
         int PollIntervalMs = 25,
-        int MaximumStartupLocationWaitMs = 1_200);
+        int MaximumStartupLocationWaitMs = 500);
 }

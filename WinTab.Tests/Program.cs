@@ -51,7 +51,7 @@ internal static class ExplorerLaunchLocationResolverTests
             ("ShellWindows registration callback stays non-blocking", ExplorerTabSelectionTests.ShellWindowRegistrationCallbackStaysNonBlocking),
             ("stable default-location Explorer windows remain mergeable without residuals", ExplorerTabSelectionTests.StableDefaultLocationWindowsRemainMergeableWithoutResiduals),
             ("folder merges avoid default-only Explorer targets when a real folder target exists", ExplorerTabSelectionTests.FolderMergesAvoidDefaultOnlyTargets),
-            ("stable default-location decision is fast", ExplorerTabSelectionTests.StableDefaultLocationDecisionIsFast),
+            ("mergeable default-location intermediate is closed before merge", ExplorerTabSelectionTests.MergeableDefaultLocationIntermediateIsClosedBeforeMerge),
             ("released merge sources are protected from late re-hide events", ExplorerTabSelectionTests.ReleasedMergeSourcesAreProtectedFromLateRehideEvents),
             ("HideWindow reapplies transparency after Explorer resets styles", ExplorerTabSelectionTests.HideWindowReappliesTransparency),
             ("hidden Explorer windows are restored on lifecycle boundaries", ExplorerTabSelectionTests.HiddenExplorerWindowsAreRestoredOnLifecycleBoundaries),
@@ -444,6 +444,8 @@ internal static class ExplorerTabSelectionTests
                methodBody.Contains("tabCount <= 1", StringComparison.Ordinal) &&
                methodBody.Contains("wasTrackedTopLevel || !singleTabTopLevelsInBatch.Add(hWnd)", StringComparison.Ordinal),
             "Duplicate ShellWindows wrappers for the same single-tab top-level must be skipped so they do not block This PC merging as fake sibling tabs.");
+        Assert(methodBody.Contains("CloseRetainedStartupLocationIfMergeableAsync(window, hWnd, initialLocation)", StringComparison.Ordinal),
+            "A retained This PC intermediate should be closed from ShellWindows adoption instead of waiting for slower registration processing.");
 
         return Task.CompletedTask;
     }
@@ -456,11 +458,14 @@ internal static class ExplorerTabSelectionTests
         var normalizedBody = methodBody.Replace("\r\n", "\n", StringComparison.Ordinal);
 
         var resolveIndex = normalizedBody.IndexOf("ResolveInitialLocation(window, hWnd)", StringComparison.Ordinal);
+        var tabHandleIndex = normalizedBody.IndexOf("GetTabHandle(window)", StringComparison.Ordinal);
         var releaseBranchStart = normalizedBody.IndexOf("if (string.IsNullOrWhiteSpace(location)", StringComparison.Ordinal);
         var targetSelectionIndex = normalizedBody.IndexOf("targetWindow = GetMainWindowHWnd(hWnd, location)", StringComparison.Ordinal);
         var openIndex = normalizedBody.IndexOf("OpenTabNavigateWithSelection(record, targetWindow)", StringComparison.Ordinal);
         Assert(resolveIndex >= 0 && releaseBranchStart > resolveIndex && targetSelectionIndex > releaseBranchStart && openIndex > targetSelectionIndex,
             "A stable This PC Explorer window must be allowed to reach target selection and the merge path after resolution.");
+        Assert(tabHandleIndex > resolveIndex,
+            "Startup location resolution must happen before tab-handle waits so This PC intermediates can be closed promptly.");
         var preResolveBody = normalizedBody[..resolveIndex];
         Assert(!preResolveBody.Contains("targetWindow != 0", StringComparison.Ordinal),
             "A stable This PC window must not be released before location resolution just because merge target discovery briefly lagged.");
@@ -471,11 +476,13 @@ internal static class ExplorerTabSelectionTests
         Assert(releaseBranch.Contains("string.IsNullOrWhiteSpace(location)", StringComparison.Ordinal) &&
                releaseBranch.Contains("shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}", StringComparison.Ordinal),
             "The early release branch should stay limited to unresolved locations and Control Panel, not stable This PC.");
-        Assert(normalizedBody.Contains("if (!IsStartupExplorerLocation(location))\n                HideMergeSourceWindow(hWnd);", StringComparison.Ordinal),
+        Assert(normalizedBody.Contains("if (sourceAlive && !IsStartupExplorerLocation(location))\n                HideMergeSourceWindow(hWnd);", StringComparison.Ordinal),
             "The merge path must avoid re-hiding a stable This PC source while still hiding real folder merge sources.");
         Assert(normalizedBody.Contains("CloseMergedSourceWindowAsync(window, hWnd)", StringComparison.Ordinal) &&
                normalizedBody.Contains("RemoveMergeSourceTracking(hWnd)", StringComparison.Ordinal),
             "A merged This PC source must be closed and removed from hidden tracking instead of remaining as a transparent residual window.");
+        Assert(!normalizedBody.Contains("await OpenNewWindowWithSelection(record, lockToOpenWindows: false)", StringComparison.Ordinal),
+            "A closed This PC intermediate must not be reopened as another top-level fallback that can become hidden in the background.");
         Assert(!methodBody.Contains("180_000", StringComparison.Ordinal),
             "Hidden merge candidates must not stay concealed for minutes.");
 
@@ -500,18 +507,31 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
-    public static Task StableDefaultLocationDecisionIsFast()
+    public static Task MergeableDefaultLocationIntermediateIsClosedBeforeMerge()
     {
         var resolverPath = FindRepoFile("WinTab", "Hooks", "ExplorerLaunchLocationResolver.cs");
         var watcherPath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var resolver = File.ReadAllText(resolverPath);
         var watcher = File.ReadAllText(watcherPath);
+        var resolveBody = ExtractMethodBody(watcher, "private Task<string> ResolveInitialLocation");
+        var retainedBody = ExtractMethodBody(watcher, "private async Task CloseRetainedStartupLocationIfMergeableAsync");
         var restoreBody = ExtractMethodBody(watcher, "private static async Task RestoreHiddenExplorerWindowAsync");
 
-        Assert(resolver.Contains("int DefaultLocationWaitMs = 250", StringComparison.Ordinal),
-            "A stable This PC window should leave the hidden startup state quickly so user-opened defaults do not stay transparent.");
-        Assert(resolver.Contains("int MaximumStartupLocationWaitMs = 1_200", StringComparison.Ordinal),
-            "Stable This PC merges should not wait the old multi-second startup window after the source has been restored.");
+        Assert(resolver.Contains("int DefaultLocationWaitMs = 60", StringComparison.Ordinal),
+            "A non-mergeable stable This PC window should still be released quickly instead of staying transparent.");
+        Assert(resolver.Contains("int MaximumStartupLocationWaitMs = 500", StringComparison.Ordinal),
+            "Mergeable stable This PC windows should not wait the old multi-second startup window before merging.");
+        Assert(!resolveBody.Contains("_ => RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal),
+            "A mergeable stable This PC window must not be restored visibly before the merge path runs.");
+        Assert(resolveBody.Contains("CloseRetainedStartupLocationIfMergeableAsync(window, hWnd, location)", StringComparison.Ordinal),
+            "Retained startup locations should close the intermediate source when a merge target is available.");
+        Assert(retainedBody.Contains("GetMainWindowHWnd(hWnd, location)", StringComparison.Ordinal) &&
+               retainedBody.Contains("CloseMergedSourceWindowAsync(window, hWnd)", StringComparison.Ordinal) &&
+               retainedBody.Contains("RemoveMergeSourceTracking(hWnd)", StringComparison.Ordinal) &&
+               retainedBody.Contains("RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal) &&
+               retainedBody.Contains("IsShellWindowBusy(window)", StringComparison.Ordinal) &&
+               retainedBody.Contains("RecheckRetainedStartupLocationAsync(window, hWnd)", StringComparison.Ordinal),
+            "The retained This PC source should be closed when it can merge, rechecked if Explorer is still navigating, and restored only when it cannot merge.");
         Assert(restoreBody.Contains("50)", StringComparison.Ordinal),
             "Restoring a retained This PC window should poll quickly instead of waiting in coarse 200ms steps.");
 
@@ -667,7 +687,7 @@ internal static class ExplorerTabSelectionTests
         var closeBody = ExtractMethodBody(source, "private async Task<bool> CloseMergedSourceWindowAsync");
 
         var closeIndex = registrationBody.IndexOf("CloseMergedSourceWindowAsync(window, hWnd)", StringComparison.Ordinal);
-        var clearIndex = registrationBody.IndexOf("RemoveMergeSourceTracking(hWnd)", StringComparison.Ordinal);
+        var clearIndex = registrationBody.IndexOf("RemoveMergeSourceTracking(hWnd)", closeIndex, StringComparison.Ordinal);
         Assert(closeIndex >= 0 && clearIndex > closeIndex,
             "A hidden source window must only be removed from hidden tracking after its close request has been verified.");
         Assert(closeBody.Contains("Helper.DoUntilConditionAsync", StringComparison.Ordinal) &&
@@ -751,9 +771,9 @@ internal static class ExplorerTabSelectionTests
             "Registration processing must close the race where a ShellWindows event arrives during an active drain.");
 
         var openIndex = registrationBody.IndexOf("OpenTabNavigateWithSelection(record, targetWindow)", StringComparison.Ordinal);
-        var quitIndex = registrationBody.IndexOf("CloseMergedSourceWindowAsync(window, hWnd)", StringComparison.Ordinal);
-        var trackingIndex = registrationBody.IndexOf("RemoveMergeSourceTracking(hWnd)", StringComparison.Ordinal);
-        var removeIndex = registrationBody.IndexOf("RemoveWindowAndUnhookEvents(window, windowInfo, restoreHiddenWindow: false)", StringComparison.Ordinal);
+        var quitIndex = registrationBody.IndexOf("CloseMergedSourceWindowAsync(window, hWnd)", openIndex, StringComparison.Ordinal);
+        var trackingIndex = registrationBody.IndexOf("RemoveMergeSourceTracking(hWnd)", quitIndex, StringComparison.Ordinal);
+        var removeIndex = registrationBody.IndexOf("RemoveWindowAndUnhookEvents(window, windowInfo, restoreHiddenWindow: false)", trackingIndex, StringComparison.Ordinal);
         Assert(openIndex >= 0 && quitIndex > openIndex && trackingIndex > quitIndex && removeIndex > trackingIndex,
             "The source Explorer window must be closed and verified after the target tab opens, before hidden tracking is cleared.");
 
@@ -1264,8 +1284,8 @@ internal static class ExplorerStressTest
             throw new InvalidOperationException("Pass --app with the WinTab.exe path to user-default-test.");
 
         var startupDelayMs = int.TryParse(GetOption(args, "--startup-delay"), out var parsedStartupDelay) ? parsedStartupDelay : 2_500;
-        var observeMs = int.TryParse(GetOption(args, "--observe-ms"), out var parsedObserveMs) ? parsedObserveMs : 4_000;
-        var maxHideMs = int.TryParse(GetOption(args, "--max-hide-ms"), out var parsedMaxHideMs) ? parsedMaxHideMs : 900;
+        var observeMs = int.TryParse(GetOption(args, "--observe-ms"), out var parsedObserveMs) ? parsedObserveMs : 3_500;
+        var maxHideMs = int.TryParse(GetOption(args, "--max-hide-ms"), out var parsedMaxHideMs) ? parsedMaxHideMs : 600;
         var stressRoot = Path.Combine(Path.GetTempPath(), "WinTabExplorerStress");
         KillExistingWinTabProcesses();
         CloseTestShellWindows(stressRoot);
@@ -1290,7 +1310,7 @@ internal static class ExplorerStressTest
         {
             await Task.Delay(startupDelayMs);
 
-            var monitor = HiddenDefaultWindowMonitor.Start(baselineDefaultHwnds);
+            var monitor = HiddenDefaultWindowMonitor.Start(baselineTopLevelHwnds);
             StartExplorerDefault();
             await Task.Delay(observeMs);
             await monitor.StopAsync();
@@ -1309,15 +1329,20 @@ internal static class ExplorerStressTest
                 .Where(window => IsFullyTransparent((nint)window.Hwnd))
                 .ToArray();
             var sightings = monitor.Sightings.ToArray();
+            var visibleIntermediates = sightings.Where(sighting => sighting.FirstVisibleAt.HasValue).ToArray();
             var offending = sightings.Where(sighting => sighting.HiddenMs > maxHideMs).ToArray();
-            if (newDefaultTopLevelWindows.Length > 0 || transparentDefaultWindows.Length > 0 || offending.Length > 0)
+            if (newDefaultTopLevelWindows.Length > 0 ||
+                transparentDefaultWindows.Length > 0 ||
+                visibleIntermediates.Length > 0 ||
+                offending.Length > 0)
             {
-                Console.Error.WriteLine("Explorer user-default test failed: This PC did not merge into the existing target or left a hidden residual.");
+                Console.Error.WriteLine("Explorer user-default test failed: This PC showed a visible intermediate window, did not merge, or left a hidden residual.");
                 Console.Error.WriteLine($"New default top-level windows={newDefaultTopLevelWindows.Length}");
+                Console.Error.WriteLine($"Visible intermediate windows={visibleIntermediates.Length}");
                 Console.Error.WriteLine($"Threshold={maxHideMs}ms");
                 foreach (var sighting in sightings)
                 {
-                    Console.Error.WriteLine($"HWND={sighting.Hwnd} HiddenMs={sighting.HiddenMs:F1} FirstSeen={sighting.FirstSeen:HH:mm:ss.fff} HiddenAt={(sighting.FirstHiddenAt?.ToString("HH:mm:ss.fff") ?? "none")} ReleasedAt={(sighting.LastHiddenAt?.ToString("HH:mm:ss.fff") ?? "none")}");
+                    Console.Error.WriteLine($"HWND={sighting.Hwnd} HiddenMs={sighting.HiddenMs:F1} FirstSeen={sighting.FirstSeen:HH:mm:ss.fff} HiddenAt={(sighting.FirstHiddenAt?.ToString("HH:mm:ss.fff") ?? "none")} VisibleAt={(sighting.FirstVisibleAt?.ToString("HH:mm:ss.fff") ?? "none")} LastHiddenAt={(sighting.LastHiddenAt?.ToString("HH:mm:ss.fff") ?? "none")}");
                 }
                 DumpShellWindows(windows);
                 foreach (var window in transparentDefaultWindows)
@@ -1327,7 +1352,7 @@ internal static class ExplorerStressTest
             }
 
             var maxObserved = sightings.Length == 0 ? 0 : sightings.Max(sighting => sighting.HiddenMs);
-            Console.WriteLine($"PASS Explorer user-default: user-opened This PC merged into an existing target without hidden residuals (max observed={maxObserved:F0}ms).");
+            Console.WriteLine($"PASS Explorer user-default: user-opened This PC merged into an existing target without visible intermediate UI or hidden residuals (max observed={maxObserved:F0}ms).");
             return 0;
         }
         finally
@@ -2391,7 +2416,7 @@ internal static class ExplorerStressTest
                     var now = DateTime.Now;
                     _sightings.AddOrUpdate(
                         hWnd,
-                        new HiddenDefaultWindowSighting(hWnd, now, transparent ? now : null, transparent ? now : null),
+                        new HiddenDefaultWindowSighting(hWnd, now, transparent ? now : null, transparent ? now : null, transparent ? null : now, transparent ? null : now),
                         (_, existing) => existing.Observe(transparent, now));
                 }
 
@@ -2411,7 +2436,9 @@ internal static class ExplorerStressTest
         nint Hwnd,
         DateTime FirstSeen,
         DateTime? FirstHiddenAt,
-        DateTime? LastHiddenAt)
+        DateTime? LastHiddenAt,
+        DateTime? FirstVisibleAt,
+        DateTime? LastVisibleAt)
     {
         public double HiddenMs => FirstHiddenAt is { } start && LastHiddenAt is { } end
             ? (end - start).TotalMilliseconds
@@ -2420,7 +2447,13 @@ internal static class ExplorerStressTest
         public HiddenDefaultWindowSighting Observe(bool transparent, DateTime observedAt)
         {
             if (!transparent)
-                return this;
+            {
+                return this with
+                {
+                    FirstVisibleAt = FirstVisibleAt ?? observedAt,
+                    LastVisibleAt = observedAt
+                };
+            }
 
             return this with
             {

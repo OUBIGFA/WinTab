@@ -1002,6 +1002,7 @@ public class ExplorerWatcher : IHook
             WindowInfo windowInfo;
             nint hWnd;
             bool wasTrackedTopLevel;
+            string initialLocation = string.Empty;
             lock (_windowEntryDictLock)
             {
                 if (_windowEntryDict.Keys.Contains(window)) continue;
@@ -1010,6 +1011,7 @@ public class ExplorerWatcher : IHook
                 hWnd = new IntPtr(window.HWND);
                 wasTrackedTopLevel = HasTrackedTopLevelWindow(hWnd);
                 var tabCount = Helper.GetAllExplorerTabs(hWnd).Take(2).Count();
+                initialLocation = TryGetLocation(window);
                 if (tabCount <= 1 &&
                     (wasTrackedTopLevel || !singleTabTopLevelsInBatch.Add(hWnd)))
                 {
@@ -1040,6 +1042,12 @@ public class ExplorerWatcher : IHook
 
             if (!wasTrackedTopLevel)
                 TryHideRegisteredMergeSourceWindow(hWnd);
+            if (!wasTrackedTopLevel &&
+                !string.IsNullOrWhiteSpace(initialLocation) &&
+                IsStartupExplorerLocation(initialLocation))
+            {
+                _ = CloseRetainedStartupLocationIfMergeableAsync(window, hWnd, initialLocation);
+            }
             result.Add((window, windowInfo));
         }
 
@@ -1180,16 +1188,6 @@ public class ExplorerWatcher : IHook
 
             HideMergeSourceWindow(hWnd);
 
-            _ = await GetTabHandle(window);
-            var tabCount = await WaitForExplorerTabCount(hWnd);
-            if (tabCount != 1)
-            {
-                DebugLog($"Registered release tab-count hwnd={hWnd} count={tabCount}");
-                await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
-                return;
-            }
-
             var location = await ResolveInitialLocation(window, hWnd);
             DebugLog($"Registered resolved hwnd={hWnd} target={targetWindow} location={location}");
             if (string.IsNullOrWhiteSpace(location) ||
@@ -1201,6 +1199,20 @@ public class ExplorerWatcher : IHook
                 return;
             }
 
+            var sourceAlive = Helper.IsFileExplorerWindow(hWnd);
+            if (sourceAlive)
+            {
+                _ = await GetTabHandle(window);
+                var tabCount = await WaitForExplorerTabCount(hWnd);
+                if (tabCount != 1)
+                {
+                    DebugLog($"Registered release tab-count hwnd={hWnd} count={tabCount}");
+                    await RestoreMergeSourceWindowAsync(hWnd);
+                    RegisterIndependentWindow(window, windowInfo, hWnd);
+                    return;
+                }
+            }
+
             targetWindow = GetMainWindowHWnd(hWnd, location);
             if (targetWindow == 0 || hWnd == targetWindow)
             {
@@ -1210,7 +1222,7 @@ public class ExplorerWatcher : IHook
                 return;
             }
 
-            if (TryGetRecentlyClosedWindow(location, out var closedWindow))
+            if (sourceAlive && TryGetRecentlyClosedWindow(location, out var closedWindow))
             {
                 DebugLog($"Registered release recently-closed hwnd={hWnd} location={location}");
                 SelectItems(window, closedWindow!.SelectedItems);
@@ -1219,15 +1231,25 @@ public class ExplorerWatcher : IHook
                 return;
             }
 
-            if (!IsStartupExplorerLocation(location))
+            if (sourceAlive && !IsStartupExplorerLocation(location))
                 HideMergeSourceWindow(hWnd);
 
-            var record = new WindowRecord(location, hWnd, GetSelectedItems(window));
+            var record = new WindowRecord(location, hWnd, TryGetSelectedItems(window));
             if (!await OpenTabNavigateWithSelection(record, targetWindow))
             {
                 DebugLog($"Registered merge-failed hwnd={hWnd} location={location}");
-                await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                if (Helper.IsFileExplorerWindow(hWnd))
+                {
+                    await RestoreMergeSourceWindowAsync(hWnd);
+                    RegisterIndependentWindow(window, windowInfo, hWnd);
+                }
+                else
+                {
+                    DebugLog($"Registered merge-failed source already closed; not reopening intermediate hwnd={hWnd} location={location}");
+                    RemoveMergeSourceTracking(hWnd);
+                    RemoveWindowAndUnhookEvents(window, windowInfo, restoreHiddenWindow: false);
+                    removed = true;
+                }
                 return;
             }
 
@@ -1318,7 +1340,53 @@ public class ExplorerWatcher : IHook
         return _locationResolver.ResolveAsync(
             () => TryGetLocation(window),
             IsStartupExplorerLocation,
-            onStartupLocationRetained: hWnd == 0 ? null : _ => RestoreMergeSourceWindowAsync(hWnd));
+            onStartupLocationRetained: hWnd == 0 ? null : location => CloseRetainedStartupLocationIfMergeableAsync(window, hWnd, location));
+    }
+    private async Task CloseRetainedStartupLocationIfMergeableAsync(InternetExplorer window, nint hWnd, string location)
+    {
+        if (IsShellWindowBusy(window))
+        {
+            DebugLog($"Retained startup source busy; recheck scheduled hwnd={hWnd} location={location}");
+            _ = RecheckRetainedStartupLocationAsync(window, hWnd);
+            return;
+        }
+
+        var targetWindow = (_isForcingTabs || _reuseTabs)
+            ? GetMainWindowHWnd(hWnd, location)
+            : 0;
+        if (targetWindow != 0 && targetWindow != hWnd)
+        {
+            DebugLog($"Retained startup source closing for merge hwnd={hWnd} target={targetWindow} location={location}");
+            if (await CloseMergedSourceWindowAsync(window, hWnd))
+                RemoveMergeSourceTracking(hWnd);
+            else
+                await RestoreMergeSourceWindowAsync(hWnd);
+            return;
+        }
+
+        DebugLog($"Retained startup source restored without merge target hwnd={hWnd} location={location}");
+        await RestoreMergeSourceWindowAsync(hWnd);
+    }
+    private async Task RecheckRetainedStartupLocationAsync(InternetExplorer window, nint hWnd)
+    {
+        await Task.Delay(30);
+        if (!Helper.IsFileExplorerWindow(hWnd))
+            return;
+
+        var location = TryGetLocation(window);
+        if (IsStartupExplorerLocation(location))
+            await CloseRetainedStartupLocationIfMergeableAsync(window, hWnd, location);
+    }
+    private static bool IsShellWindowBusy(InternetExplorer window)
+    {
+        try
+        {
+            return window.Busy;
+        }
+        catch
+        {
+            return false;
+        }
     }
     private string TryGetLocation(InternetExplorer window)
     {
@@ -2072,6 +2140,17 @@ public class ExplorerWatcher : IHook
         }
 
         return result;
+    }
+    private static string[]? TryGetSelectedItems(InternetExplorer window)
+    {
+        try
+        {
+            return GetSelectedItems(window);
+        }
+        catch
+        {
+            return null;
+        }
     }
     private static void SelectItems(InternetExplorer window, string[]? names)
     {
