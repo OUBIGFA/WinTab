@@ -158,5 +158,5 @@ internal sealed class AppSettings
     public bool IsFirstRun { get; set; } = true;
     public string Language { get; set; } = "zh-CN";
     public string Theme { get; set; } = "Light";
-    public Size FormSize { get; set; } = new(900, 620);
+    public Size FormSize { get; set; } = new(1020, 720);
 }

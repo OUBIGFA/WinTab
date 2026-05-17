@@ -1204,7 +1204,7 @@ public class ExplorerWatcher : IHook
                 return;
             }
 
-            var location = await ResolveInitialLocation(window);
+            var location = await ResolveInitialLocation(window, hWnd);
             DebugLog($"Registered resolved hwnd={hWnd} target={targetWindow} location={location}");
             if (string.IsNullOrWhiteSpace(location) ||
                 location.StartsWith("shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}", StringComparison.OrdinalIgnoreCase))
@@ -1222,6 +1222,9 @@ public class ExplorerWatcher : IHook
                 return;
             }
 
+            if (!IsStartupExplorerLocation(location))
+                HideMergeSourceWindow(hWnd);
+
             var record = new WindowRecord(location, hWnd, GetSelectedItems(window));
             if (!await OpenTabNavigateWithSelection(record, targetWindow))
             {
@@ -1233,10 +1236,17 @@ public class ExplorerWatcher : IHook
 
             showAgain = false;
             DebugLog($"Registered merge-succeeded hwnd={hWnd} location={location}");
-            RemoveMergeSourceTracking(hWnd);
-            RemoveWindowAndUnhookEvents(window, windowInfo, restoreHiddenWindow: false);
-            CloseMergedSourceWindow(window, hWnd);
-            removed = true;
+            UnhookWindowEvents(window, windowInfo);
+            if (await CloseMergedSourceWindowAsync(window, hWnd))
+            {
+                RemoveMergeSourceTracking(hWnd);
+                RemoveWindowAndUnhookEvents(window, windowInfo, restoreHiddenWindow: false);
+                removed = true;
+            }
+            else
+            {
+                RegisterIndependentWindow(window, windowInfo, hWnd);
+            }
         }
         catch (Exception ex)
         {
@@ -1262,7 +1272,34 @@ public class ExplorerWatcher : IHook
     {
         _ = await GetTabHandle(window);
     }
-    private void CloseMergedSourceWindow(InternetExplorer window, nint hWnd)
+    private async Task<bool> CloseMergedSourceWindowAsync(InternetExplorer window, nint hWnd)
+    {
+        RequestCloseMergedSourceWindow(window, hWnd);
+        if (hWnd == 0)
+            return true;
+
+        var closed = await Helper.DoUntilConditionAsync(
+            () => !Helper.IsFileExplorerWindow(hWnd),
+            isClosed => isClosed,
+            1_500,
+            50);
+
+        if (closed)
+            return true;
+
+        RequestCloseMergedSourceWindow(window, hWnd);
+        closed = await Helper.DoUntilConditionAsync(
+            () => !Helper.IsFileExplorerWindow(hWnd),
+            isClosed => isClosed,
+            900,
+            50);
+
+        if (!closed)
+            await RestoreMergeSourceWindowAsync(hWnd);
+
+        return closed;
+    }
+    private static void RequestCloseMergedSourceWindow(InternetExplorer window, nint hWnd)
     {
         if (hWnd != 0)
             WinApi.PostMessage(hWnd, WinApi.WM_CLOSE, 0, 0);
@@ -1279,11 +1316,12 @@ public class ExplorerWatcher : IHook
             }
         });
     }
-    private Task<string> ResolveInitialLocation(InternetExplorer window)
+    private Task<string> ResolveInitialLocation(InternetExplorer window, nint hWnd = 0)
     {
         return _locationResolver.ResolveAsync(
             () => TryGetLocation(window),
-            IsStartupExplorerLocation);
+            IsStartupExplorerLocation,
+            onStartupLocationRetained: hWnd == 0 ? null : _ => RestoreMergeSourceWindowAsync(hWnd));
     }
     private string TryGetLocation(InternetExplorer window)
     {
@@ -1399,11 +1437,18 @@ public class ExplorerWatcher : IHook
                 _windowEntryDict.Remove(window);
         }
     }
-    private void RemoveWindowAndUnhookEvents(InternetExplorer window, WindowInfo windowInfo, bool useLock = true, bool restoreHiddenWindow = true)
+    private static void UnhookWindowEvents(InternetExplorer window, WindowInfo windowInfo)
     {
-        // Unsubscribe
+        if (!windowInfo.EventsHooked)
+            return;
+
         if (windowInfo.OnQuitHandler != null) window.OnQuit -= windowInfo.OnQuitHandler;
         if (windowInfo.OnNavigateHandler != null) window.NavigateComplete2 -= windowInfo.OnNavigateHandler;
+        windowInfo.EventsHooked = false;
+    }
+    private void RemoveWindowAndUnhookEvents(InternetExplorer window, WindowInfo windowInfo, bool useLock = true, bool restoreHiddenWindow = true)
+    {
+        UnhookWindowEvents(window, windowInfo);
 
         // Remove from dictionary
         if (useLock)
@@ -1519,9 +1564,10 @@ public class ExplorerWatcher : IHook
                 if (TrySearchForTab(windowToOpen.Location, windowToOpen.Handle, out var existingTab, out var existingWindow))
                 {
                     windowHandle = WinApi.GetParent(existingTab);
-                    if (await SelectTabByUniqueNameVerified(windowHandle, existingTab, 500, existingWindow))
+                    WinApi.RestoreWindowToForeground(windowHandle);
+                    await Task.Delay(60);
+                    if (await SelectTabByUniqueNameVerified(windowHandle, existingTab, 700, existingWindow))
                     {
-                        WinApi.RestoreWindowToForeground(windowHandle);
                         DebugLog($"OpenTab reused target={windowToOpen.Location}");
                         return true;
                     }

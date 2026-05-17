@@ -16,25 +16,46 @@ public sealed class ExplorerLaunchLocationResolver
     public async Task<string> ResolveAsync(
         Func<string?> readLocation,
         Predicate<string> isStartupLocation,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<string, Task>? onStartupLocationRetained = null)
     {
         var location = Normalize(readLocation());
         if (!IsStartup(location, isStartupLocation))
             return await WaitForStableLocationAsync(location, readLocation, cancellationToken);
 
         var fallbackLocation = location;
-        var deadline = Environment.TickCount64 + _options.DefaultLocationWaitMs;
+        var releaseDeadline = Environment.TickCount64 + _options.DefaultLocationWaitMs;
+        var deadline = Environment.TickCount64 + Math.Max(_options.DefaultLocationWaitMs, _options.MaximumStartupLocationWaitMs);
+        var notifiedStartupLocationRetained = false;
         while (!cancellationToken.IsCancellationRequested && Environment.TickCount64 < deadline)
         {
             await Task.Delay(_options.PollIntervalMs, cancellationToken);
 
             location = Normalize(readLocation());
             if (string.IsNullOrWhiteSpace(location))
+            {
+                if (!notifiedStartupLocationRetained &&
+                    onStartupLocationRetained != null &&
+                    Environment.TickCount64 >= releaseDeadline)
+                {
+                    notifiedStartupLocationRetained = true;
+                    await onStartupLocationRetained(fallbackLocation);
+                }
+
                 continue;
+            }
 
             fallbackLocation = location;
             if (!IsStartup(location, isStartupLocation))
                 return await WaitForStableLocationAsync(location, readLocation, cancellationToken);
+
+            if (!notifiedStartupLocationRetained &&
+                onStartupLocationRetained != null &&
+                Environment.TickCount64 >= releaseDeadline)
+            {
+                notifiedStartupLocationRetained = true;
+                await onStartupLocationRetained(location);
+            }
         }
 
         return fallbackLocation;
@@ -76,5 +97,6 @@ public sealed class ExplorerLaunchLocationResolver
     public sealed record Options(
         int DefaultLocationWaitMs = 500,
         int StableLocationWaitMs = 160,
-        int PollIntervalMs = 25);
+        int PollIntervalMs = 25,
+        int MaximumStartupLocationWaitMs = 1_800);
 }
