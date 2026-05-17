@@ -7,6 +7,7 @@ public class WindowInfo
 {
     public long CreatedAt { get; } = Stopwatch.GetTimestamp();
     public bool EventsHooked { get; set; }
+    public nint HookedTopLevelHWnd { get; set; }
     public string? Location { get; set; }
     public string? Name { get; set; }
     public DWebBrowserEvents2_OnQuitEventHandler? OnQuitHandler { get; set; }

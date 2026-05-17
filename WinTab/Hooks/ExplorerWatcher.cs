@@ -27,6 +27,8 @@ using DrawingRectangle = System.Drawing.Rectangle;
 public class ExplorerWatcher : IHook
 {
     private const int AutomationRootTtlMs = 5_000;
+    private const int NavigationCompleteWaitMs = 1_200;
+    private const int NavigationVerificationWaitMs = 1_200;
     private const int StripBoundsRectMatchSlop = 2;
     private static readonly string? DebugLogPath = Environment.GetEnvironmentVariable("WINTAB_DEBUG_LOG");
     private static bool _instanceRunning;
@@ -37,6 +39,7 @@ public class ExplorerWatcher : IHook
     private StaTaskScheduler _staTaskScheduler = null!;
     private nint _mainWindowHandle;
     private readonly ConcurrentDictionary<nint, byte> _processedHWnds = new();
+    private readonly ConcurrentDictionary<nint, int> _hookedTopLevelUseCounts = new();
     private readonly ConcurrentDictionary<nint, TabStripBounds> _stripBoundsCache = new();
     private readonly ConcurrentDictionary<nint, byte> _stripBoundsRefreshInflight = new();
     private readonly ConcurrentDictionary<nint, (AutomationElement Element, long ExpiresAt)> _automationRootCache = new();
@@ -461,11 +464,11 @@ public class ExplorerWatcher : IHook
 
         return tabHandles.IndexOf(tabHandle);
     }
-    private static bool TrySelectSingleTabByAutomationName(nint windowHandle, string tabName)
+    private bool TrySelectSingleTabByAutomationName(nint windowHandle, string tabName)
     {
         try
         {
-            var root = AutomationElement.FromHandle(windowHandle);
+            var root = GetAutomationRoot(windowHandle);
             if (root == null)
                 return false;
 
@@ -688,11 +691,9 @@ public class ExplorerWatcher : IHook
         if ((!_isForcingTabs && !_reuseTabs) || hWnd == 0) return false;
         if (_processedHWnds.ContainsKey(hWnd)) return false;
         if (Helper.IsCtrlShiftDown()) return false;
-        if (HasTrackedTopLevelWindow(hWnd)) return false;
-        if (HasHookedShellWindowForTopLevel(hWnd)) return false;
+        if (_hookedTopLevelUseCounts.ContainsKey(hWnd)) return false;
         if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle) return false;
         if (Helper.GetAllExplorerTabs(hWnd).Take(2).Count() > 1) return false;
-        if (!HasMergeTargetForEarlyConceal(hWnd)) return false;
 
         HideMergeSourceWindow(hWnd);
         return true;
@@ -709,10 +710,6 @@ public class ExplorerWatcher : IHook
         return root != 0 && WinApi.IsWindowHasClassName(root, "CabinetWClass")
             ? root
             : 0;
-    }
-    private bool HasMergeTargetForEarlyConceal(nint excluded)
-    {
-        return HasStableMergeTarget(excluded) || GetMainWindowHWnd(excluded) != 0;
     }
     private void TryHideRegisteredMergeSourceWindow(nint hWnd)
     {
@@ -742,6 +739,7 @@ public class ExplorerWatcher : IHook
         if (hWnd == 0)
             return;
 
+        PreventWindowHiding(hWnd);
         if (!_mergeSourceHWnds.TryRemove(hWnd, out _) && !Helper.HiddenWindows.ContainsKey(hWnd))
             return;
 
@@ -824,34 +822,6 @@ public class ExplorerWatcher : IHook
     private void StopMergeSourceConcealPulse()
     {
         Interlocked.Exchange(ref _mergeSourceConcealPulseUntilTicks, 0);
-    }
-    private bool HasStableMergeTarget(nint excluded)
-    {
-        lock (_windowEntryDictLock)
-        {
-            foreach (var (window, info, _) in _windowEntryDict)
-            {
-                if (!info.EventsHooked)
-                    continue;
-
-                try
-                {
-                    var hWnd = new IntPtr(window.HWND);
-                    if (hWnd != excluded &&
-                        Helper.IsFileExplorerWindow(hWnd) &&
-                        Helper.GetAllExplorerTabs(hWnd).Take(1).Any())
-                    {
-                        return true;
-                    }
-                }
-                catch
-                {
-                    //
-                }
-            }
-        }
-
-        return false;
     }
     private bool HasHookedShellWindowForTopLevel(nint hWnd)
     {
@@ -1022,6 +992,7 @@ public class ExplorerWatcher : IHook
     private List<(InternetExplorer Window, WindowInfo WindowInfo)> AdoptNewShellWindows()
     {
         var result = new List<(InternetExplorer Window, WindowInfo WindowInfo)>();
+        var singleTabTopLevelsInBatch = new HashSet<nint>();
         var count = _shellWindows.Count;
 
         for (var i = count - 1; i >= 0; i--)
@@ -1036,9 +1007,25 @@ public class ExplorerWatcher : IHook
                 if (_windowEntryDict.Keys.Contains(window)) continue;
                 if (window.GetProperty("seenBefore") is not null) continue;
 
-                window.PutProperty("seenBefore", true);
                 hWnd = new IntPtr(window.HWND);
                 wasTrackedTopLevel = HasTrackedTopLevelWindow(hWnd);
+                var tabCount = Helper.GetAllExplorerTabs(hWnd).Take(2).Count();
+                if (tabCount <= 1 &&
+                    (wasTrackedTopLevel || !singleTabTopLevelsInBatch.Add(hWnd)))
+                {
+                    window.PutProperty("seenBefore", true);
+                    continue;
+                }
+
+                window.PutProperty("seenBefore", true);
+                if (!wasTrackedTopLevel &&
+                    (_isForcingTabs || _reuseTabs) &&
+                    !Helper.IsCtrlShiftDown() &&
+                    _mainWindowHandle != hWnd)
+                {
+                    HideMergeSourceWindow(hWnd);
+                }
+
                 windowInfo = new WindowInfo();
                 _windowEntryDict.Add(window, windowInfo);
 
@@ -1148,8 +1135,7 @@ public class ExplorerWatcher : IHook
                 continue;
             }
 
-            foreach (var (window, windowInfo) in windows)
-                await ProcessRegisteredShellWindowAsync(window, windowInfo);
+            await Task.WhenAll(windows.Select(item => ProcessRegisteredShellWindowAsync(item.Window, item.WindowInfo)));
         }
     }
     private async Task ProcessRegisteredShellWindowAsync(InternetExplorer window, WindowInfo windowInfo)
@@ -1166,6 +1152,7 @@ public class ExplorerWatcher : IHook
 
             if (Helper.IsCtrlShiftDown())
             {
+                DebugLog($"Registered release ctrl-shift hwnd={hWnd}");
                 await RestoreMergeSourceWindowAsync(hWnd);
                 RegisterIndependentWindow(window, windowInfo, hWnd);
                 return;
@@ -1173,18 +1160,16 @@ public class ExplorerWatcher : IHook
 
             if (HasOtherTrackedShellWindowForTopLevel(window, hWnd))
             {
+                DebugLog($"Registered sibling hwnd={hWnd}");
                 await PublishTabHandleForTrackedShellWindowAsync(window);
                 RegisterIndependentWindow(window, windowInfo, hWnd);
                 return;
             }
 
             var targetWindow = GetMainWindowHWnd(hWnd);
-            var canMergeIntoTarget = (_isForcingTabs || _reuseTabs) &&
-                                     targetWindow != 0 &&
-                                     hWnd != targetWindow;
-
-            if (!canMergeIntoTarget)
+            if (!_isForcingTabs && !_reuseTabs)
             {
+                DebugLog($"Registered release disabled hwnd={hWnd}");
                 await RestoreMergeSourceWindowAsync(hWnd);
                 RegisterIndependentWindow(window, windowInfo, hWnd);
                 return;
@@ -1199,6 +1184,7 @@ public class ExplorerWatcher : IHook
             var tabCount = await WaitForExplorerTabCount(hWnd);
             if (tabCount != 1)
             {
+                DebugLog($"Registered release tab-count hwnd={hWnd} count={tabCount}");
                 await RestoreMergeSourceWindowAsync(hWnd);
                 RegisterIndependentWindow(window, windowInfo, hWnd);
                 return;
@@ -1209,6 +1195,16 @@ public class ExplorerWatcher : IHook
             if (string.IsNullOrWhiteSpace(location) ||
                 location.StartsWith("shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}", StringComparison.OrdinalIgnoreCase))
             {
+                DebugLog($"Registered release unsupported-location hwnd={hWnd} location={location}");
+                await RestoreMergeSourceWindowAsync(hWnd);
+                RegisterIndependentWindow(window, windowInfo, hWnd);
+                return;
+            }
+
+            targetWindow = GetMainWindowHWnd(hWnd, location);
+            if (targetWindow == 0 || hWnd == targetWindow)
+            {
+                DebugLog($"Registered release no-target hwnd={hWnd} location={location}");
                 await RestoreMergeSourceWindowAsync(hWnd);
                 RegisterIndependentWindow(window, windowInfo, hWnd);
                 return;
@@ -1216,6 +1212,7 @@ public class ExplorerWatcher : IHook
 
             if (TryGetRecentlyClosedWindow(location, out var closedWindow))
             {
+                DebugLog($"Registered release recently-closed hwnd={hWnd} location={location}");
                 SelectItems(window, closedWindow!.SelectedItems);
                 await RestoreMergeSourceWindowAsync(hWnd);
                 RegisterIndependentWindow(window, windowInfo, hWnd);
@@ -1376,7 +1373,7 @@ public class ExplorerWatcher : IHook
             () => Helper.RestoreHiddenExplorerWindow(hWnd, removeCache: false, removeLayeredStyle: !SettingsManager.HaveThemeIssue),
             restored => restored || !Helper.HiddenWindows.ContainsKey(hWnd),
             1_500,
-            200);
+            50);
 
         // OnWindowShown can arrive after a release decision. Keep the cache briefly,
         // then allow later show events to be evaluated normally.
@@ -1386,6 +1383,13 @@ public class ExplorerWatcher : IHook
     {
         if (windowInfo.EventsHooked)
             return;
+
+        var hookedTopLevelHWnd = SafeGetWindowHandle(window);
+        if (hookedTopLevelHWnd != 0)
+        {
+            windowInfo.HookedTopLevelHWnd = hookedTopLevelHWnd;
+            _hookedTopLevelUseCounts.AddOrUpdate(hookedTopLevelHWnd, 1, (_, count) => count + 1);
+        }
 
         // Create strongly-typed handlers so we can remove them later
         windowInfo.OnQuitHandler = () =>
@@ -1433,11 +1437,12 @@ public class ExplorerWatcher : IHook
         }
         catch
         {
+            ReleaseHookedTopLevel(windowInfo);
             lock (_windowEntryDictLock)
                 _windowEntryDict.Remove(window);
         }
     }
-    private static void UnhookWindowEvents(InternetExplorer window, WindowInfo windowInfo)
+    private void UnhookWindowEvents(InternetExplorer window, WindowInfo windowInfo)
     {
         if (!windowInfo.EventsHooked)
             return;
@@ -1445,6 +1450,19 @@ public class ExplorerWatcher : IHook
         if (windowInfo.OnQuitHandler != null) window.OnQuit -= windowInfo.OnQuitHandler;
         if (windowInfo.OnNavigateHandler != null) window.NavigateComplete2 -= windowInfo.OnNavigateHandler;
         windowInfo.EventsHooked = false;
+        ReleaseHookedTopLevel(windowInfo);
+    }
+    private void ReleaseHookedTopLevel(WindowInfo windowInfo)
+    {
+        var hWnd = windowInfo.HookedTopLevelHWnd;
+        if (hWnd == 0)
+            return;
+
+        _hookedTopLevelUseCounts.AddOrUpdate(hWnd, 0, (_, count) => Math.Max(0, count - 1));
+        if (_hookedTopLevelUseCounts.TryGetValue(hWnd, out var remaining) && remaining <= 0)
+            _hookedTopLevelUseCounts.TryRemove(hWnd, out _);
+
+        windowInfo.HookedTopLevelHWnd = 0;
     }
     private void RemoveWindowAndUnhookEvents(InternetExplorer window, WindowInfo windowInfo, bool useLock = true, bool restoreHiddenWindow = true)
     {
@@ -1565,7 +1583,6 @@ public class ExplorerWatcher : IHook
                 {
                     windowHandle = WinApi.GetParent(existingTab);
                     WinApi.RestoreWindowToForeground(windowHandle);
-                    await Task.Delay(60);
                     if (await SelectTabByUniqueNameVerified(windowHandle, existingTab, 700, existingWindow))
                     {
                         DebugLog($"OpenTab reused target={windowToOpen.Location}");
@@ -1590,60 +1607,52 @@ public class ExplorerWatcher : IHook
                 return true;
             }
 
-            for (var attempt = 1; attempt <= 3; attempt++)
+            nint newTabHandle = 0;
+            try
             {
-                nint newTabHandle = 0;
-                try
+                var currentTabs = Helper.GetAllExplorerTabs(mainWindowHWnd).ToArray();
+                DebugLog($"OpenTab main={mainWindowHWnd} tabs={currentTabs.Length} target={windowToOpen.Location}");
+
+                await RequestToOpenNewTab(mainWindowHWnd, lockToOpenWindows: false);
+                DebugLog($"OpenTab requested main={mainWindowHWnd} target={windowToOpen.Location}");
+
+                newTabHandle = await Helper.ListenForNewExplorerTabAsync(mainWindowHWnd, currentTabs, 2_000);
+                if (newTabHandle == 0)
                 {
-                    // Store the current tabs
-                    var currentTabs = Helper.GetAllExplorerTabs(mainWindowHWnd).ToArray();
-                    DebugLog($"OpenTab main={mainWindowHWnd} tabs={currentTabs.Length} attempt={attempt} target={windowToOpen.Location}");
-
-                    // Request to open a new tab
-                    await RequestToOpenNewTab(mainWindowHWnd, lockToOpenWindows: false);
-                    DebugLog($"OpenTab requested main={mainWindowHWnd} attempt={attempt} target={windowToOpen.Location}");
-
-                    // Wait for the new tab
-                    newTabHandle = await Helper.ListenForNewExplorerTabAsync(mainWindowHWnd, currentTabs, 2_000);
-                    if (newTabHandle == 0)
-                    {
-                        DebugLog($"OpenTab no-new-tab attempt={attempt} target={windowToOpen.Location}");
-                        await Task.Delay(150);
-                        continue;
-                    }
-                    DebugLog($"OpenTab new-tab={newTabHandle} attempt={attempt} target={windowToOpen.Location}");
-
-                    var window = await Helper.DoUntilNotDefaultAsync(
-                        () => FindShellWindowByTabHandle(newTabHandle, mainWindowHWnd),
-                        2_000,
-                        50);
-
-                    if (window == null)
-                    {
-                        await CloseFailedNewTabAsync(mainWindowHWnd, newTabHandle);
-                        DebugLog($"OpenTab missing-shell-window tab={newTabHandle} attempt={attempt} target={windowToOpen.Location}");
-                        continue;
-                    }
-                    DebugLog($"OpenTab found-shell-window tab={newTabHandle} attempt={attempt} target={windowToOpen.Location}");
-
-                    if (!await NavigateNewTabToTargetAsync(window, windowToOpen.Location, attempt))
-                    {
-                        await CloseFailedNewTabAsync(mainWindowHWnd, newTabHandle);
-                        continue;
-                    }
-
-                    WinApi.RestoreWindowToForeground(mainWindowHWnd);
-                    SelectItems(window, windowToOpen.SelectedItems);
-                    return true;
+                    DebugLog($"OpenTab no-new-tab target={windowToOpen.Location}");
+                    return false;
                 }
-                catch (Exception ex)
+                DebugLog($"OpenTab new-tab={newTabHandle} target={windowToOpen.Location}");
+
+                var window = await Helper.DoUntilNotDefaultAsync(
+                    () => FindShellWindowByTabHandle(newTabHandle, mainWindowHWnd),
+                    2_000,
+                    50);
+
+                if (window == null)
                 {
                     await CloseFailedNewTabAsync(mainWindowHWnd, newTabHandle);
-                    DebugLog($"OpenTab attempt-error attempt={attempt} tab={newTabHandle} target={windowToOpen.Location} error={ex.GetType().Name}:{ex.Message}");
+                    DebugLog($"OpenTab missing-shell-window tab={newTabHandle} target={windowToOpen.Location}");
+                    return false;
                 }
-            }
+                DebugLog($"OpenTab found-shell-window tab={newTabHandle} target={windowToOpen.Location}");
 
-            return false;
+                if (!await NavigateNewTabToTargetAsync(window, windowToOpen.Location))
+                {
+                    await CloseFailedNewTabAsync(mainWindowHWnd, newTabHandle);
+                    return false;
+                }
+
+                WinApi.RestoreWindowToForeground(mainWindowHWnd);
+                SelectItems(window, windowToOpen.SelectedItems);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                await CloseFailedNewTabAsync(mainWindowHWnd, newTabHandle);
+                DebugLog($"OpenTab error tab={newTabHandle} target={windowToOpen.Location} error={ex.GetType().Name}:{ex.Message}");
+                return false;
+            }
         }
         finally
         {
@@ -1707,30 +1716,50 @@ public class ExplorerWatcher : IHook
 
         return AreLocationsEquivalent(resolvedLocation, targetLocation);
     }
-    private async Task<bool> NavigateNewTabToTargetAsync(InternetExplorer window, string targetLocation, int openAttempt)
+    private async Task<bool> NavigateNewTabToTargetAsync(InternetExplorer window, string targetLocation)
     {
-        for (var navigateAttempt = 1; navigateAttempt <= 3; navigateAttempt++)
+        if (string.IsNullOrWhiteSpace(targetLocation))
+            return true;
+
+        if (AreLocationsEquivalent(TryGetLocation(window), targetLocation))
+            return true;
+
+        var navigationCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        DWebBrowserEvents2_NavigateComplete2EventHandler? navigateHandler = null;
+        navigateHandler = (object _, ref object _) =>
         {
+            if (AreLocationsEquivalent(TryGetLocation(window), targetLocation))
+                navigationCompleted.TrySetResult(true);
+        };
+
+        try
+        {
+            window.NavigateComplete2 += navigateHandler;
             if (!await NavigateToTargetIfNeeded(window, targetLocation))
             {
-                DebugLog($"OpenTab navigate-failed openAttempt={openAttempt} navigateAttempt={navigateAttempt} target={targetLocation}");
-                await Task.Delay(150);
-                continue;
+                DebugLog($"OpenTab navigate-failed target={targetLocation}");
+                return false;
             }
 
-            DebugLog($"OpenTab navigated openAttempt={openAttempt} navigateAttempt={navigateAttempt} target={targetLocation}");
-            if (await WaitForNavigation(window, targetLocation, 5_000))
+            DebugLog($"OpenTab navigated target={targetLocation}");
+            var completed = await Task.WhenAny(navigationCompleted.Task, Task.Delay(NavigationCompleteWaitMs));
+            if (completed == navigationCompleted.Task && await navigationCompleted.Task)
                 return true;
 
-            await Task.Delay(250);
+            if (await WaitForNavigation(window, targetLocation, NavigationVerificationWaitMs))
+                return true;
+
             if (AreLocationsEquivalent(TryGetLocation(window), targetLocation))
                 return true;
 
-            DebugLog($"OpenTab target-check-failed openAttempt={openAttempt} navigateAttempt={navigateAttempt} target={targetLocation} current={TryGetLocation(window)}");
-            await Task.Delay(150);
+            DebugLog($"OpenTab target-check-failed target={targetLocation} current={TryGetLocation(window)}");
+            return false;
         }
-
-        return false;
+        finally
+        {
+            if (navigateHandler != null)
+                window.NavigateComplete2 -= navigateHandler;
+        }
     }
     private async Task<bool> NavigateToTargetIfNeeded(InternetExplorer window, string targetLocation)
     {
@@ -1805,28 +1834,41 @@ public class ExplorerWatcher : IHook
                 Marshal.FreeCoTaskMem(targetPidl);
         }
     }
-    private nint GetMainWindowHWnd(nint otherThan)
+    private nint GetMainWindowHWnd(nint otherThan, string? targetLocation = null)
     {
+        var preferNonStartupTarget = ShouldPreferNonStartupTarget(targetLocation);
+
         if (Helper.IsFileExplorerForeground(out var foregroundWindow) &&
-            IsStableMergeTargetWindow(foregroundWindow, otherThan))
+            IsPreferredMergeTargetWindow(foregroundWindow, otherThan, targetLocation))
         {
             _mainWindowHandle = foregroundWindow;
             return _mainWindowHandle;
         }
 
-        if (IsStableMergeTargetWindow(_mainWindowHandle, otherThan))
+        if (IsPreferredMergeTargetWindow(_mainWindowHandle, otherThan, targetLocation))
             return _mainWindowHandle;
 
         var allWindows = WinApi.FindAllWindowsEx("CabinetWClass");
 
         // Get another handle other than the newly created one. (In case if it is still alive.)
         _mainWindowHandle = allWindows
-            .Where(h => IsStableMergeTargetWindow(h, otherThan))
+            .Where(h => IsPreferredMergeTargetWindow(h, otherThan, targetLocation))
             .Reverse() // To get the last one in the z-index (the oldest)
             .OrderByDescending(h => WinApi.FindAllWindowsEx("ShellTabWindowClass", h).Count()) // The one with the most tabs first
             .FirstOrDefault();
 
         if (_mainWindowHandle != 0) return _mainWindowHandle;
+
+        if (preferNonStartupTarget)
+        {
+            _mainWindowHandle = allWindows
+                .Where(h => IsStableMergeTargetWindow(h, otherThan))
+                .Reverse()
+                .OrderByDescending(h => WinApi.FindAllWindowsEx("ShellTabWindowClass", h).Count())
+                .FirstOrDefault();
+
+            if (_mainWindowHandle != 0) return _mainWindowHandle;
+        }
 
         _mainWindowHandle = allWindows
             .Where(h => IsFallbackMergeTargetWindow(h, otherThan))
@@ -1835,6 +1877,43 @@ public class ExplorerWatcher : IHook
             .FirstOrDefault();
 
         return _mainWindowHandle;
+    }
+    private bool IsPreferredMergeTargetWindow(nint hWnd, nint otherThan, string? targetLocation)
+    {
+        if (!IsStableMergeTargetWindow(hWnd, otherThan))
+            return false;
+
+        return !ShouldPreferNonStartupTarget(targetLocation) ||
+               HasNonStartupShellWindowForTopLevel(hWnd);
+    }
+    private bool ShouldPreferNonStartupTarget(string? targetLocation)
+    {
+        return !string.IsNullOrWhiteSpace(targetLocation) &&
+               !IsStartupExplorerLocation(targetLocation);
+    }
+    private bool HasNonStartupShellWindowForTopLevel(nint hWnd)
+    {
+        lock (_windowEntryDictLock)
+        {
+            foreach (var (window, info, _) in _windowEntryDict)
+            {
+                try
+                {
+                    if (new IntPtr(window.HWND) != hWnd)
+                        continue;
+
+                    var location = info.Location ?? TryGetLocation(window);
+                    if (!IsStartupExplorerLocation(location))
+                        return true;
+                }
+                catch
+                {
+                    //
+                }
+            }
+        }
+
+        return false;
     }
     private bool IsStableMergeTargetWindow(nint hWnd, nint otherThan)
     {
@@ -2157,6 +2236,11 @@ public class ExplorerWatcher : IHook
         {
             if (_shellWindows.Item(i) is not InternetExplorer window)
                 continue;
+            if (_windowEntryDict.Keys.Contains(window))
+                continue;
+            if (window.GetProperty("seenBefore") is not null)
+                continue;
+
             hasOpen = true;
 
             var windowInfo = new WindowInfo();
