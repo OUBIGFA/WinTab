@@ -367,9 +367,17 @@ public class ExplorerWatcher : IHook
                 Marshal.FreeCoTaskMem(targetPidl);
         }
     }
-    public async Task SelectTabByHandle(nint windowHandle, nint tabHandle)
+    public Task<bool> SelectTabByHandle(nint windowHandle, nint tabHandle, int timeoutMs = 500)
     {
-        await TrySelectTabByHandleDirectAsync(windowHandle, tabHandle, timeoutMs: 500);
+        if (windowHandle == 0 || tabHandle == 0)
+            return Task.FromResult(false);
+
+        return TabSelectionEngine.CycleToTabAsync(
+            tabHandle,
+            () => Helper.GetAllExplorerTabs(windowHandle).ToArray(),
+            () => GetActiveTabHandle(windowHandle),
+            i => SelectTabByIndex(windowHandle, i),
+            totalTimeoutMs: timeoutMs);
     }
     public void SelectLastTab(nint windowHandle)
     {
@@ -380,152 +388,6 @@ public class ExplorerWatcher : IHook
     {
         // Send 0xA221 magic command (CTRL + 1...n)
         WinApi.SendMessage(windowHandle, WinApi.WM_COMMAND, 0xA221, index + 1);
-    }
-    private async Task<bool> TrySelectTabByHandleDirectAsync(nint windowHandle, nint tabHandle, int timeoutMs)
-    {
-        if (windowHandle == 0 || tabHandle == 0)
-            return false;
-
-        if (GetActiveTabHandle(windowHandle) == tabHandle)
-            return true;
-
-        return await SelectTabByUniqueNameVerified(windowHandle, tabHandle, timeoutMs);
-    }
-    private async Task<bool> SelectTabByUniqueNameVerified(nint windowHandle, nint tabHandle, int timeoutMs, InternetExplorer? knownWindow = null)
-    {
-        if (GetActiveTabHandle(windowHandle) == tabHandle)
-            return true;
-
-        var window = knownWindow ?? GetWindowByTabHandle(tabHandle) ?? await FindShellWindowByTabHandle(tabHandle, windowHandle);
-        if (window == null)
-            return false;
-
-        string tabName;
-        try
-        {
-            tabName = window.LocationName;
-        }
-        catch
-        {
-            return false;
-        }
-
-        if (string.IsNullOrWhiteSpace(tabName))
-            return false;
-
-        if (TrySelectSingleTabByAutomationName(windowHandle, tabName))
-        {
-            var activeTab = await Helper.DoUntilConditionAsync(
-                () => GetActiveTabHandle(windowHandle),
-                h => h == tabHandle,
-                timeoutMs,
-                10);
-
-            if (activeTab == tabHandle)
-                return true;
-        }
-
-        InvalidateAutomationRoot(windowHandle);
-        if (TrySelectSingleTabByAutomationName(windowHandle, tabName))
-        {
-            var activeTab = await Helper.DoUntilConditionAsync(
-                () => GetActiveTabHandle(windowHandle),
-                h => h == tabHandle,
-                timeoutMs,
-                10);
-
-            if (activeTab == tabHandle)
-                return true;
-        }
-
-        return await TrySelectTabByCyclingAsync(windowHandle, tabHandle, timeoutMs);
-    }
-    private async Task<bool> TrySelectTabByCyclingAsync(nint windowHandle, nint tabHandle, int timeoutMs)
-    {
-        var tabs = Helper.GetAllExplorerTabs(windowHandle).ToArray();
-        if (tabs.Length == 0)
-            return false;
-
-        var activeTab = GetActiveTabHandle(windowHandle);
-        var perStepTimeout = Math.Max(50, timeoutMs / Math.Max(1, tabs.Length));
-        for (var i = 0; i < tabs.Length; i++)
-        {
-            if (activeTab == tabHandle)
-                return true;
-
-            SelectTabByIndex(windowHandle, i);
-            var previousTab = activeTab;
-            activeTab = await Helper.DoUntilConditionAsync(
-                () => GetActiveTabHandle(windowHandle),
-                h => h == tabHandle || h != previousTab,
-                perStepTimeout,
-                10);
-        }
-
-        return GetActiveTabHandle(windowHandle) == tabHandle;
-    }
-    private bool TrySelectSingleTabByAutomationName(nint windowHandle, string tabName)
-    {
-        try
-        {
-            var root = GetAutomationRoot(windowHandle);
-            if (root == null)
-                return false;
-
-            var tabItems = root.FindAll(
-                TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
-            AutomationElement? matchingTab = null;
-
-            foreach (AutomationElement element in tabItems)
-            {
-                var rect = element.Current.BoundingRectangle;
-                if (rect.IsEmpty || rect.Width < 24 || rect.Height < 12)
-                    continue;
-
-                if (!IsMatchingTabName(element.Current.Name, tabName))
-                    continue;
-
-                if (matchingTab != null)
-                    return false;
-
-                matchingTab = element;
-            }
-
-            return matchingTab != null && TrySelectAutomationElement(matchingTab);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-    private static bool IsMatchingTabName(string automationName, string tabName)
-    {
-        if (string.IsNullOrWhiteSpace(automationName) || string.IsNullOrWhiteSpace(tabName))
-            return false;
-
-        if (StringComparer.OrdinalIgnoreCase.Equals(automationName.Trim(), tabName.Trim()))
-            return true;
-
-        return automationName.Contains(tabName, StringComparison.OrdinalIgnoreCase);
-    }
-    private static bool TrySelectAutomationElement(AutomationElement element)
-    {
-        if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selectionPattern) &&
-            selectionPattern is SelectionItemPattern selectionItemPattern)
-        {
-            selectionItemPattern.Select();
-            return true;
-        }
-
-        if (element.TryGetCurrentPattern(InvokePattern.Pattern, out var invokePattern) &&
-            invokePattern is InvokePattern invoke)
-        {
-            invoke.Invoke();
-            return true;
-        }
-
-        return false;
     }
     public async Task RequestToOpenNewTab(nint windowHandle, bool bringToFront = false, bool lockToOpenWindows = true)
     {
@@ -1625,19 +1487,23 @@ public class ExplorerWatcher : IHook
             DebugLog($"OpenTab lock target={windowToOpen.Location}");
             if ((_reuseTabs || forceTabReuse) && !isDuplicate && _windowEntryDict.Count > 0 && !string.IsNullOrWhiteSpace(windowToOpen.Location))
             {
-                if (TrySearchForTab(windowToOpen.Location, windowToOpen.Handle, out var existingTab, out var existingWindow))
+                if (TrySearchForTab(windowToOpen.Location, windowToOpen.Handle, out var existingTab, out _))
                 {
                     windowHandle = WinApi.GetParent(existingTab);
                     WinApi.RestoreWindowToForeground(windowHandle);
-                    if (await SelectTabByUniqueNameVerified(windowHandle, existingTab, 700, existingWindow))
+                    if (await SelectTabByHandle(windowHandle, existingTab, 600))
                     {
                         DebugLog($"OpenTab reused target={windowToOpen.Location}");
                         return true;
                     }
 
+                    if (GetActiveTabHandle(windowHandle) == existingTab)
+                    {
+                        DebugLog($"OpenTab reused-late target={windowToOpen.Location}");
+                        return true;
+                    }
+
                     DebugLog($"OpenTab reuse-select-failed target={windowToOpen.Location}");
-                    WinApi.RestoreWindowToForeground(windowHandle);
-                    return true;
                 }
             }
 

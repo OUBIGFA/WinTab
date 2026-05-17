@@ -74,7 +74,16 @@ internal static class ExplorerLaunchLocationResolverTests
             ("update checks prefer the current architecture installer", ExplorerTabSelectionTests.UpdateCheckPrefersCurrentArchitectureInstaller),
             ("manual update checks show immediate UI feedback", ExplorerTabSelectionTests.ManualUpdateChecksShowImmediateUiFeedback),
             ("double-click close can continue after a tab-strip hit-test refresh gap", ExplorerTabDoubleClickCloseTests.ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick),
-            ("double-click close chain ignores points outside the double-click geometry", ExplorerTabDoubleClickCloseTests.CloseChainFallbackIgnoresDifferentPoints)
+            ("double-click close chain ignores points outside the double-click geometry", ExplorerTabDoubleClickCloseTests.CloseChainFallbackIgnoresDifferentPoints),
+            ("TabSelectionEngine short-circuits when the target is already active", ExplorerTabSelectionTests.TabSelectionEngineAlreadyActiveReturnsImmediately),
+            ("TabSelectionEngine cycles until the target becomes active", ExplorerTabSelectionTests.TabSelectionEngineCyclesUntilTargetActive),
+            ("TabSelectionEngine returns false when the target never appears", ExplorerTabSelectionTests.TabSelectionEngineReturnsFalseWhenTargetMissing),
+            ("TabSelectionEngine refuses a zero target without side effects", ExplorerTabSelectionTests.TabSelectionEngineRefusesZeroTarget),
+            ("TabSelectionEngine reuses the existing tab without opening a duplicate", ExplorerTabSelectionTests.TabSelectionEngineDoesNotOpenNewTabsWhileCycling),
+            ("TabSelectionEngine waits for the delayed active tab update without skipping", ExplorerTabSelectionTests.TabSelectionEngineWaitsForDelayedActiveUpdate),
+            ("TabSelectionEngine survives transient zero active readings", ExplorerTabSelectionTests.TabSelectionEngineSurvivesTransientZeroActive),
+            ("TabSelectionEngine honors the total timeout even with many tabs", ExplorerTabSelectionTests.TabSelectionEngineHonorsTotalTimeout),
+            ("TabSelectionEngine does not revisit indexes during cycling", ExplorerTabSelectionTests.TabSelectionEngineDoesNotRevisitIndexes)
         };
 
         var failed = 0;
@@ -224,22 +233,25 @@ internal static class ExplorerTabSelectionTests
 {
     public static Task SelectTabByHandleUsesFastSelectionBeforeExplorerTabUtilityFallback()
     {
-        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
-        var source = File.ReadAllText(sourcePath);
-        var methodBody = ExtractMethodBody(source, "public async Task SelectTabByHandle") +
-                         ExtractMethodBody(source, "private async Task<bool> TrySelectTabByHandleDirectAsync") +
-                         ExtractMethodBody(source, "private async Task<bool> SelectTabByUniqueNameVerified") +
-                         ExtractMethodBody(source, "private async Task<bool> TrySelectTabByCyclingAsync");
+        var watcherPath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var enginePath = FindRepoFile("WinTab", "Hooks", "TabSelectionEngine.cs");
+        var watcher = File.ReadAllText(watcherPath);
+        var engine = File.ReadAllText(enginePath);
+        var selectBody = ExtractMethodBody(watcher, "public Task<bool> SelectTabByHandle");
 
-        var nameSelectIndex = methodBody.IndexOf("TrySelectSingleTabByAutomationName(windowHandle, tabName)", StringComparison.Ordinal);
-        var fallbackIndex = methodBody.IndexOf("TrySelectTabByCyclingAsync(windowHandle, tabHandle, timeoutMs)", StringComparison.Ordinal);
-        Assert(nameSelectIndex >= 0 && fallbackIndex > nameSelectIndex,
-            "Reuse should try WinTab's direct UI Automation selection before falling back to ExplorerTabUtility-style cycling.");
-        Assert(methodBody.Contains("InvalidateAutomationRoot(windowHandle)", StringComparison.Ordinal),
-            "Selection should refresh stale UI Automation state before using the slower cycling fallback.");
-        Assert(methodBody.Contains("SelectTabByIndex(windowHandle, i)", StringComparison.Ordinal) &&
-               methodBody.Contains("i < tabs.Length", StringComparison.Ordinal),
-            "ExplorerTabUtility's cycling fallback must remain available so reuse still works when direct selection fails.");
+        Assert(selectBody.Contains("TabSelectionEngine.CycleToTabAsync", StringComparison.Ordinal),
+            "SelectTabByHandle must delegate to the testable TabSelectionEngine cycling routine so tab activation works without UI Automation.");
+        Assert(selectBody.Contains("Helper.GetAllExplorerTabs(windowHandle).ToArray()", StringComparison.Ordinal) &&
+               selectBody.Contains("GetActiveTabHandle(windowHandle)", StringComparison.Ordinal) &&
+               selectBody.Contains("SelectTabByIndex(windowHandle, i)", StringComparison.Ordinal),
+            "SelectTabByHandle must feed the engine with the live tab list, the active-tab probe, and the Ctrl+N magic-command selector.");
+        Assert(!watcher.Contains("TrySelectSingleTabByAutomationName", StringComparison.Ordinal) &&
+               !watcher.Contains("SelectTabByUniqueNameVerified", StringComparison.Ordinal) &&
+               !watcher.Contains("TrySelectTabByCyclingAsync", StringComparison.Ordinal),
+            "UI Automation tab selection is brittle on Windows 11 24H2+; the cycling engine must replace it entirely.");
+        Assert(engine.Contains("CycleToTabAsync", StringComparison.Ordinal) &&
+               engine.Contains("sendSelectByIndex(i)", StringComparison.Ordinal),
+               "TabSelectionEngine must expose a CycleToTabAsync entry point that drives selection via the index callback.");
 
         return Task.CompletedTask;
     }
@@ -251,8 +263,8 @@ internal static class ExplorerTabSelectionTests
         var methodBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection") +
                          ExtractMethodBody(source, "private async Task<bool> NavigateNewTabToTargetAsync");
 
-        Assert(methodBody.Contains("SelectTabByUniqueNameVerified(windowHandle, existingTab, 700, existingWindow)", StringComparison.Ordinal),
-            "Tab reuse should follow ExplorerTabUtility's direct handle activation path.");
+        Assert(methodBody.Contains("SelectTabByHandle(windowHandle, existingTab, 600)", StringComparison.Ordinal),
+            "Tab reuse should activate the matching tab via the simplified TabSelectionEngine path.");
         Assert(methodBody.Contains("ListenForNewExplorerTabAsync(mainWindowHWnd, currentTabs, 2_000)", StringComparison.Ordinal),
             "New tab creation should use the short ExplorerTabUtility wait window.");
         Assert(methodBody.Contains("FindShellWindowByTabHandle(newTabHandle, mainWindowHWnd)", StringComparison.Ordinal) &&
@@ -324,17 +336,23 @@ internal static class ExplorerTabSelectionTests
 
     public static Task TabReuseAvoidsFixedWaitsAndReusesAutomationRoot()
     {
-        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
-        var source = File.ReadAllText(sourcePath);
-        var openBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection");
-        var selectBody = ExtractMethodBody(source, "private bool TrySelectSingleTabByAutomationName");
+        var watcherPath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var enginePath = FindRepoFile("WinTab", "Hooks", "TabSelectionEngine.cs");
+        var watcher = File.ReadAllText(watcherPath);
+        var engine = File.ReadAllText(enginePath);
+        var openBody = ExtractMethodBody(watcher, "private async Task<bool> OpenTabNavigateWithSelection");
+        var selectBody = ExtractMethodBody(watcher, "public Task<bool> SelectTabByHandle");
 
         Assert(!openBody.Contains("Task.Delay(60)", StringComparison.Ordinal),
             "Reuse should not pay a fixed sleep after foregrounding; direct selection is already verified by the active tab handle.");
-        Assert(selectBody.Contains("GetAutomationRoot(windowHandle)", StringComparison.Ordinal),
-            "Reuse selection should use the cached automation root instead of rebuilding UI Automation state for every tab activation.");
-        Assert(!selectBody.Contains("AutomationElement.FromHandle(windowHandle)", StringComparison.Ordinal),
-            "AutomationElement.FromHandle is cached elsewhere and should not run on every reuse selection.");
+        Assert(selectBody.Contains("TabSelectionEngine.CycleToTabAsync", StringComparison.Ordinal),
+            "Reuse selection should hand off to the cycling engine instead of rebuilding UI Automation state for every tab activation.");
+        Assert(!selectBody.Contains("AutomationElement.FromHandle", StringComparison.Ordinal) &&
+               !watcher.Contains("TrySelectSingleTabByAutomationName", StringComparison.Ordinal),
+            "AutomationElement.FromHandle and the legacy name-based selector must not run on every reuse selection.");
+        Assert(engine.Contains("perStep", StringComparison.Ordinal) &&
+               engine.Contains("Environment.TickCount64", StringComparison.Ordinal),
+            "The cycling engine must enforce a per-step budget instead of falling back to fixed sleeps.");
 
         return Task.CompletedTask;
     }
@@ -575,11 +593,11 @@ internal static class ExplorerTabSelectionTests
         var restoreBody = ExtractMethodBody(watcher, "private static async Task RestoreHiddenExplorerWindowAsync");
         var registrationBody = ExtractMethodBody(watcher, "private async Task ProcessRegisteredShellWindowAsync");
 
-        Assert(resolver.Contains("int DefaultLocationWaitMs = 60", StringComparison.Ordinal),
+        Assert(resolver.Contains("int DefaultLocationWaitMs = 30", StringComparison.Ordinal),
             "A non-mergeable stable This PC window should still be released quickly instead of staying transparent.");
-        Assert(resolver.Contains("int MaximumStartupLocationWaitMs = 500", StringComparison.Ordinal),
+        Assert(resolver.Contains("int MaximumStartupLocationWaitMs = 350", StringComparison.Ordinal),
             "Mergeable stable This PC windows should not wait the old multi-second startup window before merging.");
-        Assert(resolver.Contains("int BusyStartupLocationWaitMs = 1_500", StringComparison.Ordinal) &&
+        Assert(resolver.Contains("int BusyStartupLocationWaitMs = 1_200", StringComparison.Ordinal) &&
                resolver.Contains("SafeIsBusy(isBusy)", StringComparison.Ordinal),
             "A startup-location source that is still busy should keep waiting for the real folder instead of being treated as This PC pollution.");
         Assert(resolveBody.Contains("isBusy: () => IsShellWindowBusy(window)", StringComparison.Ordinal),
@@ -704,18 +722,17 @@ internal static class ExplorerTabSelectionTests
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
         var openBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection");
-        var selectBody = ExtractMethodBody(source, "private async Task<bool> SelectTabByUniqueNameVerified");
 
+        var successLogIndex = openBody.IndexOf("OpenTab reused target", StringComparison.Ordinal);
         var failureLogIndex = openBody.IndexOf("OpenTab reuse-select-failed", StringComparison.Ordinal);
-        var duplicateOpenIndex = openBody.IndexOf("RequestToOpenNewTab", StringComparison.Ordinal);
-        var returnTrueAfterFailureIndex = openBody.IndexOf("return true;", failureLogIndex >= 0 ? failureLogIndex : 0, StringComparison.Ordinal);
-        Assert(failureLogIndex >= 0 && returnTrueAfterFailureIndex > failureLogIndex && returnTrueAfterFailureIndex < duplicateOpenIndex,
-            "Once reuse finds an existing path, selection failure must not fall through to opening a duplicate tab.");
-        Assert(selectBody.Contains("GetActiveTabHandle(windowHandle) == tabHandle", StringComparison.Ordinal),
-            "Reuse selection should succeed immediately when the target tab is already active.");
-        Assert(source.Contains("TrySelectTabByCyclingAsync", StringComparison.Ordinal) &&
-               selectBody.Contains("TrySelectTabByCyclingAsync(windowHandle, tabHandle, timeoutMs)", StringComparison.Ordinal),
-            "Selection failure must fall back to ExplorerTabUtility-style cycling instead of reporting reuse success without selecting the tab.");
+        Assert(successLogIndex >= 0 && failureLogIndex > successLogIndex,
+            "Reuse must short-circuit with a success log when SelectTabByHandle activates the existing tab.");
+
+        var requestIndex = openBody.IndexOf("RequestToOpenNewTab(mainWindowHWnd, lockToOpenWindows: false)", StringComparison.Ordinal);
+        Assert(requestIndex > failureLogIndex,
+            "When direct selection fails, the reuse branch must fall through to opening a new tab instead of returning a false success.");
+        Assert(openBody.Contains("if (await SelectTabByHandle(windowHandle, existingTab, 600))", StringComparison.Ordinal),
+            "Reuse activation must rely on the TabSelectionEngine-backed SelectTabByHandle return value.");
 
         return Task.CompletedTask;
     }
@@ -728,7 +745,7 @@ internal static class ExplorerTabSelectionTests
 
         var foundIndex = openBody.IndexOf("TrySearchForTab(windowToOpen.Location, windowToOpen.Handle", StringComparison.Ordinal);
         var foregroundIndex = openBody.IndexOf("WinApi.RestoreWindowToForeground(windowHandle)", foundIndex >= 0 ? foundIndex : 0, StringComparison.Ordinal);
-        var selectIndex = openBody.IndexOf("SelectTabByUniqueNameVerified(windowHandle, existingTab", foundIndex >= 0 ? foundIndex : 0, StringComparison.Ordinal);
+        var selectIndex = openBody.IndexOf("SelectTabByHandle(windowHandle, existingTab", foundIndex >= 0 ? foundIndex : 0, StringComparison.Ordinal);
 
         Assert(foundIndex >= 0 && foregroundIndex > foundIndex && selectIndex > foregroundIndex,
             "External folder launches often leave a third-party app in front; reuse must foreground Explorer before selecting the matching tab.");
@@ -932,6 +949,241 @@ internal static class ExplorerTabSelectionTests
             "The UI needs a result-returning update check instead of calling the updater with no feedback path.");
 
         return Task.CompletedTask;
+    }
+
+    public static async Task TabSelectionEngineAlreadyActiveReturnsImmediately()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33 }, activeIndex: 1);
+        var start = Environment.TickCount64;
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            22,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 200);
+
+        Assert(ok, "Cycling must return true immediately when the requested handle is already active.");
+        Assert(Environment.TickCount64 - start < 80,
+            "An already-active target must not pay for any cycling waits.");
+        Assert(fixture.SelectionCalls.Count == 0,
+            "An already-active target must never send a tab-switch command.");
+    }
+
+    public static async Task TabSelectionEngineCyclesUntilTargetActive()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33, 44 }, activeIndex: 0);
+        fixture.OnSelectByIndex = i => fixture.SetActiveIndex(i);
+
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            33,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 400);
+
+        Assert(ok, "Cycling must succeed when the target handle is reachable by index.");
+        Assert(fixture.GetActive() == 33,
+            "The active tab must end up at the requested handle after cycling.");
+        Assert(fixture.SelectionCalls.Count > 0 && fixture.SelectionCalls.Count <= 4,
+            "Cycling must drive the selector forward in bounded steps, not loop indefinitely.");
+    }
+
+    public static async Task TabSelectionEngineReturnsFalseWhenTargetMissing()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33 }, activeIndex: 0);
+        fixture.OnSelectByIndex = i => fixture.SetActiveIndex(i);
+
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            99,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 200,
+            pollSleepMs: 1);
+
+        Assert(!ok, "Cycling must report failure when no index activates the requested handle.");
+        Assert(fixture.SelectionCalls.Count <= 3,
+            "Cycling must stop after exhausting the available tab indexes instead of looping forever.");
+    }
+
+    public static async Task TabSelectionEngineRefusesZeroTarget()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22 }, activeIndex: 0);
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            0,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 50);
+
+        Assert(!ok, "A zero target handle must never report success.");
+        Assert(fixture.SelectionCalls.Count == 0,
+            "A zero target must not send any selection commands.");
+    }
+
+    public static async Task TabSelectionEngineDoesNotOpenNewTabsWhileCycling()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33 }, activeIndex: 0);
+        var newTabRequests = 0;
+        fixture.OnSelectByIndex = i =>
+        {
+            if (i < 0 || i >= fixture.Tabs.Length)
+            {
+                newTabRequests++;
+                return;
+            }
+            fixture.SetActiveIndex(i);
+        };
+
+        await TabSelectionEngine.CycleToTabAsync(
+            33,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 300);
+
+        Assert(newTabRequests == 0,
+            "Cycling must never request an out-of-range index that would create or duplicate a tab.");
+        Assert(fixture.GetActive() == 33,
+            "Cycling must converge on the requested handle without opening a new tab.");
+    }
+
+    public static async Task TabSelectionEngineWaitsForDelayedActiveUpdate()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33 }, activeIndex: 0);
+        var delayCount = 0;
+        fixture.OnSelectByIndex = i =>
+        {
+            if (i == 2)
+            {
+                delayCount = 3;
+                return;
+            }
+            fixture.SetActiveIndex(i);
+        };
+        fixture.OnGetActive = current =>
+        {
+            if (delayCount > 0)
+            {
+                delayCount--;
+                return current;
+            }
+            if (fixture.SelectionCalls.Count > 0 && fixture.SelectionCalls[^1] == 2)
+                fixture.SetActiveIndex(2);
+            return current;
+        };
+
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            33,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 400,
+            pollSleepMs: 1);
+
+        Assert(ok, "The engine must wait through delayed active tab updates and still report success.");
+        Assert(fixture.GetActive() == 33,
+            "After waiting through the delay, the active tab must reflect the requested handle.");
+    }
+
+    public static async Task TabSelectionEngineSurvivesTransientZeroActive()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33 }, activeIndex: 0);
+        var emitZeroTimes = 0;
+        fixture.OnSelectByIndex = i => fixture.SetActiveIndex(i);
+        fixture.OnGetActive = current =>
+        {
+            if (emitZeroTimes > 0)
+            {
+                emitZeroTimes--;
+                return 0;
+            }
+            return current;
+        };
+
+        emitZeroTimes = 2;
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            33,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 300,
+            pollSleepMs: 1);
+
+        Assert(ok, "Transient zero active readings must not cause the engine to give up on the target.");
+        Assert(fixture.GetActive() == 33,
+            "The engine must converge on the requested tab even after seeing temporary zero readings.");
+    }
+
+    public static async Task TabSelectionEngineHonorsTotalTimeout()
+    {
+        var fixture = new TabSelectionFixture(
+            new nint[] { 11, 22, 33, 44, 55, 66, 77, 88, 99, 1010, 1111, 1212 },
+            activeIndex: 0);
+
+        var start = Environment.TickCount64;
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            9999,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 200,
+            pollSleepMs: 1);
+        var elapsed = Environment.TickCount64 - start;
+
+        Assert(!ok, "Missing targets must report failure.");
+        Assert(elapsed < 400,
+            $"Total elapsed must respect totalTimeoutMs even with many tabs; observed {elapsed}ms.");
+    }
+
+    public static async Task TabSelectionEngineDoesNotRevisitIndexes()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33, 44 }, activeIndex: 0);
+        fixture.OnSelectByIndex = i => fixture.SetActiveIndex(i);
+
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            44,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 400);
+
+        Assert(ok, "Cycling must converge on the requested handle.");
+        var distinctCalls = fixture.SelectionCalls.Distinct().Count();
+        Assert(distinctCalls == fixture.SelectionCalls.Count,
+            $"The engine must not request the same tab index more than once; called {string.Join(',', fixture.SelectionCalls)}.");
+    }
+
+    private sealed class TabSelectionFixture
+    {
+        public nint[] Tabs { get; }
+        public List<int> SelectionCalls { get; } = new();
+        public Action<int>? OnSelectByIndex { get; set; }
+        public Func<nint, nint>? OnGetActive { get; set; }
+        private int _activeIndex;
+
+        public TabSelectionFixture(nint[] tabs, int activeIndex)
+        {
+            Tabs = tabs;
+            _activeIndex = activeIndex;
+        }
+
+        public nint[] GetTabs() => Tabs;
+        public nint GetActive()
+        {
+            var current = _activeIndex >= 0 && _activeIndex < Tabs.Length ? Tabs[_activeIndex] : 0;
+            return OnGetActive != null ? OnGetActive(current) : current;
+        }
+        public void SetActiveIndex(int index)
+        {
+            if (index >= 0 && index < Tabs.Length)
+                _activeIndex = index;
+        }
+        public void SendSelectByIndex(int i)
+        {
+            SelectionCalls.Add(i);
+            OnSelectByIndex?.Invoke(i);
+        }
     }
 
     private static string FindRepoFile(params string[] relativeParts)
