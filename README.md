@@ -1,19 +1,14 @@
-<div align="center">
+<div></div>
 
-  <img src="Assets/128x128.png" alt="WinTab Logo" />
+![WinTab Logo](Assets/128x128.png) 
 
-  <h1>WinTab</h1>
+# WinTab
 
-  <p>Windows 11 文件资源管理器标签页工具</p>
+Windows 11 文件资源管理器标签页工具
 
-  <p>简体中文 | <a href="README.en.md">English</a></p>
+简体中文 | [English](README.en.md)
 
-  <p>
-    <img src="https://img.shields.io/badge/platform-Windows%2011-555555" alt="Platform" />
-    <img src="https://img.shields.io/badge/.NET-9.0-555555" alt=".NET" />
-    <img src="https://img.shields.io/badge/license-MIT-555555" alt="License" />
-  </p>
-</div>
+     ![Platform](https://img.shields.io/badge/platform-Windows%2011-555555)     ![.NET](https://img.shields.io/badge/.NET-9.0-555555)     ![License](https://img.shields.io/badge/license-MIT-555555)   
 
 ---
 
@@ -26,10 +21,6 @@
 - 双击标签标题关闭当前标签页
 - `Ctrl + Shift` 保留独立资源管理器窗口
 - 托盘后台运行
-- 中英文界面
-- 浅色 / 深色主题
-- 开机启动
-- GitHub Release 更新检查
 
 ## 下载
 
@@ -51,3 +42,4 @@
 ## 许可
 
 MIT License
+

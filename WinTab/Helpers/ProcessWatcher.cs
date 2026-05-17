@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading;
 using System.Diagnostics;
 using System.Collections.Concurrent;
@@ -87,10 +86,8 @@ public class ProcessWatcher : IDisposable
         try
         {
             // Check for terminated processes
-            foreach (var pid in _trackedProcesses.Keys.ToList())
+            foreach (var (pid, info) in _trackedProcesses)
             {
-                if (!_trackedProcesses.TryGetValue(pid, out var info)) continue;
-        
                 bool hasExited;
                 try
                 {
@@ -101,10 +98,10 @@ public class ProcessWatcher : IDisposable
                     hasExited = true;
                 }
         
-                if (hasExited && _trackedProcesses.TryRemove(pid, out _))
+                if (hasExited && _trackedProcesses.TryRemove(pid, out var removedInfo))
                 {
                     // The Process no longer exists, but we didn't get the exit event
-                    SafeCleanupAndNotifyTermination(pid, info);
+                    SafeCleanupAndNotifyTermination(pid, removedInfo);
                 }
             }
             

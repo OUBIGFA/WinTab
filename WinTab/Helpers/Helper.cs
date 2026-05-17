@@ -27,29 +27,20 @@ public static class Helper
     private const int OffscreenRestoreMargin = 120;
     public static readonly ConcurrentDictionary<nint, RECT?> HiddenWindows = new();
 
-    public static Task DoDelayedBackgroundAsync(Action action, int delayMs = 2_000, CancellationToken cancellationToken = default)
+    public static async Task DoDelayedBackgroundAsync(Action action, int delayMs = 2_000, CancellationToken cancellationToken = default)
     {
-        return Task.Run(async () =>
-        {
-            await Task.Delay(delayMs, cancellationToken);
-            action();
-        }, cancellationToken);
+        await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+        action();
     }
-    public static Task DoDelayedBackgroundAsync(Func<Task> action, int delayMs = 2_000, CancellationToken cancellationToken = default)
+    public static async Task DoDelayedBackgroundAsync(Func<Task> action, int delayMs = 2_000, CancellationToken cancellationToken = default)
     {
-        return Task.Run(async () =>
-        {
-            await Task.Delay(delayMs, cancellationToken);
-            await action();
-        }, cancellationToken);
+        await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+        await action().ConfigureAwait(false);
     }
-    public static Task<T> DoDelayedBackgroundAsync<T>(Func<Task<T>> action, int delayMs = 2_000, CancellationToken cancellationToken = default)
+    public static async Task<T> DoDelayedBackgroundAsync<T>(Func<Task<T>> action, int delayMs = 2_000, CancellationToken cancellationToken = default)
     {
-        return Task.Run(async () =>
-        {
-            await Task.Delay(delayMs, cancellationToken);
-            return await action();
-        }, cancellationToken);
+        await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
+        return await action().ConfigureAwait(false);
     }
 
     public static T DoUntilNotDefault<T>(Func<T> action, int timeMs = 500, int sleepMs = 20, CancellationToken cancellationToken = default)
@@ -136,11 +127,11 @@ public static class Helper
 
         while (!cancellationToken.IsCancellationRequested && !IsTimeUp(startTicks, timeMs))
         {
-            await action();
+            await action().ConfigureAwait(false);
             if (predicate())
                 return;
 
-            await Task.Delay(sleepMs);
+            await Task.Delay(sleepMs, cancellationToken).ConfigureAwait(false);
         }
     }
     public static async Task<T> DoUntilConditionAsync<T>(Func<T> action, Predicate<T> predicate, int timeMs = 500, int sleepMs = 20, CancellationToken cancellationToken = default)
@@ -153,7 +144,7 @@ public static class Helper
             if (predicate(result))
                 return result;
 
-            await Task.Delay(sleepMs);
+            await Task.Delay(sleepMs, cancellationToken).ConfigureAwait(false);
         }
 
         return action();
@@ -164,14 +155,14 @@ public static class Helper
 
         while (!cancellationToken.IsCancellationRequested && !IsTimeUp(startTicks, timeMs))
         {
-            var result = await action();
+            var result = await action().ConfigureAwait(false);
             if (predicate(result))
                 return result;
 
-            await Task.Delay(sleepMs);
+            await Task.Delay(sleepMs, cancellationToken).ConfigureAwait(false);
         }
 
-        return await action();
+        return await action().ConfigureAwait(false);
     }
     public static async Task DoIfConditionAsync(Func<Task> action, Func<bool> predicate, bool justOnce = false, int timeMs = 500, int sleepMs = 20, CancellationToken cancellationToken = default)
     {
@@ -181,11 +172,11 @@ public static class Helper
         {
             if (predicate())
             {
-                await action();
+                await action().ConfigureAwait(false);
 
                 if (justOnce) return;
             }
-            await Task.Delay(sleepMs);
+            await Task.Delay(sleepMs, cancellationToken).ConfigureAwait(false);
         }
     }
 

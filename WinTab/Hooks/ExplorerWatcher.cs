@@ -473,20 +473,26 @@ public class ExplorerWatcher : IHook
                 return false;
 
             var tabItems = root.FindAll(
-                    TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem))
-                .Cast<AutomationElement>()
-                .Select(element => new { Element = element, Rect = element.Current.BoundingRectangle, Name = element.Current.Name })
-                .Where(item => !item.Rect.IsEmpty &&
-                               item.Rect.Width >= 24 &&
-                               item.Rect.Height >= 12 &&
-                               IsMatchingTabName(item.Name, tabName))
-                .OrderBy(item => item.Rect.Top)
-                .ThenBy(item => item.Rect.Left)
-                .Select(item => item.Element)
-                .ToArray();
+                TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+            AutomationElement? matchingTab = null;
 
-            return tabItems.Length == 1 && TrySelectAutomationElement(tabItems[0]);
+            foreach (AutomationElement element in tabItems)
+            {
+                var rect = element.Current.BoundingRectangle;
+                if (rect.IsEmpty || rect.Width < 24 || rect.Height < 12)
+                    continue;
+
+                if (!IsMatchingTabName(element.Current.Name, tabName))
+                    continue;
+
+                if (matchingTab != null)
+                    return false;
+
+                matchingTab = element;
+            }
+
+            return matchingTab != null && TrySelectAutomationElement(matchingTab);
         }
         catch
         {
@@ -1912,31 +1918,42 @@ public class ExplorerWatcher : IHook
             return count;
         }
 
+        nint SelectBestMergeTarget(Func<nint, bool> predicate)
+        {
+            nint bestWindow = 0;
+            var bestTabCount = -1;
+
+            // Iterate from the end to keep the previous "oldest window wins ties" behavior.
+            for (var i = allWindows.Length - 1; i >= 0; i--)
+            {
+                var hWnd = allWindows[i];
+                if (!predicate(hWnd))
+                    continue;
+
+                var tabCount = GetCachedTabCount(hWnd);
+                if (tabCount <= bestTabCount)
+                    continue;
+
+                bestTabCount = tabCount;
+                bestWindow = hWnd;
+            }
+
+            return bestWindow;
+        }
+
         // Get another handle other than the newly created one. (In case if it is still alive.)
-        _mainWindowHandle = allWindows
-            .Where(h => IsPreferredMergeTargetWindow(h, otherThan, targetLocation))
-            .Reverse() // To get the last one in the z-index (the oldest)
-            .OrderByDescending(GetCachedTabCount) // The one with the most tabs first
-            .FirstOrDefault();
+        _mainWindowHandle = SelectBestMergeTarget(h => IsPreferredMergeTargetWindow(h, otherThan, targetLocation));
 
         if (_mainWindowHandle != 0) return _mainWindowHandle;
 
         if (preferNonStartupTarget)
         {
-            _mainWindowHandle = allWindows
-                .Where(h => IsStableMergeTargetWindow(h, otherThan))
-                .Reverse()
-                .OrderByDescending(GetCachedTabCount)
-                .FirstOrDefault();
+            _mainWindowHandle = SelectBestMergeTarget(h => IsStableMergeTargetWindow(h, otherThan));
 
             if (_mainWindowHandle != 0) return _mainWindowHandle;
         }
 
-        _mainWindowHandle = allWindows
-            .Where(h => IsFallbackMergeTargetWindow(h, otherThan))
-            .Reverse()
-            .OrderByDescending(GetCachedTabCount)
-            .FirstOrDefault();
+        _mainWindowHandle = SelectBestMergeTarget(h => IsFallbackMergeTargetWindow(h, otherThan));
 
         return _mainWindowHandle;
     }

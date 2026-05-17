@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Navigation;
 using System.Windows.Media;
+using System.Windows.Threading;
 using WinTab.Managers;
 using WinTab.UI.Views.Controls;
 using WinTab.WinAPI;
@@ -21,6 +22,10 @@ public partial class MainWindow : Window
     private readonly SystemTrayIcon _trayIcon;
     private nint _handle;
     private bool _isExiting;
+    private bool _isCheckingForUpdates;
+    private DispatcherTimer? _autoUpdateTimer;
+    private DispatcherTimer? _maintenanceFeedbackTimer;
+    private (string Zh, string En)? _maintenanceFeedback;
     private readonly string _appVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
 
     public MainWindow()
@@ -41,7 +46,7 @@ public partial class MainWindow : Window
         RefreshUiState();
 
         if (SettingsManager.AutoUpdate)
-            UpdateManager.CheckForUpdates();
+            ScheduleAutomaticUpdateCheck();
     }
 
     private bool IsChinese => string.Equals(SettingsManager.Language, "zh-CN", StringComparison.OrdinalIgnoreCase);
@@ -59,7 +64,7 @@ public partial class MainWindow : Window
         MinimizeButton.Click += (_, _) => HideToTray();
         CloseButton.Click += (_, _) => HideToTray();
         HideWindowButton.Click += (_, _) => HideToTray();
-        CheckUpdatesButton.Click += (_, _) => UpdateManager.CheckForUpdates();
+        CheckUpdatesButton.Click += CheckUpdatesButton_Click;
         LanguageToggleButton.Click += LanguageToggleButton_Click;
         ThemeToggleButton.Click += ThemeToggleButton_Click;
 
@@ -150,6 +155,34 @@ public partial class MainWindow : Window
         _trayIcon.RefreshState();
     }
 
+    private void ScheduleAutomaticUpdateCheck()
+    {
+        StopAutomaticUpdateCheck();
+        _autoUpdateTimer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, Dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(2)
+        };
+        _autoUpdateTimer.Tick += AutomaticUpdateTimer_Tick;
+        _autoUpdateTimer.Start();
+    }
+
+    private void AutomaticUpdateTimer_Tick(object? sender, EventArgs e)
+    {
+        StopAutomaticUpdateCheck();
+        if (!_isExiting && SettingsManager.AutoUpdate)
+            UpdateManager.CheckForUpdates();
+    }
+
+    private void StopAutomaticUpdateCheck()
+    {
+        if (_autoUpdateTimer == null)
+            return;
+
+        _autoUpdateTimer.Stop();
+        _autoUpdateTimer.Tick -= AutomaticUpdateTimer_Tick;
+        _autoUpdateTimer = null;
+    }
+
     private void SettingsManager_StaticPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         SyncSettingsIntoUi();
@@ -206,10 +239,8 @@ public partial class MainWindow : Window
         AutoUpdateDescText.Text = T("\u6709 GitHub Release \u65f6\u63d0\u793a\u3002", "Notify when a GitHub release is available.");
 
         ActionsTitleText.Text = T("\u7ef4\u62a4", "Maintenance");
-        ActionsDescText.Text = SettingsManager.ShowTrayIcon
-            ? T("\u5173\u95ed\u6b64\u7a97\u53e3\u540e\uff0cWinTab \u7ee7\u7eed\u7559\u5728\u6258\u76d8\u3002", "The app stays in the tray when this window closes.")
-            : T("\u6258\u76d8\u56fe\u6807\u9690\u85cf\u65f6\uff0cWinTab \u4f1a\u76f4\u63a5\u5728\u540e\u53f0\u8fd0\u884c\u3002", "When the tray icon is hidden, WinTab keeps running in the background.");
-        CheckUpdatesButton.Content = T("\u68c0\u67e5", "Check");
+        ApplyMaintenanceDescription();
+        CheckUpdatesButton.Content = _isCheckingForUpdates ? T("\u68c0\u67e5\u4e2d", "Checking") : T("\u68c0\u67e5", "Check");
         HideWindowButton.Content = T("\u9690\u85cf", "Hide");
 
         LanguageToggleButton.ToolTip = IsChinese ? "Switch to English" : "\u5207\u6362\u5230\u4e2d\u6587";
@@ -228,6 +259,86 @@ public partial class MainWindow : Window
     private static string T(string zh, string en)
     {
         return string.Equals(SettingsManager.Language, "zh-CN", StringComparison.OrdinalIgnoreCase) ? zh : en;
+    }
+
+    private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isCheckingForUpdates)
+            return;
+
+        _isCheckingForUpdates = true;
+        CheckUpdatesButton.IsEnabled = false;
+        CheckUpdatesButton.Content = T("\u68c0\u67e5\u4e2d", "Checking");
+        SetMaintenanceFeedback("\u6b63\u5728\u8054\u7f51\u68c0\u67e5\u6700\u65b0\u7248\u672c\u3002", "Checking the latest release online.", autoReset: false);
+
+        try
+        {
+            var result = await UpdateManager.CheckForUpdatesWithResultAsync().ConfigureAwait(true);
+            if (!result.Completed)
+            {
+                SetMaintenanceFeedback("\u68c0\u67e5\u5931\u8d25\uff0c\u7a0d\u540e\u518d\u8bd5\u3002", "Update check failed. Try again later.");
+                return;
+            }
+
+            if (!result.UpdateAvailable)
+            {
+                SetMaintenanceFeedback("\u5f53\u524d\u5df2\u662f\u6700\u65b0\u7248\u672c\u3002", "You're on the latest version.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(result.DownloadUrl))
+            {
+                SetMaintenanceFeedback("\u53d1\u73b0\u65b0\u7248\u672c\uff0c\u4f46\u672a\u627e\u5230\u5339\u914d\u5f53\u524d\u67b6\u6784\u7684\u5b89\u88c5\u5668\u3002", "Update found, but no installer matches this device.");
+                return;
+            }
+
+            SetMaintenanceFeedback("\u53d1\u73b0\u65b0\u7248\u672c\uff0c\u6b63\u5728\u6253\u5f00\u66f4\u65b0\u7a97\u53e3\u3002", "Update found. Opening the update window.");
+            UpdateManager.CheckForUpdates();
+        }
+        finally
+        {
+            _isCheckingForUpdates = false;
+            CheckUpdatesButton.IsEnabled = true;
+            CheckUpdatesButton.Content = T("\u68c0\u67e5", "Check");
+        }
+    }
+
+    private void SetMaintenanceFeedback(string zh, string en, bool autoReset = true)
+    {
+        _maintenanceFeedback = (zh, en);
+        ApplyMaintenanceDescription();
+
+        _maintenanceFeedbackTimer?.Stop();
+        if (!autoReset)
+            return;
+
+        _maintenanceFeedbackTimer ??= new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(6)
+        };
+        _maintenanceFeedbackTimer.Tick -= MaintenanceFeedbackTimer_Tick;
+        _maintenanceFeedbackTimer.Tick += MaintenanceFeedbackTimer_Tick;
+        _maintenanceFeedbackTimer.Start();
+    }
+
+    private void MaintenanceFeedbackTimer_Tick(object? sender, EventArgs e)
+    {
+        _maintenanceFeedbackTimer?.Stop();
+        _maintenanceFeedback = null;
+        ApplyMaintenanceDescription();
+    }
+
+    private void ApplyMaintenanceDescription()
+    {
+        if (_maintenanceFeedback is { } feedback)
+        {
+            ActionsDescText.Text = T(feedback.Zh, feedback.En);
+            return;
+        }
+
+        ActionsDescText.Text = SettingsManager.ShowTrayIcon
+            ? T("\u5173\u95ed\u6b64\u7a97\u53e3\u540e\uff0cWinTab \u7ee7\u7eed\u7559\u5728\u6258\u76d8\u3002", "The app stays in the tray when this window closes.")
+            : T("\u6258\u76d8\u56fe\u6807\u9690\u85cf\u65f6\uff0cWinTab \u4f1a\u76f4\u63a5\u5728\u540e\u53f0\u8fd0\u884c\u3002", "When the tray icon is hidden, WinTab keeps running in the background.");
     }
 
     private void OpenSourceLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
@@ -257,6 +368,8 @@ public partial class MainWindow : Window
     private void ExitApplication()
     {
         _isExiting = true;
+        StopAutomaticUpdateCheck();
+        _maintenanceFeedbackTimer?.Stop();
         Application.Current.Exit -= OnApplicationExit;
         _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
@@ -268,6 +381,8 @@ public partial class MainWindow : Window
 
     private void OnApplicationExit(object? sender, ExitEventArgs e)
     {
+        StopAutomaticUpdateCheck();
+        _maintenanceFeedbackTimer?.Stop();
         _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
         SettingsManager.SaveSettings();

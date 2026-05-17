@@ -72,6 +72,7 @@ internal static class ExplorerLaunchLocationResolverTests
             ("Explorer hot paths avoid repeated polling work", ExplorerTabSelectionTests.ExplorerHotPathsAvoidRepeatedPollingWork),
             ("window merge uses a single registration lifecycle", ExplorerTabSelectionTests.WindowMergeUsesSingleRegistrationLifecycle),
             ("update checks prefer the current architecture installer", ExplorerTabSelectionTests.UpdateCheckPrefersCurrentArchitectureInstaller),
+            ("manual update checks show immediate UI feedback", ExplorerTabSelectionTests.ManualUpdateChecksShowImmediateUiFeedback),
             ("double-click close can continue after a tab-strip hit-test refresh gap", ExplorerTabDoubleClickCloseTests.ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick),
             ("double-click close chain ignores points outside the double-click geometry", ExplorerTabDoubleClickCloseTests.CloseChainFallbackIgnoresDifferentPoints)
         };
@@ -903,6 +904,32 @@ internal static class ExplorerTabSelectionTests
                methodBody.Contains("_x86_Setup.exe", StringComparison.Ordinal) &&
                methodBody.Contains("_arm64_Setup.exe", StringComparison.Ordinal),
             "Update downloads must select the release asset suffix for each packaged architecture.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task ManualUpdateChecksShowImmediateUiFeedback()
+    {
+        var mainWindowPath = FindRepoFile("WinTab", "UI", "Views", "MainWindow.xaml.cs");
+        var updateManagerPath = FindRepoFile("WinTab", "Managers", "UpdateManager.cs");
+        var mainWindow = File.ReadAllText(mainWindowPath);
+        var updateManager = File.ReadAllText(updateManagerPath);
+        var clickBody = ExtractMethodBody(mainWindow, "private async void CheckUpdatesButton_Click");
+
+        Assert(clickBody.Contains("CheckUpdatesButton.IsEnabled = false", StringComparison.Ordinal) &&
+               clickBody.Contains("SetMaintenanceFeedback", StringComparison.Ordinal) &&
+               clickBody.Contains("CheckForUpdatesWithResultAsync().ConfigureAwait(true)", StringComparison.Ordinal),
+            "Manual update checks must give immediate in-window feedback while the network check is running.");
+        Assert(clickBody.Contains("Update check failed. Try again later.", StringComparison.Ordinal) &&
+               clickBody.Contains("You're on the latest version.", StringComparison.Ordinal) &&
+               clickBody.Contains("Update found. Opening the update window.", StringComparison.Ordinal),
+            "Manual update checks must report failure, up-to-date, and update-found states in the Maintenance area.");
+        Assert(mainWindow.Contains("ApplyMaintenanceDescription()", StringComparison.Ordinal) &&
+               mainWindow.Contains("DispatcherTimer", StringComparison.Ordinal),
+            "Maintenance feedback should be visible in the existing description area and reset without adding extra UI chrome.");
+        Assert(updateManager.Contains("CheckForUpdatesWithResultAsync", StringComparison.Ordinal) &&
+               updateManager.Contains("UpdateCheckResult", StringComparison.Ordinal),
+            "The UI needs a result-returning update check instead of calling the updater with no feedback path.");
 
         return Task.CompletedTask;
     }

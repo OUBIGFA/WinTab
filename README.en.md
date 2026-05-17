@@ -1,19 +1,14 @@
-<div align="center">
+<div></div>
 
-  <img src="Assets/128x128.png" alt="WinTab Logo" />
+![WinTab Logo](Assets/128x128.png) 
 
-  <h1>WinTab</h1>
+# WinTab
 
-  <p>File Explorer tab utility for Windows 11</p>
+File Explorer tab utility for Windows 11
 
-  <p><a href="README.md">简体中文</a> | English</p>
+[简体中文](README.md) | English
 
-  <p>
-    <img src="https://img.shields.io/badge/platform-Windows%2011-555555" alt="Platform" />
-    <img src="https://img.shields.io/badge/.NET-9.0-555555" alt=".NET" />
-    <img src="https://img.shields.io/badge/license-MIT-555555" alt="License" />
-  </p>
-</div>
+     ![Platform](https://img.shields.io/badge/platform-Windows%2011-555555)     ![.NET](https://img.shields.io/badge/.NET-9.0-555555)     ![License](https://img.shields.io/badge/license-MIT-555555)   
 
 ---
 
@@ -26,10 +21,6 @@
 - Close the current tab by double-clicking the tab title
 - Hold `Ctrl + Shift` for a separate Explorer window
 - System tray runtime
-- Chinese and English UI
-- Light / dark themes
-- Startup registration
-- GitHub Release update checks
 
 ## Download
 
@@ -51,3 +42,4 @@ Pick the installer that matches your CPU architecture ([Releases](https://github
 ## License
 
 MIT License
+
