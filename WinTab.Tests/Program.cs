@@ -25,6 +25,8 @@ if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--defau
     return await ExplorerStressTest.RunDefaultLocationAsync(args);
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--user-default-stress"))
     return await ExplorerStressTest.RunUserDefaultAsync(args);
+if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--mixed-default-folder-stress"))
+    return await ExplorerStressTest.RunMixedDefaultFolderAsync(args);
 
 return await ExplorerLaunchLocationResolverTests.RunAll();
 
@@ -37,21 +39,23 @@ internal static class ExplorerLaunchLocationResolverTests
             ("waits for the real folder when Explorer first reports This PC", WaitsForRealFolderAfterTransientDefault),
             ("waits longer for delayed external Shell folder launches", WaitsForDelayedExternalShellFolderAfterDefault),
             ("returns the default folder only after the startup location stays default", ReturnsDefaultAfterTimeout),
+            ("busy startup locations wait for the real folder", BusyStartupLocationWaitsForRealFolder),
             ("waits for a non-default location to stabilize", WaitsForStableNonDefaultLocation),
             ("normalizes file URLs to local filesystem paths", NormalizesFileUrlsToLocalPaths),
             ("keeps web URLs usable", KeepsWebUrlsUsable),
-            ("SelectTabByHandle does not activate intermediate tabs", ExplorerTabSelectionTests.SelectTabByHandleDoesNotActivateIntermediateTabs),
+            ("SelectTabByHandle uses fast selection before ExplorerTabUtility fallback", ExplorerTabSelectionTests.SelectTabByHandleUsesFastSelectionBeforeExplorerTabUtilityFallback),
             ("tab merge uses the ExplorerTabUtility fast path", ExplorerTabSelectionTests.TabMergeUsesExplorerTabUtilityFastPath),
             ("window registration batches do not serialize slow location resolution", ExplorerTabSelectionTests.WindowRegistrationBatchesDoNotSerializeSlowLocationResolution),
             ("tab navigation failure is closed on a short bounded path", ExplorerTabSelectionTests.TabNavigationFailureIsShortBoundedPath),
             ("tab reuse avoids fixed waits and reuses automation root", ExplorerTabSelectionTests.TabReuseAvoidsFixedWaitsAndReusesAutomationRoot),
             ("failed navigation closes the transient This PC tab", ExplorerTabSelectionTests.FailedNavigationClosesTransientThisPcTab),
             ("WinEvent hook hides merge source windows without residuals", ExplorerTabSelectionTests.WinEventHookHidesMergeSourceWindowsWithoutResiduals),
+            ("merge source conceal pulse is bounded and event-triggered", ExplorerTabSelectionTests.MergeSourceConcealPulseIsBoundedAndEventTriggered),
             ("ShellWindows adoption hides merge sources before tracking them", ExplorerTabSelectionTests.ShellWindowsAdoptionHidesMergeSourcesBeforeTracking),
             ("ShellWindows registration callback stays non-blocking", ExplorerTabSelectionTests.ShellWindowRegistrationCallbackStaysNonBlocking),
             ("stable default-location Explorer windows remain mergeable without residuals", ExplorerTabSelectionTests.StableDefaultLocationWindowsRemainMergeableWithoutResiduals),
             ("folder merges avoid default-only Explorer targets when a real folder target exists", ExplorerTabSelectionTests.FolderMergesAvoidDefaultOnlyTargets),
-            ("mergeable default-location intermediate is closed before merge", ExplorerTabSelectionTests.MergeableDefaultLocationIntermediateIsClosedBeforeMerge),
+            ("mergeable default-location intermediate closes only after target tab succeeds", ExplorerTabSelectionTests.MergeableDefaultLocationIntermediateClosesAfterTargetTabSucceeds),
             ("released merge sources are protected from late re-hide events", ExplorerTabSelectionTests.ReleasedMergeSourcesAreProtectedFromLateRehideEvents),
             ("HideWindow reapplies transparency after Explorer resets styles", ExplorerTabSelectionTests.HideWindowReappliesTransparency),
             ("hidden Explorer windows are restored on lifecycle boundaries", ExplorerTabSelectionTests.HiddenExplorerWindowsAreRestoredOnLifecycleBoundaries),
@@ -148,6 +152,19 @@ internal static class ExplorerLaunchLocationResolverTests
         AssertEqual(KnownLocations.TargetFolder, resolved);
     }
 
+    private static async Task BusyStartupLocationWaitsForRealFolder()
+    {
+        var start = Environment.TickCount64;
+        var resolver = CreateFastResolver();
+
+        var resolved = await resolver.ResolveAsync(
+            () => Environment.TickCount64 - start < 95 ? KnownLocations.ThisPc : KnownLocations.TargetFolder,
+            IsDefaultLocation,
+            isBusy: () => Environment.TickCount64 - start < 95);
+
+        AssertEqual(KnownLocations.TargetFolder, resolved);
+    }
+
     private static Task NormalizesFileUrlsToLocalPaths()
     {
         var normalized = Helper.NormalizeLocation("file:///C:/Users/BIGFA/Downloads");
@@ -200,21 +217,24 @@ internal static class ExplorerLaunchLocationResolverTests
 
 internal static class ExplorerTabSelectionTests
 {
-    public static Task SelectTabByHandleDoesNotActivateIntermediateTabs()
+    public static Task SelectTabByHandleUsesFastSelectionBeforeExplorerTabUtilityFallback()
     {
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
         var methodBody = ExtractMethodBody(source, "public async Task SelectTabByHandle") +
-                         ExtractMethodBody(source, "private async Task<bool> TrySelectTabByHandleDirectAsync");
+                         ExtractMethodBody(source, "private async Task<bool> TrySelectTabByHandleDirectAsync") +
+                         ExtractMethodBody(source, "private async Task<bool> SelectTabByUniqueNameVerified") +
+                         ExtractMethodBody(source, "private async Task<bool> TrySelectTabByCyclingAsync");
 
-        Assert(!methodBody.Contains("SelectTabByIndex(windowHandle, i)", StringComparison.Ordinal),
-            "SelectTabByHandle must not select every tab index while searching for the target.");
-        Assert(!methodBody.Contains("i < tabs.Length", StringComparison.Ordinal),
-            "SelectTabByHandle must not linearly scan tab indexes; reuse must activate the target directly.");
-        Assert(!methodBody.Contains("SelectTabByIndex(windowHandle, tabIndex)", StringComparison.Ordinal),
-            "SelectTabByHandle must not guess a visual tab from ShellTabWindowClass z-order.");
-        Assert(!methodBody.Contains("while", StringComparison.Ordinal),
-            "SelectTabByHandle must not retry in a loop; a failed direct activation should fail fast.");
+        var nameSelectIndex = methodBody.IndexOf("TrySelectSingleTabByAutomationName(windowHandle, tabName)", StringComparison.Ordinal);
+        var fallbackIndex = methodBody.IndexOf("TrySelectTabByCyclingAsync(windowHandle, tabHandle, timeoutMs)", StringComparison.Ordinal);
+        Assert(nameSelectIndex >= 0 && fallbackIndex > nameSelectIndex,
+            "Reuse should try WinTab's direct UI Automation selection before falling back to ExplorerTabUtility-style cycling.");
+        Assert(methodBody.Contains("InvalidateAutomationRoot(windowHandle)", StringComparison.Ordinal),
+            "Selection should refresh stale UI Automation state before using the slower cycling fallback.");
+        Assert(methodBody.Contains("SelectTabByIndex(windowHandle, i)", StringComparison.Ordinal) &&
+               methodBody.Contains("i < tabs.Length", StringComparison.Ordinal),
+            "ExplorerTabUtility's cycling fallback must remain available so reuse still works when direct selection fails.");
 
         return Task.CompletedTask;
     }
@@ -253,6 +273,10 @@ internal static class ExplorerTabSelectionTests
             "The merge path must not carry the old long timeout path.");
         Assert(!source.Contains("SelectTabByKnownIndexVerified", StringComparison.Ordinal),
             "The known-index merge path should be removed, not bypassed.");
+        var lockReleaseIndex = methodBody.IndexOf("_toOpenWindowsLock.Release()", StringComparison.Ordinal);
+        var navigationIndex = methodBody.IndexOf("NavigateNewTabToTargetAsync(window, windowToOpen.Location)", StringComparison.Ordinal);
+        Assert(lockReleaseIndex >= 0 && navigationIndex > lockReleaseIndex,
+            "Navigation verification should run after releasing the new-tab creation lock so rapid folder merges can overlap navigation checks.");
 
         return Task.CompletedTask;
     }
@@ -414,6 +438,31 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
+    public static Task MergeSourceConcealPulseIsBoundedAndEventTriggered()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var startBody = ExtractMethodBody(source, "public void StartHook");
+        var pulseBody = ExtractMethodBody(source, "private void StartMergeSourceConcealPulse");
+        var windowShownBody = ExtractMethodBody(source, "private void OnWindowShown");
+        var registeredBody = ExtractMethodBody(source, "private void OnShellWindowRegistered");
+
+        Assert(!source.Contains("StartMergeSourceConcealPulse(0)", StringComparison.Ordinal),
+            "The conceal pulse must not run forever after startup; that keeps scanning Explorer windows and can re-hide later user-opened This PC windows.");
+        Assert(startBody.Contains("StartMergeSourceConcealPulse(500)", StringComparison.Ordinal),
+            "Startup should only run a short warm-up conceal pulse.");
+        Assert(source.Contains("private void StartMergeSourceConcealPulse(int durationMs = 1_200)", StringComparison.Ordinal),
+            "Event-triggered conceal should stay bounded so hidden merge-source protection cannot linger for seconds after activity stops.");
+        Assert(windowShownBody.Contains("StartMergeSourceConcealPulse()", StringComparison.Ordinal) &&
+               registeredBody.Contains("StartMergeSourceConcealPulse()", StringComparison.Ordinal),
+            "WinEvent and ShellWindows registration events should still trigger the short conceal pulse for rapid Explorer opens.");
+        Assert(pulseBody.Contains("DateTime.UtcNow.AddMilliseconds(Math.Max(1, durationMs))", StringComparison.Ordinal) &&
+               !pulseBody.Contains("DateTime.MaxValue", StringComparison.Ordinal),
+            "The pulse worker should be duration-bound instead of using an unbounded normal scanning window.");
+
+        return Task.CompletedTask;
+    }
+
     public static Task ShellWindowRegistrationCallbackStaysNonBlocking()
     {
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
@@ -445,8 +494,8 @@ internal static class ExplorerTabSelectionTests
                methodBody.Contains("tabCount <= 1", StringComparison.Ordinal) &&
                methodBody.Contains("wasTrackedTopLevel || !singleTabTopLevelsInBatch.Add(hWnd)", StringComparison.Ordinal),
             "Duplicate ShellWindows wrappers for the same single-tab top-level must be skipped so they do not block This PC merging as fake sibling tabs.");
-        Assert(methodBody.Contains("CloseRetainedStartupLocationIfMergeableAsync(window, hWnd, initialLocation)", StringComparison.Ordinal),
-            "A retained This PC intermediate should be closed from ShellWindows adoption instead of waiting for slower registration processing.");
+        Assert(!methodBody.Contains("CloseRetainedStartupLocationIfMergeableAsync", StringComparison.Ordinal),
+            "ShellWindows adoption must not close a retained This PC source before registration can decide whether it is a real user request or a busy folder launch.");
 
         return Task.CompletedTask;
     }
@@ -461,17 +510,20 @@ internal static class ExplorerTabSelectionTests
         var resolveIndex = normalizedBody.IndexOf("ResolveInitialLocation(window, hWnd)", StringComparison.Ordinal);
         var tabHandleIndex = normalizedBody.IndexOf("GetTabHandle(window)", StringComparison.Ordinal);
         var releaseBranchStart = normalizedBody.IndexOf("if (string.IsNullOrWhiteSpace(location)", StringComparison.Ordinal);
+        var sourceAliveIndex = normalizedBody.IndexOf("var sourceAlive = Helper.IsFileExplorerWindow(hWnd)", StringComparison.Ordinal);
         var targetSelectionIndex = normalizedBody.IndexOf("targetWindow = GetMainWindowHWnd(hWnd, location)", StringComparison.Ordinal);
         var openIndex = normalizedBody.IndexOf("OpenTabNavigateWithSelection(record, targetWindow)", StringComparison.Ordinal);
         Assert(resolveIndex >= 0 && releaseBranchStart > resolveIndex && targetSelectionIndex > releaseBranchStart && openIndex > targetSelectionIndex,
             "A stable This PC Explorer window must be allowed to reach target selection and the merge path after resolution.");
         Assert(tabHandleIndex > resolveIndex,
             "Startup location resolution must happen before tab-handle waits so This PC intermediates can be closed promptly.");
+        Assert(normalizedBody.Contains("if (sourceAlive && !IsStartupExplorerLocation(location))\n            {", StringComparison.Ordinal),
+            "Stable This PC intermediates must not wait on their soon-to-close source tab handle before the merge/reuse path can run.");
         var preResolveBody = normalizedBody[..resolveIndex];
         Assert(!preResolveBody.Contains("targetWindow != 0", StringComparison.Ordinal),
             "A stable This PC window must not be released before location resolution just because merge target discovery briefly lagged.");
 
-        var releaseBranch = normalizedBody[releaseBranchStart..targetSelectionIndex];
+        var releaseBranch = normalizedBody[releaseBranchStart..sourceAliveIndex];
         Assert(!releaseBranch.Contains("IsStartupExplorerLocation(location)", StringComparison.Ordinal),
             "A stable This PC location is a valid user-opened Explorer target and must not be released solely because it is This PC.");
         Assert(releaseBranch.Contains("string.IsNullOrWhiteSpace(location)", StringComparison.Ordinal) &&
@@ -508,31 +560,30 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
-    public static Task MergeableDefaultLocationIntermediateIsClosedBeforeMerge()
+    public static Task MergeableDefaultLocationIntermediateClosesAfterTargetTabSucceeds()
     {
         var resolverPath = FindRepoFile("WinTab", "Hooks", "ExplorerLaunchLocationResolver.cs");
         var watcherPath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var resolver = File.ReadAllText(resolverPath);
         var watcher = File.ReadAllText(watcherPath);
         var resolveBody = ExtractMethodBody(watcher, "private Task<string> ResolveInitialLocation");
-        var retainedBody = ExtractMethodBody(watcher, "private async Task CloseRetainedStartupLocationIfMergeableAsync");
         var restoreBody = ExtractMethodBody(watcher, "private static async Task RestoreHiddenExplorerWindowAsync");
+        var registrationBody = ExtractMethodBody(watcher, "private async Task ProcessRegisteredShellWindowAsync");
 
         Assert(resolver.Contains("int DefaultLocationWaitMs = 60", StringComparison.Ordinal),
             "A non-mergeable stable This PC window should still be released quickly instead of staying transparent.");
         Assert(resolver.Contains("int MaximumStartupLocationWaitMs = 500", StringComparison.Ordinal),
             "Mergeable stable This PC windows should not wait the old multi-second startup window before merging.");
-        Assert(!resolveBody.Contains("_ => RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal),
-            "A mergeable stable This PC window must not be restored visibly before the merge path runs.");
-        Assert(resolveBody.Contains("CloseRetainedStartupLocationIfMergeableAsync(window, hWnd, location)", StringComparison.Ordinal),
-            "Retained startup locations should close the intermediate source when a merge target is available.");
-        Assert(retainedBody.Contains("GetMainWindowHWnd(hWnd, location)", StringComparison.Ordinal) &&
-               retainedBody.Contains("CloseMergedSourceWindowAsync(window, hWnd)", StringComparison.Ordinal) &&
-               retainedBody.Contains("RemoveMergeSourceTracking(hWnd)", StringComparison.Ordinal) &&
-               retainedBody.Contains("RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal) &&
-               retainedBody.Contains("IsShellWindowBusy(window)", StringComparison.Ordinal) &&
-               retainedBody.Contains("RecheckRetainedStartupLocationAsync(window, hWnd)", StringComparison.Ordinal),
-            "The retained This PC source should be closed when it can merge, rechecked if Explorer is still navigating, and restored only when it cannot merge.");
+        Assert(resolver.Contains("int BusyStartupLocationWaitMs = 1_500", StringComparison.Ordinal) &&
+               resolver.Contains("SafeIsBusy(isBusy)", StringComparison.Ordinal),
+            "A startup-location source that is still busy should keep waiting for the real folder instead of being treated as This PC pollution.");
+        Assert(resolveBody.Contains("isBusy: () => IsShellWindowBusy(window)", StringComparison.Ordinal),
+            "Startup location resolution must use Explorer's Busy state before accepting This PC as the final target.");
+        Assert(!watcher.Contains("CloseRetainedStartupLocationIfMergeableAsync", StringComparison.Ordinal),
+            "The source This PC window must not be closed before the normal target-tab path succeeds; early close can swallow the user's Explorer open.");
+        Assert(registrationBody.Contains("OpenTabNavigateWithSelection(record, targetWindow)", StringComparison.Ordinal) &&
+               registrationBody.Contains("CloseMergedSourceWindowAsync(window, hWnd)", StringComparison.Ordinal),
+            "Default-location sources should be closed by the same verified post-merge close path as folder sources.");
         Assert(restoreBody.Contains("50)", StringComparison.Ordinal),
             "Restoring a retained This PC window should poll quickly instead of waiting in coarse 200ms steps.");
 
@@ -648,8 +699,7 @@ internal static class ExplorerTabSelectionTests
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
         var openBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection");
-        var selectBody = ExtractMethodBody(source, "private async Task<bool> SelectTabByUniqueNameVerified") +
-                         ExtractMethodBody(source, "private async Task<bool> TrySelectTabByKnownOrderAsync");
+        var selectBody = ExtractMethodBody(source, "private async Task<bool> SelectTabByUniqueNameVerified");
 
         var failureLogIndex = openBody.IndexOf("OpenTab reuse-select-failed", StringComparison.Ordinal);
         var duplicateOpenIndex = openBody.IndexOf("RequestToOpenNewTab", StringComparison.Ordinal);
@@ -658,8 +708,9 @@ internal static class ExplorerTabSelectionTests
             "Once reuse finds an existing path, selection failure must not fall through to opening a duplicate tab.");
         Assert(selectBody.Contains("GetActiveTabHandle(windowHandle) == tabHandle", StringComparison.Ordinal),
             "Reuse selection should succeed immediately when the target tab is already active.");
-        Assert(selectBody.Contains("TrySelectTabByKnownOrderAsync", StringComparison.Ordinal),
-            "Duplicate tab titles need a non-title fallback that still avoids tab-by-tab cycling.");
+        Assert(source.Contains("TrySelectTabByCyclingAsync", StringComparison.Ordinal) &&
+               selectBody.Contains("TrySelectTabByCyclingAsync(windowHandle, tabHandle, timeoutMs)", StringComparison.Ordinal),
+            "Selection failure must fall back to ExplorerTabUtility-style cycling instead of reporting reuse success without selecting the tab.");
 
         return Task.CompletedTask;
     }
@@ -1180,6 +1231,11 @@ internal static class ExplorerStressTest
 
         StartExplorer(baseline);
         await WaitForFolderWindowAsync(baseline);
+        var before = GetShellWindows();
+        var beforeDefaultCount = before.Count(IsDefaultLocation);
+        var baselineTopLevelWindows = Helper.GetAllExplorerWindows()
+            .Concat(before.Select(window => (nint)window.Hwnd))
+            .ToHashSet();
 
         using var app = StartWinTab(appPath, debugLog);
         try
@@ -1187,11 +1243,26 @@ internal static class ExplorerStressTest
             await Task.Delay(startupDelayMs);
 
             StartFolder(target, externalShellOpen);
-            var firstTargetWindow = await WaitForTargetCountAsync(target, expectedCount: 1, timeoutMs: 12_000);
-            if (firstTargetWindow.Count(window => IsSameFolder(window, target)) != 1)
+            var firstTargetWindow = await WaitForTargetsAsync([target], beforeDefaultCount, baselineTopLevelWindows);
+            var unmergedFirstTargetWindows = GetUnexpectedTargetTopLevelWindows(firstTargetWindow, [target], baselineTopLevelWindows);
+            if (firstTargetWindow.Count(window => IsSameFolder(window, target)) != 1 ||
+                unmergedFirstTargetWindows.Length > 0)
             {
-                Console.Error.WriteLine("Explorer reuse test failed: first open did not create exactly one target tab.");
+                Console.Error.WriteLine("Explorer reuse test failed: first open did not merge into the existing Explorer tab set.");
                 DumpShellWindows(firstTargetWindow);
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
+            var firstTargetTab = firstTargetWindow.First(window => IsSameFolder(window, target));
+            var targetWindowHandle = (nint)firstTargetTab.Hwnd;
+            var targetTabHandle = GetActiveTabHandle(targetWindowHandle);
+            if (targetTabHandle == 0 ||
+                !await SelectAnyOtherTabAsync(targetWindowHandle, targetTabHandle, 2_000))
+            {
+                Console.Error.WriteLine("Explorer reuse test failed: could not move away from the first target tab before reopening it.");
+                Console.Error.WriteLine($"TargetWindow={targetWindowHandle} TargetTab={targetTabHandle}");
+                DumpShellWindows(GetShellWindows());
                 DumpDebugLog(debugLog);
                 return 1;
             }
@@ -1210,8 +1281,18 @@ internal static class ExplorerStressTest
                 return 1;
             }
 
+            var activeTarget = await WaitForActiveTabAsync((nint)targetTabs[0].Hwnd, targetTabHandle, 2_000);
+            if (activeTarget != targetTabHandle)
+            {
+                Console.Error.WriteLine("Explorer reuse test failed: reopening the same folder did not activate the existing target tab.");
+                Console.Error.WriteLine($"ExpectedActiveTab={targetTabHandle} ActualActiveTab={activeTarget}");
+                DumpShellWindows(finalWindows);
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
             var mode = externalShellOpen ? "external Shell open" : "explorer.exe";
-            Console.WriteLine($"PASS Explorer reuse ({mode}): reopening '{target}' reused the existing tab without creating a duplicate.");
+            Console.WriteLine($"PASS Explorer reuse ({mode}): reopening '{target}' activated the existing tab without creating a duplicate.");
             return 0;
         }
         finally
@@ -1306,7 +1387,7 @@ internal static class ExplorerStressTest
 
         var startupDelayMs = int.TryParse(GetOption(args, "--startup-delay"), out var parsedStartupDelay) ? parsedStartupDelay : 2_500;
         var observeMs = int.TryParse(GetOption(args, "--observe-ms"), out var parsedObserveMs) ? parsedObserveMs : 3_500;
-        var maxHideMs = int.TryParse(GetOption(args, "--max-hide-ms"), out var parsedMaxHideMs) ? parsedMaxHideMs : 600;
+        var maxHideMs = int.TryParse(GetOption(args, "--max-hide-ms"), out var parsedMaxHideMs) ? parsedMaxHideMs : 1_000;
         var stressRoot = Path.Combine(Path.GetTempPath(), "WinTabExplorerStress");
         KillExistingWinTabProcesses();
         CloseTestShellWindows(stressRoot);
@@ -1384,6 +1465,93 @@ internal static class ExplorerStressTest
                 CloseShellWindowByHwnd(hWnd);
             }
 
+            TryKill(app);
+            CloseTestShellWindows(root);
+            TryDelete(root);
+        }
+    }
+
+    public static async Task<int> RunMixedDefaultFolderAsync(string[] args)
+    {
+        var appPath = GetOption(args, "--app");
+        if (string.IsNullOrWhiteSpace(appPath) || !File.Exists(appPath))
+            throw new InvalidOperationException("Pass --app with the WinTab.exe path to mixed-default-folder-test.");
+
+        var roundCount = int.TryParse(GetOption(args, "--rounds"), out var parsedRounds) ? parsedRounds : 8;
+        var intervalMs = int.TryParse(GetOption(args, "--interval"), out var parsedInterval) ? parsedInterval : 35;
+        var startupDelayMs = int.TryParse(GetOption(args, "--startup-delay"), out var parsedStartupDelay) ? parsedStartupDelay : 2_500;
+        var defaultLeadMs = int.TryParse(GetOption(args, "--default-lead-ms"), out var parsedDefaultLead) ? parsedDefaultLead : 120;
+        var maxResolveMs = int.TryParse(GetOption(args, "--max-resolve-ms"), out var parsedMaxResolve) ? parsedMaxResolve : 0;
+        var stressRoot = Path.Combine(Path.GetTempPath(), "WinTabExplorerStress");
+        KillExistingWinTabProcesses();
+        CloseTestShellWindows(stressRoot);
+
+        var root = Path.Combine(stressRoot, DateTime.Now.ToString("yyyyMMddHHmmssfff"));
+        var debugLog = Path.Combine(root, "wintab-mixed-debug.log");
+        var baseline = CreateBaseline(root);
+        var targets = CreateTargets(root, roundCount);
+        StartExplorer(baseline);
+        await WaitForFolderWindowAsync(baseline);
+
+        var before = GetShellWindows();
+        var beforeDefaultCount = before.Count(IsDefaultLocation);
+        var baselineTopLevelWindows = Helper.GetAllExplorerWindows()
+            .Concat(before.Select(window => (nint)window.Hwnd))
+            .ToHashSet();
+
+        using var app = StartWinTab(appPath, debugLog);
+        try
+        {
+            await Task.Delay(startupDelayMs);
+
+            var stopwatch = Stopwatch.StartNew();
+            StartExplorerDefault();
+            await Task.Delay(defaultLeadMs);
+            foreach (var target in targets)
+            {
+                StartExplorer(target);
+                await Task.Delay(intervalMs);
+            }
+
+            var finalWindows = await WaitForTargetsAsync(targets, beforeDefaultCount + 1, baselineTopLevelWindows);
+            stopwatch.Stop();
+
+            var missingTargets = targets.Where(target => finalWindows.All(window => !IsSameFolder(window, target))).ToArray();
+            var defaultCount = finalWindows.Count(IsDefaultLocation);
+            var transparentDefaultWindows = finalWindows
+                .Where(IsDefaultLocation)
+                .Where(window => IsFullyTransparent((nint)window.Hwnd))
+                .ToArray();
+            var unmergedTargetWindows = GetUnexpectedTargetTopLevelWindows(finalWindows, targets, baselineTopLevelWindows).ToArray();
+            var tooSlow = maxResolveMs > 0 && stopwatch.ElapsedMilliseconds > maxResolveMs;
+
+            if (missingTargets.Length > 0 ||
+                defaultCount > beforeDefaultCount + 1 ||
+                transparentDefaultWindows.Length > 0 ||
+                unmergedTargetWindows.Length > 0 ||
+                tooSlow)
+            {
+                Console.Error.WriteLine("Explorer mixed default/folder stress test failed.");
+                Console.Error.WriteLine($"Missing targets: {string.Join(", ", missingTargets)}");
+                Console.Error.WriteLine($"Default-location windows before={beforeDefaultCount}, after={defaultCount}, allowed={beforeDefaultCount + 1}.");
+                Console.Error.WriteLine($"ElapsedMs={stopwatch.ElapsedMilliseconds}, MaxResolveMs={maxResolveMs}");
+                if (unmergedTargetWindows.Length > 0)
+                {
+                    Console.Error.WriteLine("Targets still live in new top-level Explorer windows:");
+                    DumpShellWindows(unmergedTargetWindows);
+                }
+                foreach (var window in transparentDefaultWindows)
+                    DumpWindowVisibility((nint)window.Hwnd);
+                DumpShellWindows(finalWindows);
+                DumpDebugLog(debugLog);
+                return 1;
+            }
+
+            Console.WriteLine($"PASS Explorer mixed default/folder: active This PC plus {targets.Length} rapid folders produced no hidden default residuals or extra default pollution in {stopwatch.ElapsedMilliseconds} ms.");
+            return 0;
+        }
+        finally
+        {
             TryKill(app);
             CloseTestShellWindows(root);
             TryDelete(root);
@@ -1991,6 +2159,29 @@ internal static class ExplorerStressTest
             handle => handle != 0,
             timeoutMs,
             15);
+    }
+
+    private static async Task<bool> SelectAnyOtherTabAsync(nint windowHandle, nint currentTabHandle, int timeoutMs)
+    {
+        var tabs = Helper.GetAllExplorerTabs(windowHandle).ToArray();
+        if (tabs.Length < 2)
+            return false;
+
+        var perTabTimeout = Math.Max(80, timeoutMs / tabs.Length);
+        for (var i = 0; i < tabs.Length; i++)
+        {
+            WinApi.SendMessage(windowHandle, WinApi.WM_COMMAND, 0xA221, i + 1);
+            var activeTab = await Helper.DoUntilConditionAsync(
+                () => GetActiveTabHandle(windowHandle),
+                handle => handle != 0 && handle != currentTabHandle,
+                perTabTimeout,
+                15);
+
+            if (activeTab != 0 && activeTab != currentTabHandle)
+                return true;
+        }
+
+        return false;
     }
 
     private static void TryKill(Process process)

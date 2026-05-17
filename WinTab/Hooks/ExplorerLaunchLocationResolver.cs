@@ -17,7 +17,8 @@ public sealed class ExplorerLaunchLocationResolver
         Func<string?> readLocation,
         Predicate<string> isStartupLocation,
         CancellationToken cancellationToken = default,
-        Func<string, Task>? onStartupLocationRetained = null)
+        Func<string, Task>? onStartupLocationRetained = null,
+        Func<bool>? isBusy = null)
     {
         var location = Normalize(readLocation());
         if (!IsStartup(location, isStartupLocation))
@@ -26,9 +27,17 @@ public sealed class ExplorerLaunchLocationResolver
         var fallbackLocation = location;
         var releaseDeadline = Environment.TickCount64 + _options.DefaultLocationWaitMs;
         var deadline = Environment.TickCount64 + Math.Max(_options.DefaultLocationWaitMs, _options.MaximumStartupLocationWaitMs);
+        var busyDeadline = deadline + _options.BusyStartupLocationWaitMs;
         var notifiedStartupLocationRetained = false;
-        while (!cancellationToken.IsCancellationRequested && Environment.TickCount64 < deadline)
+        while (!cancellationToken.IsCancellationRequested)
         {
+            var now = Environment.TickCount64;
+            if (now >= deadline &&
+                (isBusy == null || !SafeIsBusy(isBusy) || now >= busyDeadline))
+            {
+                break;
+            }
+
             await Task.Delay(_options.PollIntervalMs, cancellationToken);
 
             location = Normalize(readLocation());
@@ -94,9 +103,22 @@ public sealed class ExplorerLaunchLocationResolver
         return string.IsNullOrWhiteSpace(location) ? string.Empty : location.Trim();
     }
 
+    private static bool SafeIsBusy(Func<bool> isBusy)
+    {
+        try
+        {
+            return isBusy();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public sealed record Options(
         int DefaultLocationWaitMs = 60,
         int StableLocationWaitMs = 160,
         int PollIntervalMs = 25,
-        int MaximumStartupLocationWaitMs = 500);
+        int MaximumStartupLocationWaitMs = 500,
+        int BusyStartupLocationWaitMs = 1_500);
 }
