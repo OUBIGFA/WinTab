@@ -30,6 +30,7 @@ public class ExplorerWatcher : IHook
     private const int NavigationCompleteWaitMs = 1_200;
     private const int NavigationVerificationWaitMs = 1_200;
     private const int StripBoundsRectMatchSlop = 2;
+    private const int StartupLocationCacheLimit = 512;
     private static readonly string? DebugLogPath = Environment.GetEnvironmentVariable("WINTAB_DEBUG_LOG");
     private static bool _instanceRunning;
     private static Guid _shellBrowserGuid = typeof(IShellBrowser).GUID;
@@ -43,6 +44,7 @@ public class ExplorerWatcher : IHook
     private readonly ConcurrentDictionary<nint, TabStripBounds> _stripBoundsCache = new();
     private readonly ConcurrentDictionary<nint, byte> _stripBoundsRefreshInflight = new();
     private readonly ConcurrentDictionary<nint, (AutomationElement Element, long ExpiresAt)> _automationRootCache = new();
+    private readonly ConcurrentDictionary<string, bool> _startupLocationCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly DualKeyDictionary<InternetExplorer, nint?, WindowInfo> _windowEntryDict = [];
     private readonly List<WindowRecord> _closedWindows = new();
     private readonly object _windowEntryDictLock = new(), _closedWindowsLock = new(), _processLock = new();
@@ -1370,17 +1372,28 @@ public class ExplorerWatcher : IHook
         if (string.IsNullOrWhiteSpace(location))
             return true;
 
+        location = Helper.NormalizeLocation(location);
         if (StringComparer.OrdinalIgnoreCase.Equals(location, _defaultLocation))
             return true;
 
+        if (_startupLocationCache.TryGetValue(location, out var cached))
+            return cached;
+
+        bool isStartup;
         try
         {
-            return _shellPathComparer.IsEquivalent(location, _defaultLocation);
+            isStartup = _shellPathComparer.IsEquivalent(location, _defaultLocation);
         }
         catch
         {
-            return false;
+            isStartup = false;
         }
+
+        if (_startupLocationCache.Count >= StartupLocationCacheLimit)
+            _startupLocationCache.Clear();
+
+        _startupLocationCache[location] = isStartup;
+        return isStartup;
     }
     private static Task<int> WaitForExplorerTabCount(nint hWnd)
     {
@@ -1886,13 +1899,24 @@ public class ExplorerWatcher : IHook
         if (IsPreferredMergeTargetWindow(_mainWindowHandle, otherThan, targetLocation))
             return _mainWindowHandle;
 
-        var allWindows = WinApi.FindAllWindowsEx("CabinetWClass");
+        var allWindows = WinApi.FindAllWindowsEx("CabinetWClass").ToArray();
+        var tabCounts = new Dictionary<nint, int>();
+
+        int GetCachedTabCount(nint hWnd)
+        {
+            if (tabCounts.TryGetValue(hWnd, out var count))
+                return count;
+
+            count = WinApi.FindAllWindowsEx("ShellTabWindowClass", hWnd).Count();
+            tabCounts[hWnd] = count;
+            return count;
+        }
 
         // Get another handle other than the newly created one. (In case if it is still alive.)
         _mainWindowHandle = allWindows
             .Where(h => IsPreferredMergeTargetWindow(h, otherThan, targetLocation))
             .Reverse() // To get the last one in the z-index (the oldest)
-            .OrderByDescending(h => WinApi.FindAllWindowsEx("ShellTabWindowClass", h).Count()) // The one with the most tabs first
+            .OrderByDescending(GetCachedTabCount) // The one with the most tabs first
             .FirstOrDefault();
 
         if (_mainWindowHandle != 0) return _mainWindowHandle;
@@ -1902,7 +1926,7 @@ public class ExplorerWatcher : IHook
             _mainWindowHandle = allWindows
                 .Where(h => IsStableMergeTargetWindow(h, otherThan))
                 .Reverse()
-                .OrderByDescending(h => WinApi.FindAllWindowsEx("ShellTabWindowClass", h).Count())
+                .OrderByDescending(GetCachedTabCount)
                 .FirstOrDefault();
 
             if (_mainWindowHandle != 0) return _mainWindowHandle;
@@ -1911,7 +1935,7 @@ public class ExplorerWatcher : IHook
         _mainWindowHandle = allWindows
             .Where(h => IsFallbackMergeTargetWindow(h, otherThan))
             .Reverse()
-            .OrderByDescending(h => WinApi.FindAllWindowsEx("ShellTabWindowClass", h).Count())
+            .OrderByDescending(GetCachedTabCount)
             .FirstOrDefault();
 
         return _mainWindowHandle;
@@ -1962,7 +1986,7 @@ public class ExplorerWatcher : IHook
         if (!HasHookedShellWindowForTopLevel(hWnd))
             return false;
 
-        return Helper.GetAllExplorerTabs(hWnd).Take(1).Any();
+        return GetActiveTabHandle(hWnd) != 0;
     }
     private static bool IsFallbackMergeTargetWindow(nint hWnd, nint otherThan)
     {
@@ -1971,7 +1995,7 @@ public class ExplorerWatcher : IHook
         if (!Helper.IsFileExplorerWindow(hWnd))
             return false;
 
-        return Helper.GetAllExplorerTabs(hWnd).Take(1).Any();
+        return GetActiveTabHandle(hWnd) != 0;
     }
     private Task<nint> GetTabHandle(InternetExplorer window)
     {
@@ -2261,6 +2285,7 @@ public class ExplorerWatcher : IHook
         _shellWindows = new ShellWindows();
 
         _defaultLocation = Helper.GetDefaultExplorerLocation(_shellPathComparer);
+        ClearShellCaches();
         RecoverHiddenExplorerWindows("initialize-shell");
 
         if (Helper.IsFileExplorerForeground(out var foregroundWindow))
@@ -2349,10 +2374,20 @@ public class ExplorerWatcher : IHook
 
         _shellPathComparer.Dispose();
         _staTaskScheduler.Dispose();
+        ClearShellCaches();
         _shellWindows = null!;
         _shellPathComparer = null!;
         _staTaskScheduler = null!;
         _mainWindowHandle = 0;
+    }
+
+    private void ClearShellCaches()
+    {
+        _startupLocationCache.Clear();
+        _automationRootCache.Clear();
+        _stripBoundsCache.Clear();
+        _stripBoundsRefreshInflight.Clear();
+        _hookedTopLevelUseCounts.Clear();
     }
 
     private void RecoverHiddenExplorerWindows(string reason)

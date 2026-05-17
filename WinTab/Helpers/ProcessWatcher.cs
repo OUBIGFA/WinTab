@@ -134,7 +134,12 @@ public class ProcessWatcher : IDisposable
                     process.Exited += OnProcessExited;
                     process.EnableRaisingEvents = true;
 
-                    if (!_trackedProcesses.TryAdd(processId, (process, sessionId))) continue;
+                    if (!_trackedProcesses.TryAdd(processId, (process, sessionId)))
+                    {
+                        process.Exited -= OnProcessExited;
+                        SafeDisposeProcess(process);
+                        continue;
+                    }
 
                     // Successfully added - raise ProcessCreated event
                     var args = new ProcessEventArgs(processId, _processName, sessionId);

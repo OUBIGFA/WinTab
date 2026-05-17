@@ -297,36 +297,44 @@ public static class Helper
     }
     public static Task<nint> ListenForNewExplorerWindowAsync(IReadOnlyCollection<nint> currentWindows, int searchTimeMs = 1000)
     {
+        var knownWindows = CreateKnownHandleSet(currentWindows);
         return DoUntilNotDefaultAsync(() =>
                 GetAllExplorerWindows()
-                    .Except(currentWindows)
-                    .FirstOrDefault(),
+                    .FirstOrDefault(window => IsUnknownHandle(window, knownWindows)),
             searchTimeMs);
     }
 
     public static nint ListenForNewExplorerTab(IReadOnlyCollection<nint> currentTabs, int searchTimeMs = 1000)
     {
+        var knownTabs = CreateKnownHandleSet(currentTabs);
         return DoUntilNotDefault(() =>
                 GetAllExplorerTabs()
-                    .Except(currentTabs)
-                    .FirstOrDefault(),
+                    .FirstOrDefault(tab => IsUnknownHandle(tab, knownTabs)),
             searchTimeMs);
     }
     public static Task<nint> ListenForNewExplorerTabAsync(IReadOnlyCollection<nint> currentTabs, int searchTimeMs = 1000)
     {
+        var knownTabs = CreateKnownHandleSet(currentTabs);
         return DoUntilNotDefaultAsync(() =>
                 GetAllExplorerTabs()
-                    .Except(currentTabs)
-                    .FirstOrDefault(),
+                    .FirstOrDefault(tab => IsUnknownHandle(tab, knownTabs)),
             searchTimeMs);
     }
     public static Task<nint> ListenForNewExplorerTabAsync(nint window, IReadOnlyCollection<nint> currentTabs, int searchTimeMs = 1000)
     {
+        var knownTabs = CreateKnownHandleSet(currentTabs);
         return DoUntilNotDefaultAsync(() =>
                 GetAllExplorerTabs(window)
-                    .Except(currentTabs)
-                    .FirstOrDefault(),
+                    .FirstOrDefault(tab => IsUnknownHandle(tab, knownTabs)),
             searchTimeMs);
+    }
+    private static HashSet<nint>? CreateKnownHandleSet(IReadOnlyCollection<nint> handles)
+    {
+        return handles.Count == 0 ? null : new HashSet<nint>(handles);
+    }
+    private static bool IsUnknownHandle(nint handle, HashSet<nint>? knownHandles)
+    {
+        return knownHandles == null || !knownHandles.Contains(handle);
     }
     public static List<nint> GetAllExplorerTabs()
     {

@@ -260,6 +260,7 @@ public partial class MainWindow : Window
         Application.Current.Exit -= OnApplicationExit;
         _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
+        SettingsManager.SaveSettings();
         _trayIcon.Dispose();
         _hookManager.Dispose();
         Application.Current.Shutdown();
@@ -269,6 +270,7 @@ public partial class MainWindow : Window
     {
         _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
+        SettingsManager.SaveSettings();
         _trayIcon.Dispose();
         _hookManager.Dispose();
     }

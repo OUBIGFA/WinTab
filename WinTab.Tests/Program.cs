@@ -68,6 +68,8 @@ internal static class ExplorerLaunchLocationResolverTests
             ("merge source close is verified before hidden tracking is cleared", ExplorerTabSelectionTests.MergeSourceCloseIsVerifiedBeforeHiddenTrackingIsCleared),
             ("Early WinEvent hide does not wait on merge target discovery", ExplorerTabSelectionTests.EarlyHideDoesNotWaitOnMergeTargetDiscovery),
             ("first run settings window fits without scrolling", ExplorerTabSelectionTests.FirstRunSettingsWindowFitsWithoutScrolling),
+            ("settings resize writes are debounced and flushed", ExplorerTabSelectionTests.SettingsResizeWritesAreDebouncedAndFlushed),
+            ("Explorer hot paths avoid repeated polling work", ExplorerTabSelectionTests.ExplorerHotPathsAvoidRepeatedPollingWork),
             ("window merge uses a single registration lifecycle", ExplorerTabSelectionTests.WindowMergeUsesSingleRegistrationLifecycle),
             ("update checks prefer the current architecture installer", ExplorerTabSelectionTests.UpdateCheckPrefersCurrentArchitectureInstaller)
         };
@@ -762,6 +764,48 @@ internal static class ExplorerTabSelectionTests
         Assert(xaml.Contains("Width=\"1020\"", StringComparison.Ordinal) &&
                xaml.Contains("Height=\"720\"", StringComparison.Ordinal),
             "The XAML design size should match the persisted first-run default size.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task SettingsResizeWritesAreDebouncedAndFlushed()
+    {
+        var settingsPath = FindRepoFile("WinTab", "Managers", "SettingsManager.cs");
+        var mainWindowPath = FindRepoFile("WinTab", "UI", "Views", "MainWindow.xaml.cs");
+        var settings = File.ReadAllText(settingsPath);
+        var mainWindow = File.ReadAllText(mainWindowPath);
+
+        Assert(settings.Contains("saveMode: SaveMode.Deferred", StringComparison.Ordinal) &&
+               settings.Contains("DeferredSaveDelay", StringComparison.Ordinal) &&
+               settings.Contains("_deferredSaveTimer.Change", StringComparison.Ordinal),
+            "High-frequency window resize updates should debounce FormSize saves instead of writing settings.json on every SizeChanged event.");
+        Assert(mainWindow.Contains("SettingsManager.SaveSettings()", StringComparison.Ordinal),
+            "Application exit must flush any pending debounced settings write.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task ExplorerHotPathsAvoidRepeatedPollingWork()
+    {
+        var helperPath = FindRepoFile("WinTab", "Helpers", "Helper.cs");
+        var watcherPath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var helper = File.ReadAllText(helperPath);
+        var watcher = File.ReadAllText(watcherPath);
+        var listenBodies = ExtractMethodBody(helper, "public static Task<nint> ListenForNewExplorerWindowAsync") +
+                           ExtractMethodBody(helper, "public static nint ListenForNewExplorerTab") +
+                           ExtractMethodBody(helper, "public static Task<nint> ListenForNewExplorerTabAsync");
+        var targetBody = ExtractMethodBody(watcher, "private nint GetMainWindowHWnd");
+        var startupBody = ExtractMethodBody(watcher, "private bool IsStartupExplorerLocation");
+
+        Assert(!listenBodies.Contains(".Except(current", StringComparison.Ordinal) &&
+               listenBodies.Contains("CreateKnownHandleSet", StringComparison.Ordinal),
+            "Explorer window/tab polling should reuse a known-handle set instead of allocating Except state on every poll.");
+        Assert(targetBody.Contains("WinApi.FindAllWindowsEx(\"CabinetWClass\").ToArray()", StringComparison.Ordinal) &&
+               targetBody.Contains("GetCachedTabCount", StringComparison.Ordinal),
+            "Merge target selection should snapshot Explorer windows once and reuse tab counts across fallback passes.");
+        Assert(startupBody.Contains("_startupLocationCache.TryGetValue", StringComparison.Ordinal) &&
+               watcher.Contains("StartupLocationCacheLimit", StringComparison.Ordinal),
+            "Startup-location checks should cache Shell PIDL equivalence results on the ShellWindows hot path without growing unbounded.");
 
         return Task.CompletedTask;
     }
