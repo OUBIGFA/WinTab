@@ -5,6 +5,8 @@ VisualStudioVersion = 17.8.34309.116
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinTab", "WinTab\WinTab.csproj", "{F5A13696-3D58-4925-A63E-83D9495A6F0C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinTab.Tests", "WinTab.Tests\WinTab.Tests.csproj", "{9F85C4D5-1FB3-4F67-BD91-8C476BBAE8EB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{F5A13696-3D58-4925-A63E-83D9495A6F0C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F5A13696-3D58-4925-A63E-83D9495A6F0C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F5A13696-3D58-4925-A63E-83D9495A6F0C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9F85C4D5-1FB3-4F67-BD91-8C476BBAE8EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9F85C4D5-1FB3-4F67-BD91-8C476BBAE8EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9F85C4D5-1FB3-4F67-BD91-8C476BBAE8EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9F85C4D5-1FB3-4F67-BD91-8C476BBAE8EB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -64,7 +64,8 @@ internal static class ExplorerLaunchLocationResolverTests
             ("merge source close is verified before hidden tracking is cleared", ExplorerTabSelectionTests.MergeSourceCloseIsVerifiedBeforeHiddenTrackingIsCleared),
             ("Early WinEvent hide does not wait on merge target discovery", ExplorerTabSelectionTests.EarlyHideDoesNotWaitOnMergeTargetDiscovery),
             ("first run settings window fits without scrolling", ExplorerTabSelectionTests.FirstRunSettingsWindowFitsWithoutScrolling),
-            ("window merge uses a single registration lifecycle", ExplorerTabSelectionTests.WindowMergeUsesSingleRegistrationLifecycle)
+            ("window merge uses a single registration lifecycle", ExplorerTabSelectionTests.WindowMergeUsesSingleRegistrationLifecycle),
+            ("update checks prefer the current architecture installer", ExplorerTabSelectionTests.UpdateCheckPrefersCurrentArchitectureInstaller)
         };
 
         var failed = 0;
@@ -785,6 +786,26 @@ internal static class ExplorerTabSelectionTests
             "A mergeable source window must be hidden before slower tab-handle, tab-count, and location waits can let Explorer paint it.");
         Assert(registrationBody.Contains("RemoveMergeSourceTracking(hWnd)", StringComparison.Ordinal),
             "A successfully merged source window must be removed from hidden-source tracking after the close is verified.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task UpdateCheckPrefersCurrentArchitectureInstaller()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Managers", "UpdateManager.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private static string? FindMatchingUpdateAssetUrl") +
+                         ExtractMethodBody(source, "private static string? GetInstallerArchitectureSuffix");
+
+        Assert(methodBody.Contains("RuntimeInformation.ProcessArchitecture", StringComparison.Ordinal) &&
+               methodBody.Contains("Architecture.X64", StringComparison.Ordinal) &&
+               methodBody.Contains("Architecture.X86", StringComparison.Ordinal) &&
+               methodBody.Contains("Architecture.Arm64", StringComparison.Ordinal),
+            "Update downloads must match the current process architecture instead of using the first installer asset.");
+        Assert(methodBody.Contains("_x64_Setup.exe", StringComparison.Ordinal) &&
+               methodBody.Contains("_x86_Setup.exe", StringComparison.Ordinal) &&
+               methodBody.Contains("_arm64_Setup.exe", StringComparison.Ordinal),
+            "Update downloads must select the release asset suffix for each packaged architecture.");
 
         return Task.CompletedTask;
     }

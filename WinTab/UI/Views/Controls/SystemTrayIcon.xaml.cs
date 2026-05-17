@@ -11,6 +11,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
     private readonly HookManager _hookManager;
     private readonly Action _showWindowAction;
     private readonly Action _exitAction;
+    private bool _disposed;
 
     public event EventHandler? SettingsChanged;
 
@@ -136,6 +137,12 @@ public partial class SystemTrayIcon : UserControl, IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _hookManager.StateChanged -= RefreshState;
+        _hookManager.ShellInitialized -= RefreshState;
         TrayIcon.Dispose();
         GC.SuppressFinalize(this);
     }

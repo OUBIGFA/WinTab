@@ -65,6 +65,19 @@ WinTab/
 %APPDATA%\WinTab\settings.json
 ```
 
+## Development
+
+This project uses `SHDocVw` / `Shell32` COM references and must be built with Visual Studio MSBuild. `dotnet build` fails because the .NET Core MSBuild path does not support `ResolveComReference`.
+
+```powershell
+# Publish one architecture
+.\build.ps1 -Arch x64 -SkipInstaller
+
+# Build the solution and the console self-check project
+MSBuild.exe WinTab.sln /restore /t:Build
+WinTab.Tests\bin\Debug\net9.0-windows\WinTab.Tests.exe
+```
+
 ## Acknowledgements
 
 - [ExplorerTabUtility](https://github.com/w4po/ExplorerTabUtility)
@@ -72,4 +85,3 @@ WinTab/
 ## License
 
 MIT License
-

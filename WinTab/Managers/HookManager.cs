@@ -9,6 +9,8 @@ public sealed class HookManager : IDisposable
     private readonly SynchronizationContext _syncContext;
     private readonly ExplorerWatcher _explorerWatcher;
     private readonly ExplorerTabDoubleClickHook _doubleClickHook;
+    private readonly System.Windows.SessionEndingCancelEventHandler _sessionEndingHandler;
+    private bool _disposed;
 
     public event Action? StateChanged;
     public event Action? ShellInitialized;
@@ -24,7 +26,8 @@ public sealed class HookManager : IDisposable
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
         _doubleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
 
-        System.Windows.Application.Current.SessionEnding += (_, _) => Dispose();
+        _sessionEndingHandler = (_, _) => Dispose();
+        System.Windows.Application.Current.SessionEnding += _sessionEndingHandler;
     }
 
     public bool IsShellReady => _explorerWatcher.IsShellReady;
@@ -88,6 +91,11 @@ public sealed class HookManager : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        System.Windows.Application.Current.SessionEnding -= _sessionEndingHandler;
         _doubleClickHook.Dispose();
         _explorerWatcher.Dispose();
         GC.SuppressFinalize(this);
