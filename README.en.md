@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="Assets/128x128.png" alt="WinTab Logo"/>
+  <img src="Assets/128x128.png" alt="WinTab Logo" />
 
   <h1>WinTab</h1>
 
@@ -43,40 +43,6 @@ Pick the installer that matches your CPU architecture ([Releases](https://github
 
 - Windows 11 22H2 or newer
 - .NET 9 Desktop Runtime (the installer downloads it on first run if missing)
-
-## Project Structure
-
-```text
-WinTab/
-├── .github/
-├── Assets/
-├── installers/
-├── WinTab/
-├── build.ps1
-├── LICENSE
-├── README.md
-├── README.en.md
-└── WinTab.sln
-```
-
-## Settings
-
-```text
-%APPDATA%\WinTab\settings.json
-```
-
-## Development
-
-This project uses `SHDocVw` / `Shell32` COM references and must be built with Visual Studio MSBuild. `dotnet build` fails because the .NET Core MSBuild path does not support `ResolveComReference`.
-
-```powershell
-# Publish one architecture
-.\build.ps1 -Arch x64 -SkipInstaller
-
-# Build the solution and the console self-check project
-MSBuild.exe WinTab.sln /restore /t:Build
-WinTab.Tests\bin\Debug\net9.0-windows\WinTab.Tests.exe
-```
 
 ## Acknowledgements
 

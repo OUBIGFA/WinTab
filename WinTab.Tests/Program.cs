@@ -71,7 +71,9 @@ internal static class ExplorerLaunchLocationResolverTests
             ("settings resize writes are debounced and flushed", ExplorerTabSelectionTests.SettingsResizeWritesAreDebouncedAndFlushed),
             ("Explorer hot paths avoid repeated polling work", ExplorerTabSelectionTests.ExplorerHotPathsAvoidRepeatedPollingWork),
             ("window merge uses a single registration lifecycle", ExplorerTabSelectionTests.WindowMergeUsesSingleRegistrationLifecycle),
-            ("update checks prefer the current architecture installer", ExplorerTabSelectionTests.UpdateCheckPrefersCurrentArchitectureInstaller)
+            ("update checks prefer the current architecture installer", ExplorerTabSelectionTests.UpdateCheckPrefersCurrentArchitectureInstaller),
+            ("double-click close can continue after a tab-strip hit-test refresh gap", ExplorerTabDoubleClickCloseTests.ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick),
+            ("double-click close chain ignores points outside the double-click geometry", ExplorerTabDoubleClickCloseTests.CloseChainFallbackIgnoresDifferentPoints)
         };
 
         var failed = 0;

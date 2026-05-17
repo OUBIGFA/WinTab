@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="Assets/128x128.png" alt="WinTab Logo"/>
+  <img src="Assets/128x128.png" alt="WinTab Logo" />
 
   <h1>WinTab</h1>
 
@@ -43,40 +43,6 @@
 
 - Windows 11 22H2 或更高版本
 - .NET 9 Desktop Runtime（首次运行安装器会自动下载安装）
-
-## 项目结构
-
-```text
-WinTab/
-├── .github/
-├── Assets/
-├── installers/
-├── WinTab/
-├── build.ps1
-├── LICENSE
-├── README.md
-├── README.en.md
-└── WinTab.sln
-```
-
-## 配置文件
-
-```text
-%APPDATA%\WinTab\settings.json
-```
-
-## 开发与验证
-
-此项目使用 `SHDocVw` / `Shell32` COM 引用，需要 Visual Studio MSBuild 构建；`dotnet build` 会因 `ResolveComReference` 限制失败。
-
-```powershell
-# 发布单个架构
-.\build.ps1 -Arch x64 -SkipInstaller
-
-# 构建解决方案和控制台自检项目
-MSBuild.exe WinTab.sln /restore /t:Build
-WinTab.Tests\bin\Debug\net9.0-windows\WinTab.Tests.exe
-```
 
 ## 致谢
 
