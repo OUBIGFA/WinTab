@@ -1,6 +1,6 @@
-<div></div>
+<div align="center">
 
-![WinTab Logo](Assets/128x128.png) 
+![WinTab Logo](Assets/128x128.png)
 
 # WinTab
 
@@ -8,7 +8,9 @@ File Explorer tab utility for Windows 11
 
 [简体中文](README.md) | English
 
-     ![Platform](https://img.shields.io/badge/platform-Windows%2011-555555)     ![.NET](https://img.shields.io/badge/.NET-9.0-555555)     ![License](https://img.shields.io/badge/license-MIT-555555)   
+![Platform](https://img.shields.io/badge/platform-Windows%2011-555555) ![.NET](https://img.shields.io/badge/.NET-9.0-555555) ![License](https://img.shields.io/badge/license-MIT-555555)
+
+WinTab is a Windows 11 utility that automatically merges newly opened File Explorer windows into tabs, with path deduplication, double-click to close, independent window retention via Ctrl+Shift, and system tray operation for more efficient file management.
 
 ---
 
