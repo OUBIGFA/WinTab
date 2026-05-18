@@ -89,7 +89,8 @@ internal static class ExplorerLaunchLocationResolverTests
             ("MergeSourceConcealPulse has an absolute ceiling", ExplorerTabSelectionTests.MergeSourceConcealPulseHasAbsoluteCeiling),
             ("MergeSourceConcealPulse never restarts itself in finally", ExplorerTabSelectionTests.MergeSourceConcealPulseNeverRestartsItselfInFinally),
             ("MergeSourceConcealPulse sleep period is at least 25 ms", ExplorerTabSelectionTests.MergeSourceConcealPulseSleepIsAtLeast25Ms),
-            ("ExplorerWatcher Dispose releases the explorer-check timer", ExplorerTabSelectionTests.ExplorerWatcherDisposeReleasesExplorerCheckTimer)
+            ("ExplorerWatcher Dispose releases the explorer-check timer", ExplorerTabSelectionTests.ExplorerWatcherDisposeReleasesExplorerCheckTimer),
+            ("Pre-existing Explorer windows are not concealed during startup race", ExplorerTabSelectionTests.PreExistingExplorerWindowsAreNotConcealedDuringStartupRace)
         };
 
         var failed = 0;
@@ -1281,6 +1282,43 @@ internal static class ExplorerTabSelectionTests
                disposeBody.Contains("_explorerCheckTimer = null", StringComparison.Ordinal),
             "Dispose must release the explorer-process polling timer. If the timer is still armed when WinTab " +
             "shuts down, the System.Threading.Timer callback can fire against torn-down shell objects.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task PreExistingExplorerWindowsAreNotConcealedDuringStartupRace()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var adoptBody = ExtractMethodBody(source, "private List<(InternetExplorer Window, WindowInfo WindowInfo)> AdoptNewShellWindows");
+        var startBody = ExtractMethodBody(source, "public void StartHook");
+
+        // StartHook must seed the pre-existing-window protection (RecoverHiddenExplorerWindows adds every
+        // currently-open CabinetWClass top-level to _processedHWnds) BEFORE enabling forced tabs or starting
+        // the conceal pulse. Otherwise the pulse worker can race the shell-objects loop and hide a user's
+        // pre-existing Explorer window before InitializeShellObjects manages to hook it.
+        var recoverIndex = startBody.IndexOf("RecoverHiddenExplorerWindows", StringComparison.Ordinal);
+        var forcingIndex = startBody.IndexOf("_isForcingTabs = true", StringComparison.Ordinal);
+        var pulseIndex = startBody.IndexOf("StartMergeSourceConcealPulse", StringComparison.Ordinal);
+        Assert(recoverIndex >= 0 && forcingIndex > recoverIndex && pulseIndex > forcingIndex,
+            "StartHook must seed pre-existing window protection before enabling forced tabs and starting the conceal pulse.");
+
+        // AdoptNewShellWindows is also reached through ShellWindows registration callbacks and from
+        // foreground/show WinEvents on the user's existing Explorer windows. Its inline HideMergeSourceWindow
+        // call must respect _processedHWnds so windows that existed before WinTab took over are never hidden
+        // as merge sources, even if they happen to be enumerated before InitializeShellObjects hooks them.
+        var hideIndex = adoptBody.IndexOf("HideMergeSourceWindow(hWnd)", StringComparison.Ordinal);
+        Assert(hideIndex >= 0, "AdoptNewShellWindows must still hide real merge-source windows.");
+
+        var preHide = adoptBody.Substring(0, hideIndex);
+        var lastIfStart = preHide.LastIndexOf("if (", StringComparison.Ordinal);
+        Assert(lastIfStart >= 0, "AdoptNewShellWindows hide call must be gated by an if-condition.");
+        var hideCondition = preHide.Substring(lastIfStart, preHide.Length - lastIfStart);
+        Assert(hideCondition.Contains("_processedHWnds.ContainsKey(hWnd)", StringComparison.Ordinal),
+            "AdoptNewShellWindows must skip windows already in _processedHWnds so pre-existing Explorer " +
+            "windows (seeded by RecoverHiddenExplorerWindows on StartHook) are never hidden as merge sources " +
+            "during the startup race. On first install with multiple pre-existing windows, the lack of this " +
+            "check causes the second window in the batch to be concealed and effectively unusable.");
 
         return Task.CompletedTask;
     }

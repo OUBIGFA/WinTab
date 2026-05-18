@@ -911,6 +911,7 @@ public class ExplorerWatcher : IHook
 
                 window.PutProperty("seenBefore", true);
                 if (!wasTrackedTopLevel &&
+                    !_processedHWnds.ContainsKey(hWnd) &&
                     (_isForcingTabs || _reuseTabs) &&
                     !Helper.IsCtrlShiftDown() &&
                     _mainWindowHandle != hWnd)
