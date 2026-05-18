@@ -83,7 +83,13 @@ internal static class ExplorerLaunchLocationResolverTests
             ("TabSelectionEngine waits for the delayed active tab update without skipping", ExplorerTabSelectionTests.TabSelectionEngineWaitsForDelayedActiveUpdate),
             ("TabSelectionEngine survives transient zero active readings", ExplorerTabSelectionTests.TabSelectionEngineSurvivesTransientZeroActive),
             ("TabSelectionEngine honors the total timeout even with many tabs", ExplorerTabSelectionTests.TabSelectionEngineHonorsTotalTimeout),
-            ("TabSelectionEngine does not revisit indexes during cycling", ExplorerTabSelectionTests.TabSelectionEngineDoesNotRevisitIndexes)
+            ("TabSelectionEngine does not revisit indexes during cycling", ExplorerTabSelectionTests.TabSelectionEngineDoesNotRevisitIndexes),
+            ("OnWindowShown filters WinEvent sub-element notifications", ExplorerTabSelectionTests.OnWindowShownFiltersSubElementWinEvents),
+            ("OnWindowShown skips non-Explorer top-level windows", ExplorerTabSelectionTests.OnWindowShownSkipsNonExplorerWindows),
+            ("MergeSourceConcealPulse has an absolute ceiling", ExplorerTabSelectionTests.MergeSourceConcealPulseHasAbsoluteCeiling),
+            ("MergeSourceConcealPulse never restarts itself in finally", ExplorerTabSelectionTests.MergeSourceConcealPulseNeverRestartsItselfInFinally),
+            ("MergeSourceConcealPulse sleep period is at least 25 ms", ExplorerTabSelectionTests.MergeSourceConcealPulseSleepIsAtLeast25Ms),
+            ("ExplorerWatcher Dispose releases the explorer-check timer", ExplorerTabSelectionTests.ExplorerWatcherDisposeReleasesExplorerCheckTimer)
         };
 
         var failed = 0;
@@ -1152,6 +1158,131 @@ internal static class ExplorerTabSelectionTests
         var distinctCalls = fixture.SelectionCalls.Distinct().Count();
         Assert(distinctCalls == fixture.SelectionCalls.Count,
             $"The engine must not request the same tab index more than once; called {string.Join(',', fixture.SelectionCalls)}.");
+    }
+
+    public static Task OnWindowShownFiltersSubElementWinEvents()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private void OnWindowShown");
+
+        Assert(methodBody.Contains("idObject != 0 || idChild != 0", StringComparison.Ordinal),
+            "OnWindowShown must skip sub-element WinEvents (idObject != OBJID_WINDOW). System-wide WinEvent " +
+            "hooks deliver hundreds-to-thousands of caret/focus/menu/list-item events per second on busy desktops; " +
+            "without this filter every blink would push the conceal pulse and shell-window scheduler.");
+
+        var idObjectIndex = methodBody.IndexOf("idObject != 0 || idChild != 0", StringComparison.Ordinal);
+        var heavyWorkIndex = methodBody.IndexOf("TryHideIncomingExplorerWindow(", StringComparison.Ordinal);
+        Assert(idObjectIndex >= 0 && heavyWorkIndex > idObjectIndex,
+            "The OBJID_WINDOW/CHILDID_SELF filter must run before any cross-process P/Invoke work.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task OnWindowShownSkipsNonExplorerWindows()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private void OnWindowShown");
+
+        Assert(methodBody.Contains("GetExplorerTopLevelWindow(hWnd)", StringComparison.Ordinal),
+            "OnWindowShown must resolve the Explorer top-level window once and reuse the result so we never " +
+            "trigger the conceal pulse or registration scheduler for non-Explorer events.");
+
+        var resolveIndex = methodBody.IndexOf("GetExplorerTopLevelWindow(hWnd)", StringComparison.Ordinal);
+        var pulseIndex = methodBody.IndexOf("StartMergeSourceConcealPulse()", StringComparison.Ordinal);
+        var scheduleIndex = methodBody.IndexOf("ScheduleShellWindowRegistration(1)", StringComparison.Ordinal);
+        Assert(resolveIndex >= 0 && pulseIndex > resolveIndex && scheduleIndex > resolveIndex,
+            "The Explorer top-level resolution must happen before the conceal pulse and registration scheduler " +
+            "are invoked.");
+
+        Assert(methodBody.Contains("if (explorerTopLevel == 0) return", StringComparison.Ordinal),
+            "A non-Explorer WinEvent must bail out immediately instead of scheduling work for unrelated windows.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task MergeSourceConcealPulseHasAbsoluteCeiling()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var pulseBody = ExtractMethodBody(source, "private void StartMergeSourceConcealPulse");
+
+        Assert(source.Contains("MergeSourceConcealPulseAbsoluteCeilingMs", StringComparison.Ordinal),
+            "An absolute ceiling constant must exist so the pulse worker cannot extend its deadline forever.");
+
+        Assert(pulseBody.Contains("_mergeSourceConcealPulseFirstStartTicks", StringComparison.Ordinal) &&
+               pulseBody.Contains("Math.Min(requestedUntilTicks, ceilingTicks)", StringComparison.Ordinal),
+            "StartMergeSourceConcealPulse must clamp every requested deadline to (firstStart + ceiling) so a " +
+            "continuous stream of WinEvents (caret blinks, system tray updates, etc.) cannot keep the worker " +
+            "rescanning every CabinetWClass window every loop iteration forever.");
+
+        Assert(pulseBody.Contains("_mergeSourceConcealPulseFirstStartTicks, 0)", StringComparison.Ordinal),
+            "The first-start tracker must reset to 0 when the worker exits so a fresh pulse can establish a new ceiling.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task MergeSourceConcealPulseNeverRestartsItselfInFinally()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var pulseBody = ExtractMethodBody(source, "private void StartMergeSourceConcealPulse");
+
+        var finallyIndex = pulseBody.IndexOf("finally", StringComparison.Ordinal);
+        Assert(finallyIndex >= 0, "The pulse worker must have a finally block that resets the running flag.");
+
+        var finallyTail = pulseBody.Substring(finallyIndex);
+        Assert(!finallyTail.Contains("StartMergeSourceConcealPulse(", StringComparison.Ordinal),
+            "The pulse worker must not re-arm itself from inside its own finally block. Self-restarts let a " +
+            "single rolled-over deadline keep the conceal worker alive across long busy periods.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task MergeSourceConcealPulseSleepIsAtLeast25Ms()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var pulseBody = ExtractMethodBody(source, "private void StartMergeSourceConcealPulse");
+
+        Assert(!pulseBody.Contains("Task.Delay(15)", StringComparison.Ordinal),
+            "The old 15ms tight loop scanned every CabinetWClass window 66 times a second; that is more than " +
+            "enough to noticeably contend with Explorer's UI thread on busy systems.");
+        Assert(source.Contains("MergeSourceConcealPulseSleepMs = 25", StringComparison.Ordinal) &&
+               pulseBody.Contains("Task.Delay(MergeSourceConcealPulseSleepMs)", StringComparison.Ordinal),
+            "The pulse worker sleep must be at least 25 ms between iterations and reference the shared constant.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task ExplorerWatcherDisposeReleasesExplorerCheckTimer()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+
+        // The outer ExplorerWatcher.Dispose is the last "public void Dispose" in the file (the nested
+        // WinEventHookThread also defines one). Use LastIndexOf to skip the nested implementation.
+        var disposeSignatureIndex = source.LastIndexOf("public void Dispose", StringComparison.Ordinal);
+        Assert(disposeSignatureIndex >= 0, "Could not find the outer ExplorerWatcher.Dispose method.");
+        var openBraceIndex = source.IndexOf('{', disposeSignatureIndex);
+        var depth = 0;
+        var endIndex = -1;
+        for (var i = openBraceIndex; i < source.Length; i++)
+        {
+            if (source[i] == '{') depth++;
+            else if (source[i] == '}') depth--;
+            if (depth == 0) { endIndex = i; break; }
+        }
+        Assert(endIndex > openBraceIndex, "Could not extract the outer Dispose body.");
+        var disposeBody = source.Substring(openBraceIndex, endIndex - openBraceIndex + 1);
+
+        Assert(disposeBody.Contains("_explorerCheckTimer?.Dispose()", StringComparison.Ordinal) &&
+               disposeBody.Contains("_explorerCheckTimer = null", StringComparison.Ordinal),
+            "Dispose must release the explorer-process polling timer. If the timer is still armed when WinTab " +
+            "shuts down, the System.Threading.Timer callback can fire against torn-down shell objects.");
+
+        return Task.CompletedTask;
     }
 
     private sealed class TabSelectionFixture

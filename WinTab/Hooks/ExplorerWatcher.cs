@@ -549,7 +549,18 @@ public class ExplorerWatcher : IHook
     {
         if (!_isForcingTabs || hWnd == 0) return;
 
-        TryHideIncomingExplorerWindow(hWnd);
+        // OBJID_WINDOW = 0 and CHILDID_SELF = 0. The system-wide WinEvent hook range fires for every
+        // accessibility sub-element on the desktop (caret, focus, menu items, scrollbars, list items,
+        // alerts, etc.). Without this filter every caret blink in every program would push us into the
+        // expensive Explorer-top-level lookup + ShellWindows registration scheduler + 25ms-pulse worker.
+        if (idObject != 0 || idChild != 0) return;
+
+        // Skip non-Explorer events entirely so the conceal pulse and registration scheduler only fire
+        // when something actually touched a CabinetWClass window.
+        var explorerTopLevel = GetExplorerTopLevelWindow(hWnd);
+        if (explorerTopLevel == 0) return;
+
+        TryHideIncomingExplorerWindow(explorerTopLevel);
         StartMergeSourceConcealPulse();
         ScheduleShellWindowRegistration(1);
     }
@@ -623,12 +634,25 @@ public class ExplorerWatcher : IHook
         Helper.HiddenWindows.TryRemove(hWnd, out _);
         PreventWindowHiding(hWnd);
     }
+    private const int MergeSourceConcealPulseAbsoluteCeilingMs = 1_500;
+    private const int MergeSourceConcealPulseSleepMs = 25;
+    private long _mergeSourceConcealPulseFirstStartTicks;
+
     private void StartMergeSourceConcealPulse(int durationMs = 1_200)
     {
         if (!_isForcingTabs && !_reuseTabs)
             return;
 
-        var untilTicks = DateTime.UtcNow.AddMilliseconds(Math.Max(1, durationMs)).Ticks;
+        var requestedUntilTicks = DateTime.UtcNow.AddMilliseconds(Math.Max(1, durationMs)).Ticks;
+
+        // Cap the worker's absolute lifetime so a continuous stream of WinEvents cannot keep us
+        // scanning every CabinetWClass window forever; once the ceiling is reached, additional
+        // pulse requests are clamped and the worker exits.
+        Interlocked.CompareExchange(ref _mergeSourceConcealPulseFirstStartTicks, DateTime.UtcNow.Ticks, 0);
+        var firstStart = Volatile.Read(ref _mergeSourceConcealPulseFirstStartTicks);
+        var ceilingTicks = firstStart + MergeSourceConcealPulseAbsoluteCeilingMs * TimeSpan.TicksPerMillisecond;
+        var untilTicks = Math.Min(requestedUntilTicks, ceilingTicks);
+
         var currentTicks = Volatile.Read(ref _mergeSourceConcealPulseUntilTicks);
         while (untilTicks > currentTicks)
         {
@@ -660,14 +684,14 @@ public class ExplorerWatcher : IHook
                         //
                     }
 
-                    await Task.Delay(15);
+                    await Task.Delay(MergeSourceConcealPulseSleepMs);
                 }
             }
             finally
             {
                 Interlocked.Exchange(ref _mergeSourceConcealPulseRunning, 0);
-                if (DateTime.UtcNow.Ticks < Volatile.Read(ref _mergeSourceConcealPulseUntilTicks))
-                    StartMergeSourceConcealPulse(250);
+                Interlocked.Exchange(ref _mergeSourceConcealPulseFirstStartTicks, 0);
+                Interlocked.Exchange(ref _mergeSourceConcealPulseUntilTicks, 0);
             }
         });
     }
@@ -2318,6 +2342,15 @@ public class ExplorerWatcher : IHook
 
     public void Dispose()
     {
+        try
+        {
+            _explorerCheckTimer?.Dispose();
+            _explorerCheckTimer = null;
+        }
+        catch
+        {
+            //
+        }
         DisposeShellObjects();
         _instanceRunning = false;
         _processWatcher.Dispose();
