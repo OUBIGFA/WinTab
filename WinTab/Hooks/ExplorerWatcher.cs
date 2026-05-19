@@ -323,35 +323,47 @@ public class ExplorerWatcher : IHook
             targetPidl = _shellPathComparer.GetPidlFromPath(targetPath);
             if (targetPidl == 0) return false;
 
-            foreach (var (window, windowInfo, tab) in _windowEntryDict)
+            // Hold the lock for the whole scan: concurrent .Add/.Remove during enumeration would
+            // throw and the outer catch would silently fail the search.
+            lock (_windowEntryDictLock)
             {
-                if (!windowInfo.EventsHooked ||
-                    !tab.HasValue ||
-                    tab.Value == 0)
+                foreach (var (window, windowInfo, tab) in _windowEntryDict)
                 {
-                    continue;
-                }
+                    if (!tab.HasValue || tab.Value == 0)
+                        continue;
 
-                nint topLevelWindow;
-                try
-                {
-                    topLevelWindow = new IntPtr(window.HWND);
-                }
-                catch
-                {
-                    continue;
-                }
+                    nint topLevelWindow;
+                    try
+                    {
+                        topLevelWindow = new IntPtr(window.HWND);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
 
-                if (excludedTopLevelWindow != 0 && topLevelWindow == excludedTopLevelWindow)
-                    continue;
+                    if (excludedTopLevelWindow != 0 && topLevelWindow == excludedTopLevelWindow)
+                        continue;
 
-                var comparePath = windowInfo.Location ?? GetLocation(window);
+                    string comparePath;
+                    try
+                    {
+                        comparePath = windowInfo.Location ?? GetLocation(window);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
 
-                if (_shellPathComparer.IsEquivalent(targetPath, comparePath, targetPidl))
-                {
-                    foundWindow = window;
-                    tabHandle = tab.Value;
-                    return true;
+                    if (string.IsNullOrWhiteSpace(comparePath))
+                        continue;
+
+                    if (_shellPathComparer.IsEquivalent(targetPath, comparePath, targetPidl))
+                    {
+                        foundWindow = window;
+                        tabHandle = tab.Value;
+                        return true;
+                    }
                 }
             }
 
@@ -367,7 +379,7 @@ public class ExplorerWatcher : IHook
                 Marshal.FreeCoTaskMem(targetPidl);
         }
     }
-    public Task<bool> SelectTabByHandle(nint windowHandle, nint tabHandle, int timeoutMs = 500)
+    public Task<bool> SelectTabByHandle(nint windowHandle, nint tabHandle, int timeoutMs = 2_500)
     {
         if (windowHandle == 0 || tabHandle == 0)
             return Task.FromResult(false);
@@ -377,7 +389,8 @@ public class ExplorerWatcher : IHook
             () => Helper.GetAllExplorerTabs(windowHandle).ToArray(),
             () => GetActiveTabHandle(windowHandle),
             i => SelectTabByIndex(windowHandle, i),
-            totalTimeoutMs: timeoutMs);
+            totalTimeoutMs: timeoutMs,
+            perStepTimeoutMs: 250);
     }
     public void SelectLastTab(nint windowHandle)
     {
@@ -1516,19 +1529,9 @@ public class ExplorerWatcher : IHook
                 {
                     windowHandle = WinApi.GetParent(existingTab);
                     WinApi.RestoreWindowToForeground(windowHandle);
-                    if (await SelectTabByHandle(windowHandle, existingTab, 600))
-                    {
-                        DebugLog($"OpenTab reused target={windowToOpen.Location}");
-                        return true;
-                    }
-
-                    if (GetActiveTabHandle(windowHandle) == existingTab)
-                    {
-                        DebugLog($"OpenTab reused-late target={windowToOpen.Location}");
-                        return true;
-                    }
-
-                    DebugLog($"OpenTab reuse-select-failed target={windowToOpen.Location}");
+                    await SelectTabByHandle(windowHandle, existingTab);
+                    DebugLog($"OpenTab reused target={windowToOpen.Location}");
+                    return true;
                 }
             }
 

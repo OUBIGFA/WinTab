@@ -90,7 +90,11 @@ internal static class ExplorerLaunchLocationResolverTests
             ("MergeSourceConcealPulse never restarts itself in finally", ExplorerTabSelectionTests.MergeSourceConcealPulseNeverRestartsItselfInFinally),
             ("MergeSourceConcealPulse sleep period is at least 25 ms", ExplorerTabSelectionTests.MergeSourceConcealPulseSleepIsAtLeast25Ms),
             ("ExplorerWatcher Dispose releases the explorer-check timer", ExplorerTabSelectionTests.ExplorerWatcherDisposeReleasesExplorerCheckTimer),
-            ("Pre-existing Explorer windows are not concealed during startup race", ExplorerTabSelectionTests.PreExistingExplorerWindowsAreNotConcealedDuringStartupRace)
+            ("Pre-existing Explorer windows are not concealed during startup race", ExplorerTabSelectionTests.PreExistingExplorerWindowsAreNotConcealedDuringStartupRace),
+            ("Recycle Bin and third-party folder opens reuse existing tab without duplicates", ExplorerTabSelectionTests.RecycleBinAndExternalFolderOpensReuseExistingTabWithoutDuplicates),
+            ("Tab selection budget tolerates slow shell folders without skipping cycles", ExplorerTabSelectionTests.TabSelectionBudgetToleratesSlowShellFoldersWithoutSkippingCycles),
+            ("Tab search matches pre-hook windows so external opens find their tab during races", ExplorerTabSelectionTests.TabSearchMatchesPreHookWindowsSoExternalOpensFindTheirTabDuringRaces),
+            ("Tab selection engine still converges when each Explorer step is slow", ExplorerTabSelectionTests.TabSelectionEngineSlowExplorerStillConvergesWithGenerousPerStepBudget)
         };
 
         var failed = 0;
@@ -270,8 +274,8 @@ internal static class ExplorerTabSelectionTests
         var methodBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection") +
                          ExtractMethodBody(source, "private async Task<bool> NavigateNewTabToTargetAsync");
 
-        Assert(methodBody.Contains("SelectTabByHandle(windowHandle, existingTab, 600)", StringComparison.Ordinal),
-            "Tab reuse should activate the matching tab via the simplified TabSelectionEngine path.");
+        Assert(methodBody.Contains("await SelectTabByHandle(windowHandle, existingTab);", StringComparison.Ordinal),
+            "Tab reuse should activate the matching tab via the simplified TabSelectionEngine path on a best-effort basis (no fall-through to a duplicate tab when selection times out).");
         Assert(methodBody.Contains("ListenForNewExplorerTabAsync(mainWindowHWnd, currentTabs, 2_000)", StringComparison.Ordinal),
             "New tab creation should use the short ExplorerTabUtility wait window.");
         Assert(methodBody.Contains("FindShellWindowByTabHandle(newTabHandle, mainWindowHWnd)", StringComparison.Ordinal) &&
@@ -730,16 +734,21 @@ internal static class ExplorerTabSelectionTests
         var source = File.ReadAllText(sourcePath);
         var openBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection");
 
-        var successLogIndex = openBody.IndexOf("OpenTab reused target", StringComparison.Ordinal);
-        var failureLogIndex = openBody.IndexOf("OpenTab reuse-select-failed", StringComparison.Ordinal);
-        Assert(successLogIndex >= 0 && failureLogIndex > successLogIndex,
-            "Reuse must short-circuit with a success log when SelectTabByHandle activates the existing tab.");
+        var foundIndex = openBody.IndexOf("TrySearchForTab(windowToOpen.Location, windowToOpen.Handle", StringComparison.Ordinal);
+        var successLogIndex = openBody.IndexOf("OpenTab reused target", foundIndex >= 0 ? foundIndex : 0, StringComparison.Ordinal);
+        var returnTrueIndex = openBody.IndexOf("return true;", successLogIndex >= 0 ? successLogIndex : 0, StringComparison.Ordinal);
+        Assert(foundIndex >= 0 && successLogIndex > foundIndex && returnTrueIndex > successLogIndex,
+            "Reuse must log success and return true once an existing tab is located so external folder opens (Recycle Bin, third-party app launches) never create a duplicate tab.");
 
-        var requestIndex = openBody.IndexOf("RequestToOpenNewTab(mainWindowHWnd, lockToOpenWindows: false)", StringComparison.Ordinal);
-        Assert(requestIndex > failureLogIndex,
-            "When direct selection fails, the reuse branch must fall through to opening a new tab instead of returning a false success.");
-        Assert(openBody.Contains("if (await SelectTabByHandle(windowHandle, existingTab, 600))", StringComparison.Ordinal),
-            "Reuse activation must rely on the TabSelectionEngine-backed SelectTabByHandle return value.");
+        Assert(!openBody.Contains("OpenTab reuse-select-failed", StringComparison.Ordinal),
+            "Reuse must not fall through to new-tab creation when an existing tab is found.");
+
+        var newTabIndex = openBody.IndexOf("RequestToOpenNewTab(mainWindowHWnd, lockToOpenWindows: false)", StringComparison.Ordinal);
+        Assert(newTabIndex == -1 || newTabIndex > returnTrueIndex,
+            "New-tab creation must happen only on the no-existing-tab path, not after a found tab returns success.");
+
+        Assert(openBody.Contains("await SelectTabByHandle(windowHandle, existingTab);", StringComparison.Ordinal),
+            "Reuse must still drive the matching tab into focus on a best-effort basis, even though success no longer depends on the return value.");
 
         return Task.CompletedTask;
     }
@@ -1323,6 +1332,122 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
+    public static Task RecycleBinAndExternalFolderOpensReuseExistingTabWithoutDuplicates()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var openBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection");
+
+        var foundIndex = openBody.IndexOf("TrySearchForTab(windowToOpen.Location, windowToOpen.Handle", StringComparison.Ordinal);
+        Assert(foundIndex >= 0, "Reuse must search by location and source handle.");
+
+        var foregroundIndex = openBody.IndexOf("WinApi.RestoreWindowToForeground(windowHandle)", foundIndex, StringComparison.Ordinal);
+        var selectIndex = openBody.IndexOf("await SelectTabByHandle(windowHandle, existingTab)", foundIndex, StringComparison.Ordinal);
+        var reusedLogIndex = openBody.IndexOf("OpenTab reused target", foundIndex, StringComparison.Ordinal);
+        var returnTrueIndex = openBody.IndexOf("return true;", reusedLogIndex >= 0 ? reusedLogIndex : foundIndex, StringComparison.Ordinal);
+
+        Assert(foregroundIndex > foundIndex && selectIndex > foregroundIndex && reusedLogIndex > selectIndex && returnTrueIndex > reusedLogIndex,
+            "Reuse must, in order: foreground the target window, fire best-effort tab selection, log success, and return true. " +
+            "Any branch that converts selection failure into duplicate-tab creation re-opens the original bug.");
+
+        Assert(!openBody.Contains("if (await SelectTabByHandle(windowHandle, existingTab", StringComparison.Ordinal),
+            "Reuse must not gate success on SelectTabByHandle's return value — slow shell folders (Recycle Bin, network shares) miss tight cycle budgets.");
+        Assert(!openBody.Contains("OpenTab reuse-select-failed", StringComparison.Ordinal),
+            "The reuse-select-failed path used to create a duplicate tab; it must be removed entirely.");
+
+        var newTabIndex = openBody.IndexOf("RequestToOpenNewTab(mainWindowHWnd, lockToOpenWindows: false)", StringComparison.Ordinal);
+        Assert(newTabIndex == -1 || newTabIndex > returnTrueIndex,
+            "A new tab may only be created on the no-match path, never as a fallback when an existing matching tab was already located.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task TabSelectionBudgetToleratesSlowShellFoldersWithoutSkippingCycles()
+    {
+        var watcherPath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var watcher = File.ReadAllText(watcherPath);
+        var selectBody = ExtractMethodBody(watcher, "public Task<bool> SelectTabByHandle");
+
+        Assert(selectBody.Contains("totalTimeoutMs: timeoutMs", StringComparison.Ordinal),
+            "SelectTabByHandle must forward its timeout parameter to the engine.");
+        Assert(selectBody.Contains("perStepTimeoutMs: 250", StringComparison.Ordinal),
+            "Each tab cycle step must be given at least 250 ms so slow shell folder enumeration does not exhaust the budget mid-cycle.");
+        Assert(watcher.Contains("public Task<bool> SelectTabByHandle(nint windowHandle, nint tabHandle, int timeoutMs = 2_500)", StringComparison.Ordinal),
+            "Default total budget must be ~2500 ms — short enough for users, long enough for the slowest shell folder transitions.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task TabSearchMatchesPreHookWindowsSoExternalOpensFindTheirTabDuringRaces()
+    {
+        var watcherPath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var watcher = File.ReadAllText(watcherPath);
+        var searchBody = ExtractMethodBody(watcher, "private bool TrySearchForTab");
+
+        Assert(!searchBody.Contains("windowInfo.EventsHooked", StringComparison.Ordinal),
+            "TrySearchForTab must not gate on EventsHooked; a tab whose hook is still pending is still a valid reuse target as long as it has a tab handle.");
+        Assert(searchBody.Contains("excludedTopLevelWindow", StringComparison.Ordinal),
+            "Source-window exclusion still owns the 'do not match yourself' invariant.");
+        Assert(searchBody.Contains("!tab.HasValue || tab.Value == 0", StringComparison.Ordinal),
+            "Only a resolved tab handle is required.");
+
+        var locationIndex = searchBody.IndexOf("windowInfo.Location ?? GetLocation(window)", StringComparison.Ordinal);
+        Assert(locationIndex >= 0, "Compare path must fall back to a live GetLocation call when the cached location is missing.");
+
+        var preLocation = searchBody[..locationIndex];
+        var lastTryIndex = preLocation.LastIndexOf("try", StringComparison.Ordinal);
+        Assert(lastTryIndex >= 0 && lastTryIndex < locationIndex,
+            "The GetLocation fallback must be wrapped in a try/catch so a single misbehaving COM object cannot void the whole search and leak the user back to the duplicate-tab path.");
+
+        // Concurrent .Add/.Remove on _windowEntryDict during enumeration would throw
+        // InvalidOperationException, get swallowed by the outer catch, and silently fail the
+        // search. The foreach must hold _windowEntryDictLock for the duration of the scan.
+        var foreachIndex = searchBody.IndexOf("foreach (var (window, windowInfo, tab) in _windowEntryDict)", StringComparison.Ordinal);
+        Assert(foreachIndex >= 0, "Search must enumerate the window-entry dictionary.");
+        var preForeach = searchBody[..foreachIndex];
+        var lastLockIndex = preForeach.LastIndexOf("lock (_windowEntryDictLock)", StringComparison.Ordinal);
+        Assert(lastLockIndex >= 0,
+            "TrySearchForTab's foreach must be inside lock (_windowEntryDictLock) so concurrent dict mutation cannot break the search.");
+
+        return Task.CompletedTask;
+    }
+
+    public static async Task TabSelectionEngineSlowExplorerStillConvergesWithGenerousPerStepBudget()
+    {
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33, 44, 55 }, activeIndex: 0);
+        var pendingIndex = -1;
+        var pendingDeadline = 0L;
+        const int slowDelayMs = 120;
+
+        fixture.OnSelectByIndex = i =>
+        {
+            pendingIndex = i;
+            pendingDeadline = Environment.TickCount64 + slowDelayMs;
+        };
+        fixture.OnGetActive = current =>
+        {
+            if (pendingIndex >= 0 && Environment.TickCount64 >= pendingDeadline)
+            {
+                fixture.SetActiveIndex(pendingIndex);
+                pendingIndex = -1;
+                current = fixture.GetActiveSnapshot();
+            }
+            return current;
+        };
+
+        var ok = await TabSelectionEngine.CycleToTabAsync(
+            44,
+            fixture.GetTabs,
+            fixture.GetActive,
+            fixture.SendSelectByIndex,
+            totalTimeoutMs: 2_500,
+            pollSleepMs: 5,
+            perStepTimeoutMs: 250);
+
+        Assert(ok, "Engine must converge on the requested tab even when Explorer takes ~120 ms per switch.");
+        Assert(fixture.GetActive() == 44, "Final active tab must match the requested handle.");
+    }
+
     private sealed class TabSelectionFixture
     {
         public nint[] Tabs { get; }
@@ -1347,6 +1472,10 @@ internal static class ExplorerTabSelectionTests
         {
             if (index >= 0 && index < Tabs.Length)
                 _activeIndex = index;
+        }
+        public nint GetActiveSnapshot()
+        {
+            return _activeIndex >= 0 && _activeIndex < Tabs.Length ? Tabs[_activeIndex] : 0;
         }
         public void SendSelectByIndex(int i)
         {
