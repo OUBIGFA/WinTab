@@ -27,7 +27,7 @@ using DrawingRectangle = System.Drawing.Rectangle;
 public class ExplorerWatcher : IHook
 {
     private const int AutomationRootTtlMs = 5_000;
-    private const int NavigationCompleteWaitMs = 1_200;
+    private const int NavigationCompleteWaitMs = 600;
     private const int NavigationVerificationWaitMs = 1_200;
     private const int StripBoundsRectMatchSlop = 2;
     private const int StartupLocationCacheLimit = 512;
@@ -979,7 +979,7 @@ public class ExplorerWatcher : IHook
                 //
             }
 
-            await Task.Delay(150);
+            await Task.Delay(75);
             if (HasUntrackedShellWindows())
                 ScheduleShellWindowRegistration(1);
         });
@@ -1019,7 +1019,7 @@ public class ExplorerWatcher : IHook
         if (_shellWindows == null)
             return;
 
-        for (var i = 0; i < 8; i++)
+        for (var i = 0; i < 4; i++)
         {
             await _shellWindowRegistrationLock.WaitAsync();
             List<(InternetExplorer Window, WindowInfo WindowInfo)> windows;
@@ -1034,7 +1034,7 @@ public class ExplorerWatcher : IHook
 
             if (windows.Count == 0)
             {
-                await Task.Delay(75);
+                await Task.Delay(50);
                 if (!HasUntrackedShellWindows())
                     return;
 
@@ -1198,8 +1198,8 @@ public class ExplorerWatcher : IHook
         var closed = await Helper.DoUntilConditionAsync(
             () => !Helper.IsFileExplorerWindow(hWnd),
             isClosed => isClosed,
-            1_500,
-            50);
+            700,
+            40);
 
         if (closed)
             return true;
@@ -1208,8 +1208,8 @@ public class ExplorerWatcher : IHook
         closed = await Helper.DoUntilConditionAsync(
             () => !Helper.IsFileExplorerWindow(hWnd),
             isClosed => isClosed,
-            900,
-            50);
+            300,
+            40);
 
         if (!closed)
             await RestoreMergeSourceWindowAsync(hWnd);
@@ -1306,8 +1306,8 @@ public class ExplorerWatcher : IHook
         return Helper.DoUntilConditionAsync(
             () => Helper.GetAllExplorerTabs(hWnd).Take(2).Count(),
             count => count > 0,
-            1_500,
-            25);
+            800,
+            20);
     }
     private static async Task RestoreHiddenExplorerWindowAsync(nint hWnd)
     {
@@ -1679,8 +1679,11 @@ public class ExplorerWatcher : IHook
         DWebBrowserEvents2_NavigateComplete2EventHandler? navigateHandler = null;
         navigateHandler = (object _, ref object _) =>
         {
-            if (AreLocationsEquivalent(TryGetLocation(window), targetLocation))
-                navigationCompleted.TrySetResult(true);
+            // Trust the first NavigateComplete2 unconditionally. Explorer can fire the event a few
+            // ticks before LocationURL is updated, so gating on AreLocationsEquivalent here would
+            // leave tcs unset on the typical fast path and stall every merge until WaitForNavigation
+            // catches up.
+            navigationCompleted.TrySetResult(true);
         };
 
         try
@@ -1693,14 +1696,12 @@ public class ExplorerWatcher : IHook
             }
 
             DebugLog($"OpenTab navigated target={targetLocation}");
-            var completed = await Task.WhenAny(navigationCompleted.Task, Task.Delay(NavigationCompleteWaitMs));
-            if (completed == navigationCompleted.Task && await navigationCompleted.Task)
+            await Task.WhenAny(navigationCompleted.Task, Task.Delay(NavigationCompleteWaitMs));
+
+            if (AreLocationsEquivalent(TryGetLocation(window), targetLocation))
                 return true;
 
             if (await WaitForNavigation(window, targetLocation, NavigationVerificationWaitMs))
-                return true;
-
-            if (AreLocationsEquivalent(TryGetLocation(window), targetLocation))
                 return true;
 
             DebugLog($"OpenTab target-check-failed target={targetLocation} current={TryGetLocation(window)}");

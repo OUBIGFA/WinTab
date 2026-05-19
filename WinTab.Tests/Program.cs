@@ -94,7 +94,14 @@ internal static class ExplorerLaunchLocationResolverTests
             ("Recycle Bin and third-party folder opens reuse existing tab without duplicates", ExplorerTabSelectionTests.RecycleBinAndExternalFolderOpensReuseExistingTabWithoutDuplicates),
             ("Tab selection budget tolerates slow shell folders without skipping cycles", ExplorerTabSelectionTests.TabSelectionBudgetToleratesSlowShellFoldersWithoutSkippingCycles),
             ("Tab search matches pre-hook windows so external opens find their tab during races", ExplorerTabSelectionTests.TabSearchMatchesPreHookWindowsSoExternalOpensFindTheirTabDuringRaces),
-            ("Tab selection engine still converges when each Explorer step is slow", ExplorerTabSelectionTests.TabSelectionEngineSlowExplorerStillConvergesWithGenerousPerStepBudget)
+            ("Tab selection engine still converges when each Explorer step is slow", ExplorerTabSelectionTests.TabSelectionEngineSlowExplorerStillConvergesWithGenerousPerStepBudget),
+            ("NavigateComplete2 handler signals tcs unconditionally so merges return on the first event", ExplorerTabSelectionTests.NavigateCompleteHandlerSignalsUnconditionally),
+            ("NavigationCompleteWaitMs uses a short budget so merges do not stall on dropped events", ExplorerTabSelectionTests.NavigateCompleteWaitBudgetIsShort),
+            ("Navigation equivalence check runs after WhenAny so the fast-path returns within a few ms of the event", ExplorerTabSelectionTests.NavigationFastPathChecksLocationAfterEvent),
+            ("WaitForExplorerTabCount uses a short budget so merge decisions do not stall on a stable signal", ExplorerTabSelectionTests.WaitForExplorerTabCountUsesShortBudget),
+            ("CloseMergedSourceWindowAsync uses short verification budgets so rapid detach/merge cycles do not pile up", ExplorerTabSelectionTests.CloseMergedSourceWindowUsesShortBudget),
+            ("ShellWindows registration loop is bounded so rapid Explorer launches do not stack 8x150ms of idle wait", ExplorerTabSelectionTests.ShellWindowRegistrationLoopIsBounded),
+            ("Race-based navigation completion returns within a couple of hundred ms when the handler fires", ExplorerTabSelectionTests.OpenTabFastPathReturnsBeforeNavigationVerificationOnComplete)
         };
 
         var failed = 0;
@@ -1446,6 +1453,160 @@ internal static class ExplorerTabSelectionTests
 
         Assert(ok, "Engine must converge on the requested tab even when Explorer takes ~120 ms per switch.");
         Assert(fixture.GetActive() == 44, "Final active tab must match the requested handle.");
+    }
+
+    public static Task NavigateCompleteHandlerSignalsUnconditionally()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var navigateBody = ExtractMethodBody(source, "private async Task<bool> NavigateNewTabToTargetAsync");
+
+        // The handler block follows the lambda assignment. Extract it precisely.
+        var handlerAssignmentIndex = navigateBody.IndexOf("navigateHandler = (object _, ref object _) =>", StringComparison.Ordinal);
+        Assert(handlerAssignmentIndex >= 0, "Navigation handler lambda must be present.");
+
+        var handlerEnd = navigateBody.IndexOf("};", handlerAssignmentIndex, StringComparison.Ordinal);
+        Assert(handlerEnd > handlerAssignmentIndex, "Navigation handler lambda must terminate with };");
+        var handlerBlock = navigateBody.Substring(handlerAssignmentIndex, handlerEnd - handlerAssignmentIndex);
+
+        Assert(handlerBlock.Contains("navigationCompleted.TrySetResult(true);", StringComparison.Ordinal),
+            "NavigateComplete2 handler must signal completion immediately. Explorer fires NavigateComplete2 once per navigation; gating tcs on AreLocationsEquivalent throws the typical fast-path away because LocationURL is updated a few ticks after the event arrives.");
+
+        // The handler must not gate the signal on an equivalence check; that was the slow merge bug.
+        Assert(!handlerBlock.Contains("AreLocationsEquivalent(TryGetLocation(window), targetLocation)", StringComparison.Ordinal),
+            "NavigateComplete2 handler must not gate tcs on AreLocationsEquivalent. Run the equivalence check AFTER waiting for the event signal, not inside the handler — otherwise tcs stays unset whenever LocationURL trails the event by a few ticks, and the merge pays the full NavigationVerificationWaitMs.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task NavigateCompleteWaitBudgetIsShort()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+
+        // Pull the constant declaration line. It must be ≤ 700 ms because the typical
+        // NavigateComplete2 event arrives in under 200 ms; waiting longer just stalls
+        // merges and tab opens for no benefit when the event is being raced against Task.Delay.
+        Assert(source.Contains("private const int NavigationCompleteWaitMs = 600;", StringComparison.Ordinal) ||
+               source.Contains("private const int NavigationCompleteWaitMs = 500;", StringComparison.Ordinal) ||
+               source.Contains("private const int NavigationCompleteWaitMs = 400;", StringComparison.Ordinal),
+            "NavigationCompleteWaitMs must be ≤ 600 ms. The old 1_200 ms budget combined with the equivalence-gating bug stretched every merge into a 2.4 s wait.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task NavigationFastPathChecksLocationAfterEvent()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var navigateBody = ExtractMethodBody(source, "private async Task<bool> NavigateNewTabToTargetAsync");
+
+        var whenAnyIndex = navigateBody.IndexOf("Task.WhenAny(navigationCompleted.Task", StringComparison.Ordinal);
+        Assert(whenAnyIndex >= 0, "NavigateNewTabToTargetAsync must race tcs against a Task.Delay.");
+
+        var equivalenceIndex = navigateBody.IndexOf("AreLocationsEquivalent(TryGetLocation(window), targetLocation)", whenAnyIndex, StringComparison.Ordinal);
+        Assert(equivalenceIndex > whenAnyIndex,
+            "The equivalence fast-path check must run AFTER the WhenAny race, so the navigation handler can fire fast and the equivalence check verifies success without blocking the merge.");
+
+        var slowPathIndex = navigateBody.IndexOf("WaitForNavigation(window, targetLocation, NavigationVerificationWaitMs)", equivalenceIndex, StringComparison.Ordinal);
+        Assert(slowPathIndex > equivalenceIndex,
+            "Slow-path polling must come after the equivalence fast-path so the typical merge case returns within ~150 ms.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task WaitForExplorerTabCountUsesShortBudget()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private static Task<int> WaitForExplorerTabCount");
+
+        Assert(!methodBody.Contains("1_500", StringComparison.Ordinal) &&
+               !methodBody.Contains("1_200", StringComparison.Ordinal) &&
+               !methodBody.Contains("1_000", StringComparison.Ordinal),
+            "WaitForExplorerTabCount must not wait a full second or more. The tab count is normally established within ~50 ms; the old 1.5 s budget just stalled the merge decision on a stable signal.");
+        // 800 ms is the safe upper bound — long enough for slow systems (HDD, busy Explorer COM
+        // re-init), short enough that misses do not bottleneck rapid merge bursts.
+        Assert(methodBody.Contains("800,", StringComparison.Ordinal) ||
+               methodBody.Contains("700,", StringComparison.Ordinal) ||
+               methodBody.Contains("600,", StringComparison.Ordinal) ||
+               methodBody.Contains("500,", StringComparison.Ordinal) ||
+               methodBody.Contains("400,", StringComparison.Ordinal),
+            "WaitForExplorerTabCount budget must be ≤ 800 ms.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task CloseMergedSourceWindowUsesShortBudget()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private async Task<bool> CloseMergedSourceWindowAsync");
+
+        // The original 1500 + 900 = 2400 ms close pile-up was a major contributor to merge latency on rapid
+        // detach/merge cycles. The window's COM Quit() runs in parallel and usually closes within ~200 ms.
+        Assert(!methodBody.Contains("1_500", StringComparison.Ordinal),
+            "CloseMergedSourceWindowAsync must not wait 1.5 seconds on the first close attempt.");
+        Assert(!methodBody.Contains("900", StringComparison.Ordinal),
+            "CloseMergedSourceWindowAsync must not wait 900 ms on the second close attempt.");
+
+        // At least one short budget call should remain.
+        Assert(methodBody.Contains("700,", StringComparison.Ordinal) ||
+               methodBody.Contains("600,", StringComparison.Ordinal) ||
+               methodBody.Contains("500,", StringComparison.Ordinal),
+            "First close verification budget must be ≤ 700 ms.");
+        Assert(methodBody.Contains("300,", StringComparison.Ordinal) ||
+               methodBody.Contains("250,", StringComparison.Ordinal) ||
+               methodBody.Contains("200,", StringComparison.Ordinal),
+            "Second close verification budget must be ≤ 300 ms.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task ShellWindowRegistrationLoopIsBounded()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var methodBody = ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowsAsync");
+
+        // The old loop ran for up to 8 iterations with 75-150 ms gaps. That added 600-1200 ms of latency
+        // to every Explorer launch even after the merge had completed. 4 iterations is plenty to catch
+        // rapid registration bursts.
+        Assert(!methodBody.Contains("for (var i = 0; i < 8; i++)", StringComparison.Ordinal),
+            "ProcessRegisteredShellWindowsAsync must not loop 8 times. Rapid bursts settle within 2-4 iterations on Windows 11; the longer loop just adds wall time to every Explorer launch.");
+        Assert(methodBody.Contains("for (var i = 0; i < 4; i++)", StringComparison.Ordinal) ||
+               methodBody.Contains("for (var i = 0; i < 3; i++)", StringComparison.Ordinal),
+            "Registration loop must be bounded to ≤ 4 iterations.");
+
+        // The inter-iteration wait must be short. The old 150 ms gap meant a single burst of 4 windows
+        // paid 600 ms even when each iteration found new windows immediately.
+        Assert(!methodBody.Contains("Task.Delay(150)", StringComparison.Ordinal),
+            "ProcessRegisteredShellWindowsAsync must not wait 150 ms between probes.");
+
+        return Task.CompletedTask;
+    }
+
+    public static async Task OpenTabFastPathReturnsBeforeNavigationVerificationOnComplete()
+    {
+        // This is a behavioural test: with the new handler design, racing tcs vs Task.Delay must
+        // return quickly when the handler fires. We simulate the contract directly.
+        var navigationCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fastDelayMs = 600;
+        var fireDelayMs = 80;
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(fireDelayMs);
+            navigationCompleted.TrySetResult(true);
+        });
+
+        var start = Environment.TickCount64;
+        await Task.WhenAny(navigationCompleted.Task, Task.Delay(fastDelayMs));
+        var elapsed = Environment.TickCount64 - start;
+
+        Assert(elapsed < 250,
+            $"WhenAny race must return as soon as the handler fires (target ~{fireDelayMs} ms). Got {elapsed} ms. " +
+            "The merge slowness reproducer is the old code waited the full NavigationCompleteWaitMs (1200 ms) because the handler never signalled tcs.");
     }
 
     private sealed class TabSelectionFixture
