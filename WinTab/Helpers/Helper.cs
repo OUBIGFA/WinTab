@@ -533,7 +533,16 @@ public static class Helper
         if (location.IndexOf('%') > -1)
             location = Environment.ExpandEnvironmentVariables(location);
 
-        location = location.Trim(' ', '/', '\\', '\n', '\'', '"');
+        location = location.Trim(' ', '\n', '\'', '"');
+        bool isUnc = location.StartsWith("\\\\") || location.StartsWith("//");
+        if (isUnc)
+        {
+            location = location.TrimEnd('/', '\\');
+        }
+        else
+        {
+            location = location.Trim('/', '\\');
+        }
 
         if (Uri.TryCreate(location, UriKind.Absolute, out var uri) &&
             (location.Contains("://", StringComparison.Ordinal) || location.StartsWith("file:", StringComparison.OrdinalIgnoreCase)))

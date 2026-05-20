@@ -32,9 +32,24 @@ public sealed class ShellPathComparer : IDisposable
     public nint GetPidlFromPath(string path)
     {
         uint pdwAttributes = 0;
-        _desktopFolder.ParseDisplayName(0, 0, path, out _, out var pidl, ref pdwAttributes);
+        nint pidl = 0;
+        int hr = _desktopFolder.ParseDisplayName(0, 0, path, out _, out pidl, ref pdwAttributes);
+        if (hr == 0 && pidl != 0)
+        {
+            return pidl;
+        }
 
-        return pidl;
+        if (path.StartsWith("shell:", StringComparison.OrdinalIgnoreCase))
+        {
+            string strippedPath = path.Substring(6);
+            hr = _desktopFolder.ParseDisplayName(0, 0, strippedPath, out _, out pidl, ref pdwAttributes);
+            if (hr == 0 && pidl != 0)
+            {
+                return pidl;
+            }
+        }
+
+        return 0;
     }
     public static string? GetPathFromPidl(nint pidl, uint sigdnName = WinApi.SIGDN_URL)
     {

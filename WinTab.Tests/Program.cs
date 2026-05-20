@@ -92,6 +92,7 @@ internal static class ExplorerLaunchLocationResolverTests
             ("ExplorerWatcher Dispose releases the explorer-check timer", ExplorerTabSelectionTests.ExplorerWatcherDisposeReleasesExplorerCheckTimer),
             ("Pre-existing Explorer windows are not concealed during startup race", ExplorerTabSelectionTests.PreExistingExplorerWindowsAreNotConcealedDuringStartupRace),
             ("Recycle Bin and third-party folder opens reuse existing tab without duplicates", ExplorerTabSelectionTests.RecycleBinAndExternalFolderOpensReuseExistingTabWithoutDuplicates),
+            ("Recycle Bin and virtual folder PIDL resolution and equivalence", ExplorerTabSelectionTests.RecycleBinAndVirtualFolderPidlResolutionAndEquivalence),
             ("Tab selection budget tolerates slow shell folders without skipping cycles", ExplorerTabSelectionTests.TabSelectionBudgetToleratesSlowShellFoldersWithoutSkippingCycles),
             ("Tab search matches pre-hook windows so external opens find their tab during races", ExplorerTabSelectionTests.TabSearchMatchesPreHookWindowsSoExternalOpensFindTheirTabDuringRaces),
             ("Tab selection engine still converges when each Explorer step is slow", ExplorerTabSelectionTests.TabSelectionEngineSlowExplorerStillConvergesWithGenerousPerStepBudget),
@@ -1365,6 +1366,55 @@ internal static class ExplorerTabSelectionTests
         var newTabIndex = openBody.IndexOf("RequestToOpenNewTab(mainWindowHWnd, lockToOpenWindows: false)", StringComparison.Ordinal);
         Assert(newTabIndex == -1 || newTabIndex > returnTrueIndex,
             "A new tab may only be created on the no-match path, never as a fallback when an existing matching tab was already located.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task RecycleBinAndVirtualFolderPidlResolutionAndEquivalence()
+    {
+        using var comparer = new ShellPathComparer();
+
+        var recycleBinPath = "shell:::{645FF040-5081-101B-9F08-00AA002F954E}";
+        var cleanRecycleBinPath = "::{645FF040-5081-101B-9F08-00AA002F954E}";
+        var shortcutRecycleBinPath = "shell:RecycleBinFolder";
+        var uncPath = @"\\127.0.0.1\c$";
+
+        var pidl1 = comparer.GetPidlFromPath(recycleBinPath);
+        var pidl2 = comparer.GetPidlFromPath(cleanRecycleBinPath);
+        var pidl3 = comparer.GetPidlFromPath(shortcutRecycleBinPath);
+
+        var normalizedUnc = Helper.NormalizeLocation(uncPath);
+        var pidlUnc = comparer.GetPidlFromPath(normalizedUnc);
+
+        Console.WriteLine($"[DEBUG TEST] pidl1: {pidl1:X}, pidl2: {pidl2:X}, pidl3: {pidl3:X}, normalizedUnc: '{normalizedUnc}', pidlUnc: {pidlUnc:X}");
+
+        try
+        {
+            Assert(pidl1 != 0, "PIDL for shell:::RecycleBin path should be successfully resolved.");
+            Assert(pidl2 != 0, "PIDL for clean RecycleBin path should be successfully resolved.");
+            Assert(pidl3 != 0, "PIDL for shell:RecycleBinFolder path should be successfully resolved.");
+            Assert(pidlUnc != 0, $"PIDL for normalized UNC path '{normalizedUnc}' should be successfully resolved.");
+
+            var fsPath1 = ShellPathComparer.GetPathFromPidl(pidl1);
+            var fsPath2 = ShellPathComparer.GetPathFromPidl(pidl2);
+            var fsPath3 = ShellPathComparer.GetPathFromPidl(pidl3);
+            Console.WriteLine($"[DEBUG TEST] fsPath1: '{fsPath1}', fsPath2: '{fsPath2}', fsPath3: '{fsPath3}'");
+
+            var equivIds12 = comparer.CompareIds(pidl1, pidl2);
+            var equivIds23 = comparer.CompareIds(pidl2, pidl3);
+            Console.WriteLine($"[DEBUG TEST] CompareIds 1-2: {equivIds12}, CompareIds 2-3: {equivIds23}");
+
+            Assert(comparer.IsEquivalent(pidl1, pidl2), "Virtual path and clean virtual path should be equivalent.");
+            Assert(comparer.IsEquivalent(recycleBinPath, cleanRecycleBinPath), "Virtual path string comparisons should be equivalent.");
+            Assert(comparer.IsEquivalent(shortcutRecycleBinPath, cleanRecycleBinPath), "Shortcut and clean path should be equivalent.");
+        }
+        finally
+        {
+            if (pidl1 != 0) Marshal.FreeCoTaskMem(pidl1);
+            if (pidl2 != 0) Marshal.FreeCoTaskMem(pidl2);
+            if (pidl3 != 0) Marshal.FreeCoTaskMem(pidl3);
+            if (pidlUnc != 0) Marshal.FreeCoTaskMem(pidlUnc);
+        }
 
         return Task.CompletedTask;
     }
