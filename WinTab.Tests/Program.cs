@@ -102,7 +102,8 @@ internal static class ExplorerLaunchLocationResolverTests
             ("WaitForExplorerTabCount uses a short budget so merge decisions do not stall on a stable signal", ExplorerTabSelectionTests.WaitForExplorerTabCountUsesShortBudget),
             ("CloseMergedSourceWindowAsync uses short verification budgets so rapid detach/merge cycles do not pile up", ExplorerTabSelectionTests.CloseMergedSourceWindowUsesShortBudget),
             ("ShellWindows registration loop is bounded so rapid Explorer launches do not stack 8x150ms of idle wait", ExplorerTabSelectionTests.ShellWindowRegistrationLoopIsBounded),
-            ("Race-based navigation completion returns within a couple of hundred ms when the handler fires", ExplorerTabSelectionTests.OpenTabFastPathReturnsBeforeNavigationVerificationOnComplete)
+            ("Race-based navigation completion returns within a couple of hundred ms when the handler fires", ExplorerTabSelectionTests.OpenTabFastPathReturnsBeforeNavigationVerificationOnComplete),
+            ("Reused hwnd during _processedHWnds grace is hooked instead of being left as a transparent residual", ExplorerTabSelectionTests.ReusedHwndDuringProcessedGraceIsHookedNotLeftTransparent)
         };
 
         var failed = 0;
@@ -1632,6 +1633,47 @@ internal static class ExplorerTabSelectionTests
         // paid 600 ms even when each iteration found new windows immediately.
         Assert(!methodBody.Contains("Task.Delay(150)", StringComparison.Ordinal),
             "ProcessRegisteredShellWindowsAsync must not wait 150 ms between probes.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task ReusedHwndDuringProcessedGraceIsHookedNotLeftTransparent()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var registrationBody = ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync");
+
+        // Each `if (_processedHWnds.ContainsKey(hWnd))` early-return guard in the registration
+        // body must (a) restore any hidden state for the reused hwnd and (b) hand the new window
+        // to RegisterIndependentWindow before returning. Otherwise a hwnd that explorer reuses
+        // inside the 7-second PreventWindowHiding grace gets adopted into _windowEntryDict but
+        // never hooked. Once the grace expires, the next WinEvent hides it as a single-tab merge
+        // source and nothing ever restores it — the transparent "此电脑" background residual.
+        var guardIndex = 0;
+        var guardCount = 0;
+        while (true)
+        {
+            guardIndex = registrationBody.IndexOf("if (_processedHWnds.ContainsKey(hWnd))", guardIndex, StringComparison.Ordinal);
+            if (guardIndex < 0)
+                break;
+
+            var afterGuard = registrationBody.Substring(guardIndex);
+            var nextReturn = afterGuard.IndexOf("return;", StringComparison.Ordinal);
+            Assert(nextReturn > 0,
+                "Each _processedHWnds early-return guard must terminate with a return statement.");
+
+            var block = afterGuard.Substring(0, nextReturn);
+            Assert(block.Contains("RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal),
+                "Early-return when _processedHWnds already covers this hwnd must restore any hidden state — otherwise a reused hwnd can stay alpha=0 forever after the grace expires.");
+            Assert(block.Contains("RegisterIndependentWindow(window, windowInfo, hWnd)", StringComparison.Ordinal),
+                "Early-return when _processedHWnds already covers this hwnd must hook the new shell window via RegisterIndependentWindow so _hookedTopLevelUseCounts protects it from later merge-source hide passes.");
+
+            guardCount++;
+            guardIndex += "if (_processedHWnds.ContainsKey(hWnd))".Length;
+        }
+
+        Assert(guardCount >= 1,
+            "ProcessRegisteredShellWindowAsync must keep at least one _processedHWnds guard so reused-hwnd registrations skip merge processing.");
 
         return Task.CompletedTask;
     }

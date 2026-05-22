@@ -1053,8 +1053,20 @@ public class ExplorerWatcher : IHook
         try
         {
             hWnd = new IntPtr(window.HWND);
+            // Windows aggressively reuses hwnds. A hwnd that was recently merged-and-closed
+            // gets a PreventWindowHiding 7s grace; if explorer.exe assigns the same hwnd to a
+            // brand-new window during that window, we must still adopt the new COM object as
+            // an independent tracked window. Returning early here used to leave the new window
+            // in _windowEntryDict unhooked — once the 7s expired, the next WinEvent would hide
+            // it as a merge source and nothing would ever restore it (the transparent 此电脑
+            // residual).
             if (_processedHWnds.ContainsKey(hWnd))
+            {
+                DebugLog($"Registered already-processed hwnd={hWnd}");
+                await RestoreMergeSourceWindowAsync(hWnd);
+                RegisterIndependentWindow(window, windowInfo, hWnd);
                 return;
+            }
 
             if (Helper.IsCtrlShiftDown())
             {
@@ -1082,7 +1094,12 @@ public class ExplorerWatcher : IHook
             }
 
             if (_processedHWnds.ContainsKey(hWnd))
+            {
+                DebugLog($"Registered already-processed late hwnd={hWnd}");
+                await RestoreMergeSourceWindowAsync(hWnd);
+                RegisterIndependentWindow(window, windowInfo, hWnd);
                 return;
+            }
 
             HideMergeSourceWindow(hWnd);
 
