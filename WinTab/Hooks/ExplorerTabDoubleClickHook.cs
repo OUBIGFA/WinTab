@@ -74,7 +74,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             }
             catch
             {
-                //
+                // 忽略关闭请求失败，避免后台任务影响钩子线程。
             }
             finally
             {
@@ -84,7 +84,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
                 }
                 catch
                 {
-                    //
+                    // 忽略刷新失败，后续鼠标事件会重新计算。
                 }
             }
         });

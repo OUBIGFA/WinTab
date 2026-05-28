@@ -83,7 +83,7 @@ public class ExplorerWatcher : IHook
         }
         catch
         {
-            //
+            // 忽略调试日志写入失败，避免影响主流程。
         }
     }
 
@@ -172,7 +172,7 @@ public class ExplorerWatcher : IHook
             }
             catch
             {
-                //
+                // 忽略边界刷新失败，后续扫描会再次尝试。
             }
             finally
             {
@@ -443,7 +443,7 @@ public class ExplorerWatcher : IHook
             }
             catch
             {
-                //
+                // 忽略单次标签选择失败，继续走新窗口处理流程。
             }
         }
         
@@ -696,7 +696,7 @@ public class ExplorerWatcher : IHook
                     }
                     catch
                     {
-                        //
+                        // 忽略单次隐藏检查失败，下一轮脉冲会重试。
                     }
 
                     await Task.Delay(MergeSourceConcealPulseSleepMs);
@@ -720,7 +720,7 @@ public class ExplorerWatcher : IHook
             }
             catch
             {
-                //
+                // 忽略单个窗口隐藏失败，避免阻塞事件处理。
             }
         }
     }
@@ -744,7 +744,7 @@ public class ExplorerWatcher : IHook
                 }
                 catch
                 {
-                    //
+                    // 忽略无效窗口或已关闭窗口。
                 }
             }
         }
@@ -764,7 +764,7 @@ public class ExplorerWatcher : IHook
                 }
                 catch
                 {
-                    //
+                    // 忽略无法读取的窗口状态。
                 }
             }
         }
@@ -787,7 +787,7 @@ public class ExplorerWatcher : IHook
                 }
                 catch
                 {
-                    //
+                    // 忽略无法读取的窗口状态。
                 }
             }
         }
@@ -978,7 +978,7 @@ public class ExplorerWatcher : IHook
             }
             catch
             {
-                //
+                // 忽略本轮注册失败，短延迟后继续尝试。
             }
 
             await Task.Delay(75);
@@ -1011,7 +1011,7 @@ public class ExplorerWatcher : IHook
         }
         catch
         {
-            //
+            // 忽略扫描失败，调用方会按“没有未跟踪窗口”处理。
         }
 
         return false;
@@ -1248,7 +1248,7 @@ public class ExplorerWatcher : IHook
             }
             catch
             {
-                //
+                // 忽略关闭失败，外层清理会继续执行。
             }
         });
     }
@@ -1453,7 +1453,7 @@ public class ExplorerWatcher : IHook
         }
         catch
         {
-            //
+            // 忽略主窗口句柄重置失败，继续释放 COM 引用。
         }
 
         // Finally, release the COM reference for this InternetExplorer instance
@@ -1670,7 +1670,7 @@ public class ExplorerWatcher : IHook
         }
         catch
         {
-            //
+            // 忽略关闭标签命令发送失败。
         }
     }
     private async Task<bool> WaitForNavigation(InternetExplorer window, string targetLocation, int timeoutMs = 5_000)
@@ -1901,7 +1901,7 @@ public class ExplorerWatcher : IHook
                 }
                 catch
                 {
-                    //
+                    // 忽略无法读取的窗口位置。
                 }
             }
         }
@@ -2379,7 +2379,7 @@ public class ExplorerWatcher : IHook
         }
         catch
         {
-            //
+            // 忽略定时器释放失败，继续释放其他资源。
         }
         DisposeShellObjects();
         _instanceRunning = false;

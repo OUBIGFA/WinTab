@@ -180,7 +180,7 @@ public static class SettingsManager
         }
         catch
         {
-            //
+            // 忽略保存失败，保持当前内存设置继续运行。
         }
     }
 

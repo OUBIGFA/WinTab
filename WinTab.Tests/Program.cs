@@ -2669,7 +2669,7 @@ internal static class ExplorerStressTest
                 }
                 catch
                 {
-                    //
+                    // 忽略无法读取的 Shell 窗口，继续检查其他窗口。
                 }
                 finally
                 {
@@ -2708,7 +2708,7 @@ internal static class ExplorerStressTest
         }
         catch
         {
-            //
+            // 忽略无法读取的文档路径，保留已取得的窗口信息。
         }
 
         return new ShellWindowSnapshot(hwnd, name, url, path, tabHwnd);
@@ -2769,7 +2769,7 @@ internal static class ExplorerStressTest
                 }
                 catch
                 {
-                    //
+                    // 忽略单个窗口关闭失败，继续清理其他窗口。
                 }
                 finally
                 {
@@ -2816,7 +2816,7 @@ internal static class ExplorerStressTest
                 }
                 catch
                 {
-                    //
+                    // 忽略单个窗口关闭失败，继续清理其他窗口。
                 }
                 finally
                 {
@@ -2858,7 +2858,7 @@ internal static class ExplorerStressTest
                 }
                 catch
                 {
-                    //
+                    // 忽略单个窗口关闭失败，继续清理其他窗口。
                 }
                 finally
                 {
@@ -2919,7 +2919,7 @@ internal static class ExplorerStressTest
         }
         catch
         {
-            //
+            // 忽略窗口恢复失败，测试后续检查会暴露可见问题。
         }
     }
 
@@ -3098,7 +3098,7 @@ internal static class ExplorerStressTest
         }
         catch
         {
-            //
+            // 忽略进程终止失败，继续执行后续清理。
         }
     }
 
@@ -3122,7 +3122,7 @@ internal static class ExplorerStressTest
         }
         catch
         {
-            //
+            // 忽略临时目录清理失败。
         }
     }
 
@@ -3168,7 +3168,7 @@ internal static class ExplorerStressTest
                 }
                 catch (OperationCanceledException)
                 {
-                    //
+                    // 监控任务取消属于正常释放流程。
                 }
             }
 
@@ -3230,7 +3230,7 @@ internal static class ExplorerStressTest
                 }
                 catch (OperationCanceledException)
                 {
-                    //
+                    // 监控任务取消属于正常释放流程。
                 }
             }
 
@@ -3289,7 +3289,7 @@ internal static class ExplorerStressTest
                 }
                 catch (OperationCanceledException)
                 {
-                    //
+                    // 监控任务取消属于正常释放流程。
                 }
             }
 
@@ -3398,7 +3398,7 @@ internal static class ExplorerStressTest
                 }
                 catch (OperationCanceledException)
                 {
-                    //
+                    // 监控任务取消属于正常释放流程。
                 }
             }
 
@@ -3509,7 +3509,7 @@ internal static class ExplorerStressTest
                 }
                 catch (OperationCanceledException)
                 {
-                    //
+                    // 监控任务取消属于正常释放流程。
                 }
             }
 
