@@ -62,6 +62,7 @@ public class ExplorerWatcher : IHook
     private string _defaultLocation = null!;
     private bool _reuseTabs = true;
     private bool _isForcingTabs;
+    private volatile bool _preExistingExplorerWindowsProtected;
     private int _shellWindowRegistrationScheduled;
     private int _mergeSourceConcealPulseRunning;
     private long _mergeSourceConcealPulseUntilTicks;
@@ -102,7 +103,8 @@ public class ExplorerWatcher : IHook
         if (_isForcingTabs) return;
         RecoverHiddenExplorerWindows("start-hook");
         _isForcingTabs = true;
-        StartMergeSourceConcealPulse(500);
+        if (_preExistingExplorerWindowsProtected)
+            StartMergeSourceConcealPulse(500);
         DebugLog("StartHook");
     }
 
@@ -2209,6 +2211,7 @@ public class ExplorerWatcher : IHook
 
     private void InitializeShellObjects()
     {
+        _preExistingExplorerWindowsProtected = false;
         _shellPathComparer = new ShellPathComparer();
         _staTaskScheduler = new StaTaskScheduler();
         _shellWindows = new ShellWindows();
@@ -2257,6 +2260,10 @@ public class ExplorerWatcher : IHook
             _ = GetTabHandle(window);
             HookWindowEvents(window, windowInfo);
         }
+
+        _preExistingExplorerWindowsProtected = true;
+        if (_isForcingTabs)
+            StartMergeSourceConcealPulse(500);
 
         if (!hasOpen) return;
         lock (_closedWindowsLock)
@@ -2308,6 +2315,7 @@ public class ExplorerWatcher : IHook
         _shellPathComparer = null!;
         _staTaskScheduler = null!;
         _mainWindowHandle = 0;
+        _preExistingExplorerWindowsProtected = false;
     }
 
     private void ClearShellCaches()

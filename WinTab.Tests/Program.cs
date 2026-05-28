@@ -91,6 +91,7 @@ internal static class ExplorerLaunchLocationResolverTests
             ("MergeSourceConcealPulse sleep period is at least 25 ms", ExplorerTabSelectionTests.MergeSourceConcealPulseSleepIsAtLeast25Ms),
             ("ExplorerWatcher Dispose releases the explorer-check timer", ExplorerTabSelectionTests.ExplorerWatcherDisposeReleasesExplorerCheckTimer),
             ("Pre-existing Explorer windows are not concealed during startup race", ExplorerTabSelectionTests.PreExistingExplorerWindowsAreNotConcealedDuringStartupRace),
+            ("startup conceal pulse waits until pre-existing Explorer windows are protected", ExplorerTabSelectionTests.StartupConcealPulseWaitsUntilPreExistingExplorerWindowsAreProtected),
             ("Recycle Bin and third-party folder opens reuse existing tab without duplicates", ExplorerTabSelectionTests.RecycleBinAndExternalFolderOpensReuseExistingTabWithoutDuplicates),
             ("Recycle Bin and virtual folder PIDL resolution and equivalence", ExplorerTabSelectionTests.RecycleBinAndVirtualFolderPidlResolutionAndEquivalence),
             ("Tab selection budget tolerates slow shell folders without skipping cycles", ExplorerTabSelectionTests.TabSelectionBudgetToleratesSlowShellFoldersWithoutSkippingCycles),
@@ -502,6 +503,31 @@ internal static class ExplorerTabSelectionTests
         Assert(pulseBody.Contains("DateTime.UtcNow.AddMilliseconds(Math.Max(1, durationMs))", StringComparison.Ordinal) &&
                !pulseBody.Contains("DateTime.MaxValue", StringComparison.Ordinal),
             "The pulse worker should be duration-bound instead of using an unbounded normal scanning window.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task StartupConcealPulseWaitsUntilPreExistingExplorerWindowsAreProtected()
+    {
+        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var startBody = ExtractMethodBody(source, "public void StartHook");
+        var initializeBody = ExtractMethodBody(source, "private void InitializeShellObjects");
+        var disposeBody = ExtractMethodBody(source, "private void DisposeShellObjects");
+
+        Assert(source.Contains("_preExistingExplorerWindowsProtected", StringComparison.Ordinal),
+            "The startup race needs an explicit guard so the conceal pulse cannot scan existing Explorer windows before they are marked safe.");
+        Assert(startBody.Contains("_preExistingExplorerWindowsProtected", StringComparison.Ordinal) &&
+               startBody.Contains("StartMergeSourceConcealPulse(500)", StringComparison.Ordinal),
+            "StartHook may warm up the conceal pulse only after pre-existing Explorer windows have been protected.");
+        Assert(initializeBody.Contains("PreventWindowHiding(new IntPtr(window.HWND))", StringComparison.Ordinal) &&
+               initializeBody.Contains("_preExistingExplorerWindowsProtected = true", StringComparison.Ordinal),
+            "Shell initialization must mark every already-open Explorer window safe before enabling startup conceal scans.");
+        Assert(initializeBody.Contains("if (_isForcingTabs)", StringComparison.Ordinal) &&
+               initializeBody.Contains("StartMergeSourceConcealPulse(500)", StringComparison.Ordinal),
+            "If the hook was enabled before Shell initialization finished, the bounded warm-up scan should run only after protection is complete.");
+        Assert(disposeBody.Contains("_preExistingExplorerWindowsProtected = false", StringComparison.Ordinal),
+            "The guard must reset when Shell objects are rebuilt after Explorer restarts.");
 
         return Task.CompletedTask;
     }

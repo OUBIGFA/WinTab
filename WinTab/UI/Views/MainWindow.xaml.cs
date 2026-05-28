@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private readonly SystemTrayIcon _trayIcon;
     private nint _handle;
     private bool _isExiting;
+    private bool _isDisposed;
     private bool _isCheckingForUpdates;
     private DispatcherTimer? _autoUpdateTimer;
     private DispatcherTimer? _maintenanceFeedbackTimer;
@@ -368,21 +369,24 @@ public partial class MainWindow : Window
     private void ExitApplication()
     {
         _isExiting = true;
-        StopAutomaticUpdateCheck();
-        _maintenanceFeedbackTimer?.Stop();
-        Application.Current.Exit -= OnApplicationExit;
-        _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
-        SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
-        SettingsManager.SaveSettings();
-        _trayIcon.Dispose();
-        _hookManager.Dispose();
+        DisposeApplicationServices();
         Application.Current.Shutdown();
     }
 
     private void OnApplicationExit(object? sender, ExitEventArgs e)
     {
+        DisposeApplicationServices();
+    }
+
+    private void DisposeApplicationServices()
+    {
+        if (_isDisposed)
+            return;
+
+        _isDisposed = true;
         StopAutomaticUpdateCheck();
         _maintenanceFeedbackTimer?.Stop();
+        Application.Current.Exit -= OnApplicationExit;
         _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
         SettingsManager.SaveSettings();
