@@ -14,9 +14,6 @@ on:
 
 env:
   PROJECT_NAME: WinTab
-  SIGNPATH_ORG_ID: c35b3bd9-3451-4e24-b4e0-332e901290bf
-  SIGNPATH_PROJECT_SLUG: WinTab
-  SIGNPATH_POLICY_SLUG: release-signing
   VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
 
 jobs:
@@ -85,58 +82,11 @@ jobs:
             /DArch="${{ matrix.arch }}" `
             "installers\installer.iss"
 
-      - name: Check signing availability
-        id: check-signing
-        shell: pwsh
-        run: |
-          if ("${{ secrets.SIGNPATH_API_TOKEN }}") {
-            "available=true" | Out-File -Append $env:GITHUB_OUTPUT
-          } else {
-            "available=false" | Out-File -Append $env:GITHUB_OUTPUT
-            Write-Host "::warning::SIGNPATH_API_TOKEN not configured, skipping code signing"
-          }
-
-      - name: Upload unsigned installer
-        id: upload-unsigned-installer
-        if: steps.check-signing.outputs.available == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.PROJECT_NAME }}_${{ env.VERSION }}_${{ matrix.arch }}_Setup-unsigned
-          path: dist/*.exe
-
-      - name: Submit installer for signing
-        id: submit-installer-signing
-        if: steps.check-signing.outputs.available == 'true'
-        uses: signpath/github-action-submit-signing-request@v1.1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ env.SIGNPATH_ORG_ID }}
-          project-slug: ${{ env.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ env.SIGNPATH_POLICY_SLUG }}
-          artifact-configuration-slug: single-zip-executable
-          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: ./signed-installer
-          parameters: |
-            version: "${{ env.VERSION }}"
-
-      - name: Prepare final installer
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path ./final-installer | Out-Null
-          if (Test-Path "./signed-installer/*.exe") {
-            Copy-Item "./signed-installer/*.exe" "./final-installer/"
-            Write-Host "Using signed installer"
-          } else {
-            Copy-Item "dist/*.exe" "./final-installer/"
-            Write-Host "::warning::Using unsigned installer (SignPath not configured)"
-          }
-
-      - name: Upload final installer
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: installer-${{ matrix.arch }}
-          path: ./final-installer/*.exe
+          path: dist/*.exe
 
   create-release:
     needs: build-installer
