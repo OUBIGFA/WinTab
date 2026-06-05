@@ -37,7 +37,7 @@ jobs:
           vs-version: "17.0"
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
 
@@ -45,7 +45,7 @@ jobs:
         shell: pwsh
         run: |
           $outputDir = "../publish/net9.0-windows/${{ matrix.arch }}"
-          msbuild "${{ env.PROJECT_NAME }}/${{ env.PROJECT_NAME }}.csproj" /restore /t:Publish /p:Configuration=Release /p:TargetFramework=net9.0-windows /p:RuntimeIdentifier=win-${{ matrix.arch }} /p:PublishDir=$outputDir /p:DebugType=none
+          msbuild "${{ env.PROJECT_NAME }}/${{ env.PROJECT_NAME }}.csproj" /restore /t:Publish /p:Configuration=Release /p:TargetFramework=net9.0-windows /p:RuntimeIdentifier=win-${{ matrix.arch }} /p:SelfContained=false /p:PublishDir=$outputDir /p:DebugType=none
 
       - name: Upload publish output
         uses: actions/upload-artifact@v4
@@ -85,8 +85,20 @@ jobs:
             /DArch="${{ matrix.arch }}" `
             "installers\installer.iss"
 
+      - name: Check signing availability
+        id: check-signing
+        shell: pwsh
+        run: |
+          if ("${{ secrets.SIGNPATH_API_TOKEN }}") {
+            "available=true" | Out-File -Append $env:GITHUB_OUTPUT
+          } else {
+            "available=false" | Out-File -Append $env:GITHUB_OUTPUT
+            Write-Host "::warning::SIGNPATH_API_TOKEN not configured, skipping code signing"
+          }
+
       - name: Upload unsigned installer
         id: upload-unsigned-installer
+        if: steps.check-signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PROJECT_NAME }}_${{ env.VERSION }}_${{ matrix.arch }}_Setup-unsigned
@@ -94,6 +106,7 @@ jobs:
 
       - name: Submit installer for signing
         id: submit-installer-signing
+        if: steps.check-signing.outputs.available == 'true'
         uses: signpath/github-action-submit-signing-request@v1.1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -107,15 +120,27 @@ jobs:
           parameters: |
             version: "${{ env.VERSION }}"
 
-      - name: Upload signed installer
+      - name: Prepare final installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ./final-installer | Out-Null
+          if (Test-Path "./signed-installer/*.exe") {
+            Copy-Item "./signed-installer/*.exe" "./final-installer/"
+            Write-Host "Using signed installer"
+          } else {
+            Copy-Item "dist/*.exe" "./final-installer/"
+            Write-Host "::warning::Using unsigned installer (SignPath not configured)"
+          }
+
+      - name: Upload final installer
         uses: actions/upload-artifact@v4
         with:
-          name: signed-installer-${{ matrix.arch }}
-          path: ./signed-installer/*.exe
+          name: installer-${{ matrix.arch }}
+          path: ./final-installer/*.exe
 
   create-release:
     needs: build-installer
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: read
@@ -123,10 +148,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download all signed installers
+      - name: Download all installers
         uses: actions/download-artifact@v4
         with:
-          pattern: signed-installer-*
+          pattern: installer-*
           merge-multiple: true
           path: release-artifacts
 
@@ -167,7 +192,7 @@ jobs:
         with:
           tag_name: ${{ env.VERSION }}
           name: ${{ env.PROJECT_NAME }} ${{ env.VERSION }}
-          draft: true
+          draft: false
           body: |
             ${{ steps.generate_changelog.outputs.changelog }}
 
