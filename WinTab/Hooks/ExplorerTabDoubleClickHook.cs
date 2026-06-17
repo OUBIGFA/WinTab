@@ -3,7 +3,6 @@ using System.Drawing;
 using System.Threading;
 using H.Hooks;
 using WinTab.Helpers;
-using WinTab.Managers;
 using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
@@ -17,11 +16,13 @@ public sealed class ExplorerTabDoubleClickHook : IHook
     private readonly ExplorerWatcher _explorerWatcher;
     private readonly LowLevelMouseHook _lowLevelMouseHook;
     private readonly ExplorerTabDoubleClickCloseController _controller;
+    private readonly Func<bool> _isEnabled;
 
-    public ExplorerTabDoubleClickHook(ExplorerWatcher explorerWatcher)
+    public ExplorerTabDoubleClickHook(ExplorerWatcher explorerWatcher, Func<bool>? isEnabled = null)
     {
         _explorerWatcher = explorerWatcher;
-        _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(explorerWatcher));
+        _isEnabled = isEnabled ?? (() => true);
+        _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(explorerWatcher, _isEnabled));
         _lowLevelMouseHook = new LowLevelMouseHook
         {
             AddKeyboardKeys = true,
@@ -105,9 +106,9 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         return Helper.IsFileExplorerForeground(out var foreground) && foreground != 0 ? foreground : 0;
     }
 
-    private sealed class HookEnvironment(ExplorerWatcher explorerWatcher) : IExplorerTabDoubleClickEnvironment
+    private sealed class HookEnvironment(ExplorerWatcher explorerWatcher, Func<bool> isEnabled) : IExplorerTabDoubleClickEnvironment
     {
-        public bool IsEnabled => SettingsManager.DoubleClickCloseTab;
+        public bool IsEnabled => isEnabled();
         public int DoubleClickTimeMs => (int)WinApi.GetDoubleClickTime();
         public int DoubleClickWidth => WinApi.GetSystemMetrics(SM_CXDOUBLECLK);
         public int DoubleClickHeight => WinApi.GetSystemMetrics(SM_CYDOUBLECLK);

@@ -13,7 +13,6 @@ using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using WinTab.Helpers;
 using WinTab.Interop;
-using WinTab.Managers;
 using WinTab.Models;
 using WinTab.WinAPI;
 using WinTab.UI.Views;
@@ -50,6 +49,7 @@ public class ExplorerWatcher : IHook
     private readonly object _windowEntryDictLock = new(), _closedWindowsLock = new(), _processLock = new();
     private readonly SemaphoreSlim _toOpenWindowsLock = new(1);
     private readonly SemaphoreSlim _shellWindowRegistrationLock = new(1);
+    private readonly IExplorerWatcherSettings _settings;
     private readonly ExplorerLaunchLocationResolver _locationResolver = new();
     private readonly ProcessWatcher _processWatcher;
     private int _mainExplorerProcessId;
@@ -64,8 +64,7 @@ public class ExplorerWatcher : IHook
     private bool _isForcingTabs;
     private volatile bool _preExistingExplorerWindowsProtected;
     private int _shellWindowRegistrationScheduled;
-    private int _mergeSourceConcealPulseRunning;
-    private long _mergeSourceConcealPulseUntilTicks;
+    private readonly MergeSourceConcealPulse _mergeSourceConcealPulse = new();
     private readonly ConcurrentDictionary<nint, byte> _mergeSourceHWnds = new();
     private sealed record TabStripBounds(DrawingRectangle StripRect, DrawingRectangle[] TabRects, RECT WindowRect, long RefreshedAt);
     public bool IsHookActive => _isForcingTabs;
@@ -87,12 +86,13 @@ public class ExplorerWatcher : IHook
         }
     }
 
-    public ExplorerWatcher()
+    public ExplorerWatcher(IExplorerWatcherSettings? settings = null)
     {
         if (_instanceRunning)
             throw new InvalidOperationException("Only one instance of ExplorerWatcher is allowed at a time.");
         _instanceRunning = true;
 
+        _settings = settings ?? new DefaultExplorerWatcherSettings();
         _processWatcher = new ProcessWatcher("explorer");
         _processWatcher.ProcessTerminated += OnExplorerProcessTerminated;
         StartExplorerProcessCheck();
@@ -422,7 +422,7 @@ public class ExplorerWatcher : IHook
         WinApi.PostMessage(tabHandle, WinApi.WM_COMMAND, 0xA21B, 0);
 
         if (bringToFront)
-            WinApi.RestoreWindowToForeground(windowHandle);
+            Helper.RestoreWindowToForeground(windowHandle);
     }
     public async Task Open(string? location, bool asTab, nint windowHandle, int delay = 0)
     {
@@ -624,7 +624,7 @@ public class ExplorerWatcher : IHook
             return;
 
         var firstHide = _mergeSourceHWnds.TryAdd(hWnd, 0);
-        Helper.HideWindow(hWnd, SettingsManager.HaveThemeIssue);
+        Helper.HideWindow(hWnd, _settings.HaveThemeIssue);
         if (firstHide)
             DebugLog($"Concealed merge source hwnd={hWnd}");
     }
@@ -649,66 +649,12 @@ public class ExplorerWatcher : IHook
         Helper.HiddenWindows.TryRemove(hWnd, out _);
         PreventWindowHiding(hWnd);
     }
-    private const int MergeSourceConcealPulseAbsoluteCeilingMs = 1_500;
-    private const int MergeSourceConcealPulseSleepMs = 25;
-    private long _mergeSourceConcealPulseFirstStartTicks;
-
     private void StartMergeSourceConcealPulse(int durationMs = 1_200)
     {
-        if (!_isForcingTabs && !_reuseTabs)
-            return;
-
-        var requestedUntilTicks = DateTime.UtcNow.AddMilliseconds(Math.Max(1, durationMs)).Ticks;
-
-        // Cap the worker's absolute lifetime so a continuous stream of WinEvents cannot keep us
-        // scanning every CabinetWClass window forever; once the ceiling is reached, additional
-        // pulse requests are clamped and the worker exits.
-        Interlocked.CompareExchange(ref _mergeSourceConcealPulseFirstStartTicks, DateTime.UtcNow.Ticks, 0);
-        var firstStart = Volatile.Read(ref _mergeSourceConcealPulseFirstStartTicks);
-        var ceilingTicks = firstStart + MergeSourceConcealPulseAbsoluteCeilingMs * TimeSpan.TicksPerMillisecond;
-        var untilTicks = Math.Min(requestedUntilTicks, ceilingTicks);
-
-        var currentTicks = Volatile.Read(ref _mergeSourceConcealPulseUntilTicks);
-        while (untilTicks > currentTicks)
-        {
-            var previousTicks = Interlocked.CompareExchange(
-                ref _mergeSourceConcealPulseUntilTicks,
-                untilTicks,
-                currentTicks);
-            if (previousTicks == currentTicks)
-                break;
-
-            currentTicks = previousTicks;
-        }
-
-        if (Interlocked.Exchange(ref _mergeSourceConcealPulseRunning, 1) == 1)
-            return;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                while (DateTime.UtcNow.Ticks < Volatile.Read(ref _mergeSourceConcealPulseUntilTicks))
-                {
-                    try
-                    {
-                        ConcealMergeSourceWindowsOnce();
-                    }
-                    catch
-                    {
-                        // 忽略单次隐藏检查失败，下一轮脉冲会重试。
-                    }
-
-                    await Task.Delay(MergeSourceConcealPulseSleepMs);
-                }
-            }
-            finally
-            {
-                Interlocked.Exchange(ref _mergeSourceConcealPulseRunning, 0);
-                Interlocked.Exchange(ref _mergeSourceConcealPulseFirstStartTicks, 0);
-                Interlocked.Exchange(ref _mergeSourceConcealPulseUntilTicks, 0);
-            }
-        });
+        _mergeSourceConcealPulse.Start(
+            () => _isForcingTabs || _reuseTabs,
+            ConcealMergeSourceWindowsOnce,
+            durationMs);
     }
     private void ConcealMergeSourceWindowsOnce()
     {
@@ -726,7 +672,7 @@ public class ExplorerWatcher : IHook
     }
     private void StopMergeSourceConcealPulse()
     {
-        Interlocked.Exchange(ref _mergeSourceConcealPulseUntilTicks, 0);
+        _mergeSourceConcealPulse.Stop();
     }
     private bool HasHookedShellWindowForTopLevel(nint hWnd)
     {
@@ -941,7 +887,7 @@ public class ExplorerWatcher : IHook
                 {
                     _mainWindowHandle = hWnd;
 
-                    if (SettingsManager.RestorePreviousWindows && _closedWindows.Any(w => w.Restore))
+                    if (_settings.RestorePreviousWindows && _closedWindows.Any(w => w.Restore))
                         _ = RestorePreviousWindows();
                 }
             }
@@ -1328,10 +1274,10 @@ public class ExplorerWatcher : IHook
             800,
             20);
     }
-    private static async Task RestoreHiddenExplorerWindowAsync(nint hWnd)
+    private async Task RestoreHiddenExplorerWindowAsync(nint hWnd)
     {
         await Helper.DoUntilConditionAsync(
-            () => Helper.RestoreHiddenExplorerWindow(hWnd, removeCache: false, removeLayeredStyle: !SettingsManager.HaveThemeIssue),
+            () => Helper.RestoreHiddenExplorerWindow(hWnd, removeCache: false, removeLayeredStyle: !_settings.HaveThemeIssue),
             restored => restored || !Helper.HiddenWindows.ContainsKey(hWnd),
             1_500,
             50);
@@ -1371,7 +1317,7 @@ public class ExplorerWatcher : IHook
             RemoveWindowAndUnhookEvents(window, windowInfo);
         };
 
-        if (SettingsManager.RestorePreviousWindows)
+        if (_settings.RestorePreviousWindows)
             windowInfo.OnNavigateHandler = (object _, ref object _) =>
             {
                 windowInfo.Location = GetLocation(window);
@@ -1382,7 +1328,7 @@ public class ExplorerWatcher : IHook
         {
             // Subscribe
             window.OnQuit += windowInfo.OnQuitHandler;
-            if (SettingsManager.RestorePreviousWindows)
+            if (_settings.RestorePreviousWindows)
             {
                 windowInfo.Location = GetLocation(window);
                 windowInfo.Name = window.LocationName;
@@ -1442,7 +1388,7 @@ public class ExplorerWatcher : IHook
         {
             var hWnd = new IntPtr(window.HWND);
             if (restoreHiddenWindow)
-                Helper.RestoreHiddenExplorerWindow(hWnd, removeCache: true, removeLayeredStyle: !SettingsManager.HaveThemeIssue);
+                Helper.RestoreHiddenExplorerWindow(hWnd, removeCache: true, removeLayeredStyle: !_settings.HaveThemeIssue);
 
             _processedHWnds.TryRemove(hWnd, out _);
             ReleaseTopLevelTrackingIfUnused(hWnd);
@@ -1547,7 +1493,7 @@ public class ExplorerWatcher : IHook
                 if (TrySearchForTab(windowToOpen.Location, windowToOpen.Handle, out var existingTab, out _))
                 {
                     windowHandle = WinApi.GetParent(existingTab);
-                    WinApi.RestoreWindowToForeground(windowHandle);
+                    Helper.RestoreWindowToForeground(windowHandle);
                     await SelectTabByHandle(windowHandle, existingTab);
                     DebugLog($"OpenTab reused target={windowToOpen.Location}");
                     return true;
@@ -1618,7 +1564,7 @@ public class ExplorerWatcher : IHook
                 return false;
             }
 
-            WinApi.RestoreWindowToForeground(mainWindowHWnd);
+            Helper.RestoreWindowToForeground(mainWindowHWnd);
             SelectItems(window, windowToOpen.SelectedItems);
             return true;
         }
@@ -2200,7 +2146,7 @@ public class ExplorerWatcher : IHook
                     RemoveWindowAndUnhookEvents(window, info, useLock: false);
                 }
             }
-            if (!SettingsManager.RestorePreviousWindows || _windowEntryDict.Count > 0) return;
+            if (!_settings.RestorePreviousWindows || _windowEntryDict.Count > 0) return;
             lock (_closedWindowsLock)
             {
                 for (var i = 1; i <= crashCount; i++)
@@ -2216,15 +2162,15 @@ public class ExplorerWatcher : IHook
         _staTaskScheduler = new StaTaskScheduler();
         _shellWindows = new ShellWindows();
 
-        _defaultLocation = Helper.GetDefaultExplorerLocation(_shellPathComparer);
+        _defaultLocation = GetDefaultExplorerLocation();
         ClearShellCaches();
         RecoverHiddenExplorerWindows("initialize-shell");
 
         if (Helper.IsFileExplorerForeground(out var foregroundWindow))
             _mainWindowHandle = foregroundWindow;
         
-        if (SettingsManager.ClosedWindows != null)
-            lock (_closedWindowsLock) _closedWindows.AddRange(SettingsManager.ClosedWindows);
+        if (_settings.ClosedWindows != null)
+            lock (_closedWindowsLock) _closedWindows.AddRange(_settings.ClosedWindows);
 
         // Hook the global "WindowRegistered" event
         _windowRegisteredHandler = OnShellWindowRegistered;
@@ -2269,6 +2215,24 @@ public class ExplorerWatcher : IHook
         lock (_closedWindowsLock)
             foreach (var window in _closedWindows) window.Restore = false;
     }
+
+    private string GetDefaultExplorerLocation()
+    {
+        var location = _settings.DefaultExplorerLaunchId switch
+        {
+            2 => "shell:::{F874310E-B6B7-47DC-BC84-B9E6B38F5903}",
+            3 => "shell:::{088E3905-0323-4B02-9826-5D99428E115F}",
+            4 => "shell:::{018D5C66-4533-4307-9B53-224DE2ED1FE6}",
+            _ => "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}"
+        };
+
+        var pidl = _shellPathComparer.GetPidlFromPath(location);
+        var path = ShellPathComparer.GetPathFromPidl(pidl);
+        Marshal.FreeCoTaskMem(pidl);
+
+        return Helper.NormalizeLocation(path ?? location);
+    }
+
     private void DisposeShellObjects()
     {
         RecoverHiddenExplorerWindows("dispose-shell");
@@ -2337,7 +2301,7 @@ public class ExplorerWatcher : IHook
         foreach (var hWnd in candidates)
             PreventWindowHiding(hWnd);
 
-        var restored = Helper.RestoreHiddenExplorerWindows(removeLayeredStyle: !SettingsManager.HaveThemeIssue);
+        var restored = Helper.RestoreHiddenExplorerWindows(removeLayeredStyle: !_settings.HaveThemeIssue);
         if (restored > 0)
             DebugLog($"RecoverHiddenExplorerWindows reason={reason} restored={restored}");
     }
@@ -2347,12 +2311,12 @@ public class ExplorerWatcher : IHook
         var store = new List<WindowRecord>();
         lock (_closedWindowsLock)
         {
-            if (SettingsManager.SaveClosedHistory) store.AddRange(_closedWindows);
+            if (_settings.SaveClosedHistory) store.AddRange(_closedWindows);
             _closedWindows.Clear();
         }
 
         // Save currently open windows (explorer crash / system restart, logoff / AppExit)
-        if (SettingsManager.RestorePreviousWindows)
+        if (_settings.RestorePreviousWindows)
             lock (_windowEntryDictLock)
             {
                 store.AddRange(_windowEntryDict.Values
@@ -2367,7 +2331,7 @@ public class ExplorerWatcher : IHook
             .ToArray();
         
         // TakeLast 100
-        SettingsManager.ClosedWindows = distinctItems.Skip(Math.Max(0, distinctItems.Length - 100)).ToArray();
+        _settings.ClosedWindows = distinctItems.Skip(Math.Max(0, distinctItems.Length - 100)).ToArray();
     }
 
     public void Dispose()

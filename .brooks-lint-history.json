@@ -1,0 +1,13 @@
+[
+  {
+    "date": "2026-06-17",
+    "mode": "Architecture Audit",
+    "score": 66,
+    "findings": {
+      "critical": 1,
+      "warning": 2,
+      "suggestion": 1
+    },
+    "scope": "entire project: WinTab desktop app and WinTab.Tests"
+  }
+]

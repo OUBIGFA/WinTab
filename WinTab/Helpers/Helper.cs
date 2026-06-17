@@ -10,7 +10,6 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using WinTab.Interop;
-using WinTab.Managers;
 using WinTab.WinAPI;
 using H.Hooks;
 
@@ -261,9 +260,9 @@ public static class Helper
     public static bool IsExplorerEmptySpace(Point point)
     {
         var hr = WinApi.AccessibleObjectFromPoint(point, out var accObj, out var childId);
-        if (hr != 0 || childId is not 0) return false;
+        if (hr != 0 || childId is not 0 || accObj is not IAccessible accessible) return false;
 
-        var role = accObj.get_accRole(0);
+        var role = accessible.get_accRole(0);
         return role is 0x21; //IAccessible.Role:list (ROLE_SYSTEM_LIST 0x21)
     }
     public static bool IsFileExplorerTab(nint tab)
@@ -528,6 +527,19 @@ public static class Helper
         KeyboardSimulator.SendKeyPress(VirtualKey.F23);
     }
 
+    public static void RestoreWindowToForeground(nint window)
+    {
+        if (WinApi.IsIconic(window))
+            WinApi.ShowWindow(window, WinApi.SW_SHOWNOACTIVATE);
+
+        if (WinApi.SetForegroundWindow(window))
+            return;
+
+        BypassWinForegroundRestrictions();
+        WinApi.SetForegroundWindow(window);
+    }
+
+
     public static string NormalizeLocation(string location)
     {
         if (location.IndexOf('%') > -1)
@@ -561,27 +573,6 @@ public static class Helper
 
         return location.Replace('/', '\\');
     }
-    public static string GetDefaultExplorerLocation(ShellPathComparer? shellPathComparer = null)
-    {
-        var id = RegistryManager.GetDefaultExplorerLaunchId();
-        var location = id switch
-        {
-            2 => "shell:::{F874310E-B6B7-47DC-BC84-B9E6B38F5903}",// Home, Quick Access
-            3 => "shell:::{088E3905-0323-4B02-9826-5D99428E115F}",// Downloads
-            4 => "shell:::{018D5C66-4533-4307-9B53-224DE2ED1FE6}",// OneDrive
-            _ => "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}" // This PC
-        };
-
-        if (shellPathComparer == null)
-            return location;
-
-        var pidl = shellPathComparer.GetPidlFromPath(location);
-        var path = ShellPathComparer.GetPathFromPidl(pidl); //SIGDN_URL: Downloads -> file:///C:/Users/Username/Downloads
-        Marshal.FreeCoTaskMem(pidl);
-
-        return NormalizeLocation(path ?? location);
-    }
-
     public static string GetExecutablePath()
     {
         var processName = Process.GetCurrentProcess().MainModule?.FileName;

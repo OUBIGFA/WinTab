@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Navigation;
 using System.Windows.Media;
 using System.Windows.Threading;
+using WinTab.Helpers;
 using WinTab.Managers;
 using WinTab.UI.Views.Controls;
 using WinTab.WinAPI;
@@ -358,7 +359,7 @@ public partial class MainWindow : Window
             _handle = new WindowInteropHelper(this).Handle;
 
         Activate();
-        WinApi.RestoreWindowToForeground(_handle);
+        Helper.RestoreWindowToForeground(_handle);
     }
 
     private void HideToTray()

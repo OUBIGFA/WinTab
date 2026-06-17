@@ -20,8 +20,8 @@ public sealed class HookManager : IDisposable
     {
         _syncContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
-        _explorerWatcher = new ExplorerWatcher();
-        _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher);
+        _explorerWatcher = new ExplorerWatcher(ExplorerWatcherSettings.Instance);
+        _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab);
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
         _doubleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);

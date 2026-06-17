@@ -441,7 +441,7 @@ internal static class ExplorerTabSelectionTests
                source.Contains("WinApi.GetAncestor(hWnd, WinApi.GA_ROOT)", StringComparison.Ordinal),
             "Early hide must normalize child WinEvent handles to the real Explorer top-level window.");
         Assert(methodBody.Contains("StartMergeSourceConcealPulse()", StringComparison.Ordinal) &&
-               methodBody.Contains("ConcealMergeSourceWindowsOnce()", StringComparison.Ordinal),
+               methodBody.Contains("ConcealMergeSourceWindowsOnce", StringComparison.Ordinal),
             "Rapid Explorer bursts need a short event-triggered conceal pulse so late WinEvents do not produce visible flashes.");
         Assert(!methodBody.Contains("HasMergeTargetForEarlyConceal(hWnd)", StringComparison.Ordinal),
             "Early hide must not wait for merge-target discovery; registration later decides whether to merge or quickly release a user-opened Explorer window.");
@@ -482,14 +482,14 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
-    public static Task MergeSourceConcealPulseIsBoundedAndEventTriggered()
+    public static async Task MergeSourceConcealPulseIsBoundedAndEventTriggered()
     {
         var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
         var source = File.ReadAllText(sourcePath);
         var startBody = ExtractMethodBody(source, "public void StartHook");
-        var pulseBody = ExtractMethodBody(source, "private void StartMergeSourceConcealPulse");
         var windowShownBody = ExtractMethodBody(source, "private void OnWindowShown");
         var registeredBody = ExtractMethodBody(source, "private void OnShellWindowRegistered");
+        var callCount = 0;
 
         Assert(!source.Contains("StartMergeSourceConcealPulse(0)", StringComparison.Ordinal),
             "The conceal pulse must not run forever after startup; that keeps scanning Explorer windows and can re-hide later user-opened This PC windows.");
@@ -500,11 +500,16 @@ internal static class ExplorerTabSelectionTests
         Assert(windowShownBody.Contains("StartMergeSourceConcealPulse()", StringComparison.Ordinal) &&
                registeredBody.Contains("StartMergeSourceConcealPulse()", StringComparison.Ordinal),
             "WinEvent and ShellWindows registration events should still trigger the short conceal pulse for rapid Explorer opens.");
-        Assert(pulseBody.Contains("DateTime.UtcNow.AddMilliseconds(Math.Max(1, durationMs))", StringComparison.Ordinal) &&
-               !pulseBody.Contains("DateTime.MaxValue", StringComparison.Ordinal),
-            "The pulse worker should be duration-bound instead of using an unbounded normal scanning window.");
 
-        return Task.CompletedTask;
+        var pulse = new MergeSourceConcealPulse(absoluteCeilingMs: 150, sleepMs: 5);
+        pulse.Start(() => true, () => Interlocked.Increment(ref callCount), durationMs: 40);
+        await Task.Delay(80);
+        var countAfterPulse = Volatile.Read(ref callCount);
+        await Task.Delay(60);
+
+        Assert(countAfterPulse > 0, "The pulse must run at least one scan while enabled.");
+        Assert(Volatile.Read(ref callCount) == countAfterPulse,
+            "The pulse worker should be duration-bound instead of continuing to scan after its window expires.");
     }
 
     public static Task StartupConcealPulseWaitsUntilPreExistingExplorerWindowsAreProtected()
@@ -636,7 +641,7 @@ internal static class ExplorerTabSelectionTests
         var resolver = File.ReadAllText(resolverPath);
         var watcher = File.ReadAllText(watcherPath);
         var resolveBody = ExtractMethodBody(watcher, "private Task<string> ResolveInitialLocation");
-        var restoreBody = ExtractMethodBody(watcher, "private static async Task RestoreHiddenExplorerWindowAsync");
+        var restoreBody = ExtractMethodBody(watcher, "private async Task RestoreHiddenExplorerWindowAsync");
         var registrationBody = ExtractMethodBody(watcher, "private async Task ProcessRegisteredShellWindowAsync");
 
         Assert(resolver.Contains("int DefaultLocationWaitMs = 30", StringComparison.Ordinal),
@@ -795,7 +800,7 @@ internal static class ExplorerTabSelectionTests
         var openBody = ExtractMethodBody(source, "private async Task<bool> OpenTabNavigateWithSelection");
 
         var foundIndex = openBody.IndexOf("TrySearchForTab(windowToOpen.Location, windowToOpen.Handle", StringComparison.Ordinal);
-        var foregroundIndex = openBody.IndexOf("WinApi.RestoreWindowToForeground(windowHandle)", foundIndex >= 0 ? foundIndex : 0, StringComparison.Ordinal);
+        var foregroundIndex = openBody.IndexOf("Helper.RestoreWindowToForeground(windowHandle)", foundIndex >= 0 ? foundIndex : 0, StringComparison.Ordinal);
         var selectIndex = openBody.IndexOf("SelectTabByHandle(windowHandle, existingTab", foundIndex >= 0 ? foundIndex : 0, StringComparison.Ordinal);
 
         Assert(foundIndex >= 0 && foregroundIndex > foundIndex && selectIndex > foregroundIndex,
@@ -1247,58 +1252,51 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
-    public static Task MergeSourceConcealPulseHasAbsoluteCeiling()
+    public static async Task MergeSourceConcealPulseHasAbsoluteCeiling()
     {
-        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
-        var source = File.ReadAllText(sourcePath);
-        var pulseBody = ExtractMethodBody(source, "private void StartMergeSourceConcealPulse");
+        var pulse = new MergeSourceConcealPulse(absoluteCeilingMs: 90, sleepMs: 5);
+        var callCount = 0;
 
-        Assert(source.Contains("MergeSourceConcealPulseAbsoluteCeilingMs", StringComparison.Ordinal),
-            "An absolute ceiling constant must exist so the pulse worker cannot extend its deadline forever.");
+        for (var i = 0; i < 5; i++)
+        {
+            pulse.Start(() => true, () => Interlocked.Increment(ref callCount), durationMs: 500);
+            await Task.Delay(20);
+        }
 
-        Assert(pulseBody.Contains("_mergeSourceConcealPulseFirstStartTicks", StringComparison.Ordinal) &&
-               pulseBody.Contains("Math.Min(requestedUntilTicks, ceilingTicks)", StringComparison.Ordinal),
-            "StartMergeSourceConcealPulse must clamp every requested deadline to (firstStart + ceiling) so a " +
-            "continuous stream of WinEvents (caret blinks, system tray updates, etc.) cannot keep the worker " +
-            "rescanning every CabinetWClass window every loop iteration forever.");
+        await Task.Delay(80);
+        var countAfterCeiling = Volatile.Read(ref callCount);
+        await Task.Delay(80);
 
-        Assert(pulseBody.Contains("_mergeSourceConcealPulseFirstStartTicks, 0)", StringComparison.Ordinal),
-            "The first-start tracker must reset to 0 when the worker exits so a fresh pulse can establish a new ceiling.");
-
-        return Task.CompletedTask;
+        Assert(countAfterCeiling > 0, "The pulse must run while it is inside the bounded window.");
+        Assert(Volatile.Read(ref callCount) == countAfterCeiling,
+            "A stream of Start calls must not extend the first pulse beyond its absolute ceiling.");
     }
 
-    public static Task MergeSourceConcealPulseNeverRestartsItselfInFinally()
+    public static async Task MergeSourceConcealPulseNeverRestartsItselfInFinally()
     {
-        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
-        var source = File.ReadAllText(sourcePath);
-        var pulseBody = ExtractMethodBody(source, "private void StartMergeSourceConcealPulse");
+        var pulse = new MergeSourceConcealPulse(absoluteCeilingMs: 80, sleepMs: 5);
+        var callCount = 0;
 
-        var finallyIndex = pulseBody.IndexOf("finally", StringComparison.Ordinal);
-        Assert(finallyIndex >= 0, "The pulse worker must have a finally block that resets the running flag.");
+        pulse.Start(() => true, () => Interlocked.Increment(ref callCount), durationMs: 30);
+        await Task.Delay(80);
+        var countAfterExit = Volatile.Read(ref callCount);
+        await Task.Delay(80);
 
-        var finallyTail = pulseBody.Substring(finallyIndex);
-        Assert(!finallyTail.Contains("StartMergeSourceConcealPulse(", StringComparison.Ordinal),
-            "The pulse worker must not re-arm itself from inside its own finally block. Self-restarts let a " +
-            "single rolled-over deadline keep the conceal worker alive across long busy periods.");
-
-        return Task.CompletedTask;
+        Assert(countAfterExit > 0, "The pulse must run before exiting.");
+        Assert(Volatile.Read(ref callCount) == countAfterExit,
+            "The pulse worker must not re-arm itself from inside its own exit path.");
     }
 
-    public static Task MergeSourceConcealPulseSleepIsAtLeast25Ms()
+    public static async Task MergeSourceConcealPulseSleepIsAtLeast25Ms()
     {
-        var sourcePath = FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
-        var source = File.ReadAllText(sourcePath);
-        var pulseBody = ExtractMethodBody(source, "private void StartMergeSourceConcealPulse");
+        var pulse = new MergeSourceConcealPulse(absoluteCeilingMs: 140, sleepMs: 25);
+        var callCount = 0;
 
-        Assert(!pulseBody.Contains("Task.Delay(15)", StringComparison.Ordinal),
-            "The old 15ms tight loop scanned every CabinetWClass window 66 times a second; that is more than " +
-            "enough to noticeably contend with Explorer's UI thread on busy systems.");
-        Assert(source.Contains("MergeSourceConcealPulseSleepMs = 25", StringComparison.Ordinal) &&
-               pulseBody.Contains("Task.Delay(MergeSourceConcealPulseSleepMs)", StringComparison.Ordinal),
-            "The pulse worker sleep must be at least 25 ms between iterations and reference the shared constant.");
+        pulse.Start(() => true, () => Interlocked.Increment(ref callCount), durationMs: 100);
+        await Task.Delay(140);
 
-        return Task.CompletedTask;
+        Assert(Volatile.Read(ref callCount) <= 7,
+            "The pulse worker must not run as a tight loop while scanning Explorer windows.");
     }
 
     public static Task ExplorerWatcherDisposeReleasesExplorerCheckTimer()
@@ -1376,7 +1374,7 @@ internal static class ExplorerTabSelectionTests
         var foundIndex = openBody.IndexOf("TrySearchForTab(windowToOpen.Location, windowToOpen.Handle", StringComparison.Ordinal);
         Assert(foundIndex >= 0, "Reuse must search by location and source handle.");
 
-        var foregroundIndex = openBody.IndexOf("WinApi.RestoreWindowToForeground(windowHandle)", foundIndex, StringComparison.Ordinal);
+        var foregroundIndex = openBody.IndexOf("Helper.RestoreWindowToForeground(windowHandle)", foundIndex, StringComparison.Ordinal);
         var selectIndex = openBody.IndexOf("await SelectTabByHandle(windowHandle, existingTab)", foundIndex, StringComparison.Ordinal);
         var reusedLogIndex = openBody.IndexOf("OpenTab reused target", foundIndex, StringComparison.Ordinal);
         var returnTrueIndex = openBody.IndexOf("return true;", reusedLogIndex >= 0 ? reusedLogIndex : foundIndex, StringComparison.Ordinal);

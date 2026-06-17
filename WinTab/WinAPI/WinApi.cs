@@ -6,8 +6,6 @@ using System.Text;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Runtime.InteropServices;
-using WinTab.Interop;
-using WinTab.Helpers;
 
 namespace WinTab.WinAPI;
 
@@ -167,7 +165,7 @@ public static class WinApi
     public static extern int SHGetNameFromIDList(nint pidl, uint sigdnName, [MarshalAs(UnmanagedType.LPWStr)] out string? ppszName);
 
     [DllImport("oleacc.dll")]
-    public static extern nint AccessibleObjectFromPoint(Point pt, [Out, MarshalAs(UnmanagedType.Interface)] out IAccessible accObj, [Out] out object ChildID);
+    public static extern nint AccessibleObjectFromPoint(Point pt, [Out, MarshalAs(UnmanagedType.Interface)] out object accObj, [Out] out object ChildID);
 
     public static IEnumerable<nint> FindAllWindowsEx(string className, nint parent = 0, string? windowTitle = null)
     {
@@ -181,26 +179,6 @@ public static class WinApi
             yield return handle;
 
         } while (handle != 0);
-    }
-
-    /// <summary>
-    /// Restores the specified window to the foreground even if it was minimized.
-    /// </summary>
-    /// <param name="window">The handle to the window that needs to be restored to the foreground.</param>
-    public static void RestoreWindowToForeground(nint window)
-    {
-        //If Minimized
-        if (IsIconic(window))
-        {
-            // Show the window but don't activate it, SetForegroundWindow is going to activate it. 
-            ShowWindow(window, SW_SHOWNOACTIVATE);
-        }
-
-        if (SetForegroundWindow(window)) return;
-
-        Helper.BypassWinForegroundRestrictions();
-
-        SetForegroundWindow(window);
     }
 
     public static string GetWindowClassName(nint hWnd, int maxClassNameLength = 254)
