@@ -66,6 +66,7 @@ internal static class ExplorerLaunchLocationResolverTests
             ("tab reuse never creates a duplicate after finding an existing path", ExplorerTabSelectionTests.TabReuseDoesNotDuplicateAfterSelectionFailure),
             ("WindowRegistered restores pre-hidden windows that are not merged", ExplorerTabSelectionTests.WindowRegisteredRestoresPreHiddenUnmergedWindows),
             ("merge source close is verified before hidden tracking is cleared", ExplorerTabSelectionTests.MergeSourceCloseIsVerifiedBeforeHiddenTrackingIsCleared),
+            ("closing merge sources are not restored as This PC intermediates", ExplorerTabSelectionTests.ClosingMergeSourcesAreNotRestoredAsThisPcIntermediates),
             ("Early WinEvent hide does not wait on merge target discovery", ExplorerTabSelectionTests.EarlyHideDoesNotWaitOnMergeTargetDiscovery),
             ("first run settings window fits without scrolling", ExplorerTabSelectionTests.FirstRunSettingsWindowFitsWithoutScrolling),
             ("settings resize writes are debounced and flushed", ExplorerTabSelectionTests.SettingsResizeWritesAreDebouncedAndFlushed),

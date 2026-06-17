@@ -584,8 +584,35 @@ internal static class ExplorerTabSelectionTests
             "A hidden source window must only be removed from hidden tracking after its close request has been verified.");
         Assert(closeBody.Contains("Helper.DoUntilConditionAsync", StringComparison.Ordinal) &&
                closeBody.Contains("!ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd)", StringComparison.Ordinal) &&
-               closeBody.Contains("RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal),
-            "Failed source-window closes must restore the Explorer window instead of leaving an alpha=0 background window.");
+               closeBody.Contains("ScheduleConcealedMergeSourceCloseRetry(hWnd)", StringComparison.Ordinal),
+            "A merged source window that has not disappeared yet must stay concealed and keep closing instead of being restored as a visible This PC intermediate.");
+
+        return Task.CompletedTask;
+    }
+
+    public static Task ClosingMergeSourcesAreNotRestoredAsThisPcIntermediates()
+    {
+        var sourcePath = SourceContract.FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var closeBody = SourceContract.ExtractMethodBody(source, "private async Task<bool> CloseMergedSourceWindowAsync");
+        var retryBody = SourceContract.ExtractMethodBody(source, "private void ScheduleConcealedMergeSourceCloseRetry");
+        var hideBody = SourceContract.ExtractMethodBody(source, "private bool TryHideIncomingExplorerWindow");
+        var removeBody = SourceContract.ExtractMethodBody(source, "private void RemoveWindowAndUnhookEvents");
+
+        Assert(closeBody.Contains("_closingMergeSourceHWnds.TryAdd(hWnd, 0)", StringComparison.Ordinal),
+            "Merged source windows must be marked as closing before their close request is sent.");
+        Assert(closeBody.Contains("ScheduleConcealedMergeSourceCloseRetry(hWnd)", StringComparison.Ordinal) &&
+               !closeBody.Contains("await RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal),
+            "A closing merged source must not be restored when the short close verification misses the final close.");
+        Assert(hideBody.Contains("_closingMergeSourceHWnds.ContainsKey(hWnd)", StringComparison.Ordinal) &&
+               hideBody.Contains("RequestCloseMergedSourceWindow(hWnd)", StringComparison.Ordinal),
+            "Late WinEvents for a closing This PC intermediate must re-hide it and send another close request.");
+        Assert(removeBody.Contains("_closingMergeSourceHWnds.ContainsKey(hWnd)", StringComparison.Ordinal) &&
+               removeBody.Contains("restoreHiddenWindow = false", StringComparison.Ordinal),
+            "Closing intermediates must not be restored while their ShellWindows wrapper is being removed.");
+        Assert(retryBody.Contains("HideMergeSourceWindow(hWnd)", StringComparison.Ordinal) &&
+               retryBody.Contains("RequestCloseMergedSourceWindow(hWnd)", StringComparison.Ordinal),
+            "The retry path must keep the intermediate concealed while it continues closing.");
 
         return Task.CompletedTask;
     }

@@ -66,6 +66,8 @@ public class ExplorerWatcher : IHook
     private int _shellWindowRegistrationScheduled;
     private readonly MergeSourceConcealPulse _mergeSourceConcealPulse = new();
     private readonly ConcurrentDictionary<nint, byte> _mergeSourceHWnds = new();
+    private readonly ConcurrentDictionary<nint, byte> _closingMergeSourceHWnds = new();
+    private readonly ConcurrentDictionary<nint, byte> _closingMergeSourceRetryHWnds = new();
     private sealed record TabStripBounds(DrawingRectangle StripRect, DrawingRectangle[] TabRects, RECT WindowRect, long RefreshedAt);
     public bool IsHookActive => _isForcingTabs;
     public bool IsShellReady => _mainExplorerProcessId != 0 && _shellWindows != null;
@@ -583,6 +585,13 @@ public class ExplorerWatcher : IHook
     {
         hWnd = GetExplorerTopLevelWindow(hWnd);
         if ((!_isForcingTabs && !_reuseTabs) || hWnd == 0) return false;
+        if (_closingMergeSourceHWnds.ContainsKey(hWnd))
+        {
+            HideMergeSourceWindow(hWnd);
+            RequestCloseMergedSourceWindow(hWnd);
+            return true;
+        }
+
         if (_processedHWnds.ContainsKey(hWnd)) return false;
         if (Helper.IsCtrlShiftDown()) return false;
         if (_hookedTopLevelUseCounts.ContainsKey(hWnd)) return false;
@@ -646,6 +655,8 @@ public class ExplorerWatcher : IHook
             return;
 
         _mergeSourceHWnds.TryRemove(hWnd, out _);
+        _closingMergeSourceHWnds.TryRemove(hWnd, out _);
+        _closingMergeSourceRetryHWnds.TryRemove(hWnd, out _);
         ExplorerWindowVisibility.Forget(hWnd);
         PreventWindowHiding(hWnd);
     }
@@ -1156,6 +1167,9 @@ public class ExplorerWatcher : IHook
     }
     private async Task<bool> CloseMergedSourceWindowAsync(InternetExplorer window, nint hWnd)
     {
+        if (hWnd != 0)
+            _closingMergeSourceHWnds.TryAdd(hWnd, 0);
+
         RequestCloseMergedSourceWindow(window, hWnd);
         if (hWnd == 0)
             return true;
@@ -1177,14 +1191,59 @@ public class ExplorerWatcher : IHook
             40);
 
         if (!closed)
-            await RestoreMergeSourceWindowAsync(hWnd);
+            ScheduleConcealedMergeSourceCloseRetry(hWnd);
 
         return closed;
     }
-    private static void RequestCloseMergedSourceWindow(InternetExplorer window, nint hWnd)
+    private void ScheduleConcealedMergeSourceCloseRetry(nint hWnd)
+    {
+        if (hWnd == 0 ||
+            !_closingMergeSourceHWnds.ContainsKey(hWnd) ||
+            !_closingMergeSourceRetryHWnds.TryAdd(hWnd, 0))
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                for (var attempt = 0; attempt < 24; attempt++)
+                {
+                    if (!ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
+                        return;
+
+                    HideMergeSourceWindow(hWnd);
+                    RequestCloseMergedSourceWindow(hWnd);
+                    await Task.Delay(150).ConfigureAwait(false);
+                }
+
+                if (ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
+                {
+                    HideMergeSourceWindow(hWnd);
+                    DebugLog($"Concealed merge source still closing hwnd={hWnd}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLog($"Concealed merge source close retry error hwnd={hWnd} error={ex.GetType().Name}:{ex.Message}");
+            }
+            finally
+            {
+                _closingMergeSourceRetryHWnds.TryRemove(hWnd, out _);
+                if (!ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
+                    RemoveMergeSourceTracking(hWnd);
+            }
+        });
+    }
+    private static void RequestCloseMergedSourceWindow(nint hWnd)
     {
         if (hWnd != 0)
             WinApi.PostMessage(hWnd, WinApi.WM_CLOSE, 0, 0);
+    }
+    private static void RequestCloseMergedSourceWindow(InternetExplorer window, nint hWnd)
+    {
+        RequestCloseMergedSourceWindow(hWnd);
 
         _ = Task.Run(() =>
         {
@@ -1387,8 +1446,14 @@ public class ExplorerWatcher : IHook
         try
         {
             var hWnd = new IntPtr(window.HWND);
+            if (_closingMergeSourceHWnds.ContainsKey(hWnd))
+                restoreHiddenWindow = false;
+
             if (restoreHiddenWindow)
                 ExplorerWindowVisibility.Restore(hWnd, removeCache: true, removeLayeredStyle: !_settings.HaveThemeIssue);
+
+            if (_closingMergeSourceHWnds.ContainsKey(hWnd))
+                RemoveMergeSourceTracking(hWnd);
 
             _processedHWnds.TryRemove(hWnd, out _);
             ReleaseTopLevelTrackingIfUnused(hWnd);
