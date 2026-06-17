@@ -55,6 +55,7 @@ internal static class ExplorerLaunchLocationResolverTests
             ("ShellWindows registration callback stays non-blocking", ExplorerTabSelectionTests.ShellWindowRegistrationCallbackStaysNonBlocking),
             ("stable default-location Explorer windows remain mergeable without residuals", ExplorerTabSelectionTests.StableDefaultLocationWindowsRemainMergeableWithoutResiduals),
             ("folder merges avoid default-only Explorer targets when a real folder target exists", ExplorerTabSelectionTests.FolderMergesAvoidDefaultOnlyTargets),
+            ("recently closed same folder still merges", ExplorerTabSelectionTests.RecentlyClosedSameFolderStillMerges),
             ("mergeable default-location intermediate closes only after target tab succeeds", ExplorerTabSelectionTests.MergeableDefaultLocationIntermediateClosesAfterTargetTabSucceeds),
             ("released merge sources are protected from late re-hide events", ExplorerTabSelectionTests.ReleasedMergeSourcesAreProtectedFromLateRehideEvents),
             ("HideWindow reapplies transparency after Explorer resets styles", ExplorerTabSelectionTests.HideWindowReappliesTransparency),

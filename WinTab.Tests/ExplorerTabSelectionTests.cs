@@ -396,6 +396,29 @@ internal static class ExplorerTabSelectionTests
         return Task.CompletedTask;
     }
 
+    public static Task RecentlyClosedSameFolderStillMerges()
+    {
+        var sourcePath = SourceContract.FindRepoFile("WinTab", "Hooks", "ExplorerWatcher.cs");
+        var source = File.ReadAllText(sourcePath);
+        var registrationBody = SourceContract.ExtractMethodBody(source, "private async Task ProcessRegisteredShellWindowAsync");
+
+        var recentIndex = registrationBody.IndexOf("TryGetRecentlyClosedWindow(location, out var closedWindow)", StringComparison.Ordinal);
+        var recordIndex = registrationBody.IndexOf("var record = new WindowRecord(location, hWnd, selectedItems)", StringComparison.Ordinal);
+        var mergeIndex = registrationBody.IndexOf("OpenTabNavigateWithSelection(record, targetWindow)", StringComparison.Ordinal);
+        Assert(recentIndex >= 0 && recordIndex > recentIndex && mergeIndex > recordIndex,
+            "A folder reopened shortly after being closed must consume the recent-close record and still continue to the normal merge path.");
+
+        var afterRecent = registrationBody.Substring(recentIndex, recordIndex - recentIndex);
+        Assert(!afterRecent.Contains("RegisterIndependentWindow(window, windowInfo, hWnd)", StringComparison.Ordinal) &&
+               !afterRecent.Contains("RestoreMergeSourceWindowAsync(hWnd)", StringComparison.Ordinal) &&
+               !afterRecent.Contains("return;", StringComparison.Ordinal),
+            "The recently-closed match must not release the new folder window as an independent Explorer window before merge can run.");
+        Assert(registrationBody.Contains("recentlyClosedWindow?.SelectedItems?.Length > 0", StringComparison.Ordinal),
+            "The recent-close record may be used as a selection hint, but not as a reason to skip merging.");
+
+        return Task.CompletedTask;
+    }
+
     public static Task MergeableDefaultLocationIntermediateClosesAfterTargetTabSucceeds()
     {
         var resolverPath = SourceContract.FindRepoFile("WinTab", "Hooks", "ExplorerLaunchLocationResolver.cs");

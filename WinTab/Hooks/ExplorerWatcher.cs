@@ -1096,19 +1096,24 @@ public class ExplorerWatcher : IHook
                 return;
             }
 
+            WindowRecord? recentlyClosedWindow = null;
             if (sourceAlive && TryGetRecentlyClosedWindow(location, out var closedWindow))
             {
-                DebugLog($"Registered release recently-closed hwnd={hWnd} location={location}");
-                SelectItems(window, closedWindow!.SelectedItems);
-                await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
-                return;
+                recentlyClosedWindow = closedWindow;
+                DebugLog($"Registered merge recently-closed hwnd={hWnd} location={location}");
             }
 
             if (sourceAlive && !IsStartupExplorerLocation(location))
                 HideMergeSourceWindow(hWnd);
 
-            var record = new WindowRecord(location, hWnd, TryGetSelectedItems(window));
+            var selectedItems = TryGetSelectedItems(window);
+            if ((selectedItems == null || selectedItems.Length == 0) &&
+                recentlyClosedWindow?.SelectedItems?.Length > 0)
+            {
+                selectedItems = recentlyClosedWindow.SelectedItems;
+            }
+
+            var record = new WindowRecord(location, hWnd, selectedItems);
             if (!await OpenTabNavigateWithSelection(record, targetWindow))
             {
                 DebugLog($"Registered merge-failed hwnd={hWnd} location={location}");
