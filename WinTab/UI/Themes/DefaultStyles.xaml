@@ -146,11 +146,7 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="5"
-                                    RenderTransformOrigin="0.5,0.5">
-                                <Border.RenderTransform>
-                                    <ScaleTransform ScaleX="1" ScaleY="1" />
-                                </Border.RenderTransform>
+                                    CornerRadius="5">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" MinWidth="24" />
@@ -230,34 +226,6 @@
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="Border" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
                                     <Setter Property="Foreground" Value="{DynamicResource TextAccentBrush}" />
-                                    <Trigger.EnterActions>
-                                        <BeginStoryboard>
-                                            <Storyboard>
-                                                <DoubleAnimation Storyboard.TargetName="Border"
-                                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                                 To="0.995"
-                                                                 Duration="{StaticResource MotionFastDuration}" />
-                                                <DoubleAnimation Storyboard.TargetName="Border"
-                                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                                 To="0.995"
-                                                                 Duration="{StaticResource MotionFastDuration}" />
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </Trigger.EnterActions>
-                                    <Trigger.ExitActions>
-                                        <BeginStoryboard>
-                                            <Storyboard>
-                                                <DoubleAnimation Storyboard.TargetName="Border"
-                                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                                 To="1"
-                                                                 Duration="{StaticResource MotionFastDuration}" />
-                                                <DoubleAnimation Storyboard.TargetName="Border"
-                                                                 Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                                 To="1"
-                                                                 Duration="{StaticResource MotionFastDuration}" />
-                                            </Storyboard>
-                                        </BeginStoryboard>
-                                    </Trigger.ExitActions>
                                 </Trigger>
 
                                 <!-- Disabled Trigger -->
