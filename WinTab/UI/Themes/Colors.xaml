@@ -12,21 +12,14 @@
     <Color x:Key="DividerColor">#E1E1E1</Color>
     <Color x:Key="ControlBackgroundColor">#F2F2F2</Color>
     <Color x:Key="ControlHoverColor">#E9E9E9</Color>
-    <Color x:Key="DangerColor">#3A3A3A</Color>
     <Color x:Key="DropdownBackgroundColor">#FDFDFD</Color>
     <Color x:Key="ShadowColor">#6A6A6A</Color>
-    <Color x:Key="SuccessColor">#3A3A3A</Color>
-    <Color x:Key="WarningColor">#3A3A3A</Color>
-    <Color x:Key="AccentColor">#1F1F1F</Color>
-    <Color x:Key="StatusActiveColor">#1F1F1F</Color>
-    <Color x:Key="StatusInactiveColor">#767676</Color>
     <Color x:Key="CheckBoxCheckedBackgroundColor">#1F1F1F</Color>
     <Color x:Key="CheckBoxCheckedBorderColor">#1F1F1F</Color>
     <Color x:Key="CheckBoxCheckedGlyphColor">#F8F8F8</Color>
     <Color x:Key="StatusPillBackgroundColor">#EEEEEE</Color>
     <Color x:Key="StatusPillBorderColor">#D4D4D4</Color>
     <Color x:Key="FocusRingColor">#3A3A3A</Color>
-    <Color x:Key="FooterColor">#F2F2F2</Color>
 
     <!-- Brushes -->
     <SolidColorBrush x:Key="PrimaryBrush" Color="{DynamicResource PrimaryColor}" />
@@ -40,19 +33,12 @@
     <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{DynamicResource ControlBackgroundColor}" />
     <SolidColorBrush x:Key="ControlHoverBrush" Color="{DynamicResource ControlHoverColor}" />
     <SolidColorBrush x:Key="DropdownBackgroundBrush" Color="{DynamicResource DropdownBackgroundColor}" />
-    <SolidColorBrush x:Key="DangerBrush" Color="{DynamicResource DangerColor}" />
-    <SolidColorBrush x:Key="SuccessBrush" Color="{DynamicResource SuccessColor}" />
-    <SolidColorBrush x:Key="WarningBrush" Color="{DynamicResource WarningColor}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource AccentColor}" />
-    <SolidColorBrush x:Key="StatusActiveBrush" Color="{DynamicResource StatusActiveColor}" />
-    <SolidColorBrush x:Key="StatusInactiveBrush" Color="{DynamicResource StatusInactiveColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckedBackgroundBrush" Color="{DynamicResource CheckBoxCheckedBackgroundColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckedBorderBrush" Color="{DynamicResource CheckBoxCheckedBorderColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckedGlyphBrush" Color="{DynamicResource CheckBoxCheckedGlyphColor}" />
     <SolidColorBrush x:Key="StatusPillBackgroundBrush" Color="{DynamicResource StatusPillBackgroundColor}" />
     <SolidColorBrush x:Key="StatusPillBorderBrush" Color="{DynamicResource StatusPillBorderColor}" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="{DynamicResource FocusRingColor}" />
-    <SolidColorBrush x:Key="FooterBrush" Color="{DynamicResource FooterColor}" />
 
     <!-- Solid surface brushes. -->
     <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F7F7F7" />

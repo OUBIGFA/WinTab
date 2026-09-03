@@ -71,6 +71,9 @@ public sealed class ShellPathComparer : IDisposable
     }
     public bool IsEquivalent(nint pidl1, nint pidl2)
     {
+        if (pidl1 == 0 || pidl2 == 0)
+            return false;
+
         try
         {
             return CompareIds(pidl1, pidl2) || CompareWithShGetName(pidl1, pidl2);

@@ -38,6 +38,13 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
+      - name: Build and run unit tests
+        shell: pwsh
+        run: |
+          msbuild WinTab.Tests/WinTab.Tests.csproj /restore /t:Build /p:Configuration=Release /nologo /v:minimal
+          & "WinTab.Tests\bin\Release\net9.0-windows\WinTab.Tests.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Unit tests failed (exit $LASTEXITCODE)" }
+
       - name: Publish app
         shell: pwsh
         run: |

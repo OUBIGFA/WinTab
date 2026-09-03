@@ -11,18 +11,17 @@ public sealed class ExplorerTabDoubleClickHook : IHook
 {
     private const int SM_CXDOUBLECLK = 36;
     private const int SM_CYDOUBLECLK = 37;
-    private const uint GA_ROOT = 2;
 
-    private readonly ExplorerWatcher _explorerWatcher;
+    private readonly TabStripHitTester _tabStrip;
     private readonly LowLevelMouseHook _lowLevelMouseHook;
     private readonly ExplorerTabDoubleClickCloseController _controller;
     private readonly Func<bool> _isEnabled;
 
     public ExplorerTabDoubleClickHook(ExplorerWatcher explorerWatcher, Func<bool>? isEnabled = null)
     {
-        _explorerWatcher = explorerWatcher;
+        _tabStrip = explorerWatcher.TabStrip;
         _isEnabled = isEnabled ?? (() => true);
-        _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(explorerWatcher, _isEnabled));
+        _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(_tabStrip, _isEnabled));
         _lowLevelMouseHook = new LowLevelMouseHook
         {
             AddKeyboardKeys = true,
@@ -81,7 +80,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             {
                 try
                 {
-                    _explorerWatcher.RefreshTabStripBounds(closeRequest.ExplorerWindow);
+                    _tabStrip.Refresh(closeRequest.ExplorerWindow);
                 }
                 catch
                 {
@@ -98,7 +97,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         var hit = WinApi.WindowFromPoint(point);
         if (hit != 0)
         {
-            var root = WinApi.GetAncestor(hit, GA_ROOT);
+            var root = WinApi.GetAncestor(hit, WinApi.GA_ROOT);
             if (ExplorerWindowDiscovery.IsFileExplorerWindow(root))
                 return root;
         }
@@ -106,7 +105,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         return ExplorerWindowDiscovery.IsFileExplorerForeground(out var foreground) && foreground != 0 ? foreground : 0;
     }
 
-    private sealed class HookEnvironment(ExplorerWatcher explorerWatcher, Func<bool> isEnabled) : IExplorerTabDoubleClickEnvironment
+    private sealed class HookEnvironment(TabStripHitTester tabStrip, Func<bool> isEnabled) : IExplorerTabDoubleClickEnvironment
     {
         public bool IsEnabled => isEnabled();
         public int DoubleClickTimeMs => (int)WinApi.GetDoubleClickTime();
@@ -114,8 +113,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         public int DoubleClickHeight => WinApi.GetSystemMetrics(SM_CYDOUBLECLK);
         public nint ResolveExplorerWindow(Point point) => GetExplorerWindowForPoint(point);
         public bool IsExplorerWindow(nint explorerWindow) => ExplorerWindowDiscovery.IsFileExplorerWindow(explorerWindow);
-        public bool IsPointOnTabStrip(Point point, nint explorerWindow) =>
-            explorerWatcher.IsPointOnTabStrip(point, explorerWindow);
+        public bool IsPointOnTabStrip(Point point, nint explorerWindow) => tabStrip.IsPointOnTabStrip(point, explorerWindow);
     }
 
     public void Dispose()

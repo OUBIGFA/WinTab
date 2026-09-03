@@ -25,21 +25,14 @@ public static class ThemeManager
         SetColor("DividerColor", dark ? "#2A2A2A" : "#E1E1E1");
         SetColor("ControlBackgroundColor", dark ? "#202020" : "#F2F2F2");
         SetColor("ControlHoverColor", dark ? "#2A2A2A" : "#E9E9E9");
-        SetColor("DangerColor", dark ? "#D0D0D0" : "#3A3A3A");
         SetColor("DropdownBackgroundColor", dark ? "#181818" : "#FDFDFD");
         SetColor("ShadowColor", dark ? "#050505" : "#6A6A6A");
-        SetColor("SuccessColor", dark ? "#D0D0D0" : "#3A3A3A");
-        SetColor("WarningColor", dark ? "#D0D0D0" : "#3A3A3A");
-        SetColor("AccentColor", dark ? "#F0F0F0" : "#1F1F1F");
-        SetColor("StatusActiveColor", dark ? "#F0F0F0" : "#1F1F1F");
-        SetColor("StatusInactiveColor", dark ? "#9A9A9A" : "#767676");
         SetColor("CheckBoxCheckedBackgroundColor", dark ? "#F0F0F0" : "#1F1F1F");
         SetColor("CheckBoxCheckedBorderColor", dark ? "#F0F0F0" : "#1F1F1F");
         SetColor("CheckBoxCheckedGlyphColor", dark ? "#171717" : "#F8F8F8");
         SetColor("StatusPillBackgroundColor", dark ? "#232323" : "#EEEEEE");
         SetColor("StatusPillBorderColor", dark ? "#393939" : "#D4D4D4");
         SetColor("FocusRingColor", dark ? "#D0D0D0" : "#3A3A3A");
-        SetColor("FooterColor", dark ? "#181818" : "#F2F2F2");
 
         SetBrush("WindowBackgroundBrush", dark ? "#121212" : "#F7F7F7");
         SetBrush("WindowTitleBarBrush", dark ? "#161616" : "#F7F7F7");

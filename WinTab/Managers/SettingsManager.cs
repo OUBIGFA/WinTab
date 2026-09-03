@@ -6,7 +6,7 @@ using System.ComponentModel;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using WinTab.Models;
+using WinTab.Helpers;
 
 namespace WinTab.Managers;
 
@@ -23,7 +23,7 @@ public static class SettingsManager
     private static readonly string SettingsDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "WinTab");
-    private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
+    private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, Constants.SettingsFileName);
 
     static SettingsManager()
     {
@@ -64,30 +64,6 @@ public static class SettingsManager
         set => SetProperty(() => Settings.DoubleClickCloseTab, value, v => Settings.DoubleClickCloseTab = v);
     }
 
-    public static bool HaveThemeIssue
-    {
-        get => ReadProperty(() => Settings.HaveThemeIssue);
-        set => SetProperty(() => Settings.HaveThemeIssue, value, v => Settings.HaveThemeIssue = v);
-    }
-
-    public static bool SaveClosedHistory
-    {
-        get => ReadProperty(() => Settings.SaveClosedWindows);
-        set => SetProperty(() => Settings.SaveClosedWindows, value, v => Settings.SaveClosedWindows = v);
-    }
-
-    public static bool RestorePreviousWindows
-    {
-        get => ReadProperty(() => Settings.RestorePreviousWindows);
-        set => SetProperty(() => Settings.RestorePreviousWindows, value, v => Settings.RestorePreviousWindows = v);
-    }
-
-    public static WindowRecord[]? ClosedWindows
-    {
-        get => ReadProperty(() => Settings.ClosedWindows);
-        set => SetProperty(() => Settings.ClosedWindows, value, v => Settings.ClosedWindows = v, notify: false);
-    }
-
     public static bool AutoUpdate
     {
         get => ReadProperty(() => Settings.AutoUpdate);
@@ -98,12 +74,6 @@ public static class SettingsManager
     {
         get => ReadProperty(() => Settings.ShowTrayIcon);
         set => SetProperty(() => Settings.ShowTrayIcon, value, v => Settings.ShowTrayIcon = v);
-    }
-
-    public static bool IsFirstRun
-    {
-        get => ReadProperty(() => Settings.IsFirstRun);
-        set => SetProperty(() => Settings.IsFirstRun, value, v => Settings.IsFirstRun = v);
     }
 
     public static string Language
@@ -226,13 +196,8 @@ internal sealed class AppSettings
     public bool WindowHook { get; set; } = true;
     public bool ReuseTabs { get; set; } = true;
     public bool DoubleClickCloseTab { get; set; } = true;
-    public bool HaveThemeIssue { get; set; }
-    public bool SaveClosedWindows { get; set; }
-    public bool RestorePreviousWindows { get; set; }
-    public WindowRecord[]? ClosedWindows { get; set; }
     public bool AutoUpdate { get; set; } = true;
     public bool ShowTrayIcon { get; set; } = true;
-    public bool IsFirstRun { get; set; } = true;
     public string Language { get; set; } = "zh-CN";
     public string Theme { get; set; } = "Light";
     public Size FormSize { get; set; } = new(1020, 720);

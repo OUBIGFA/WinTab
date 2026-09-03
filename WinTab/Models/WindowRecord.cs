@@ -1,23 +1,15 @@
 using System;
-using System.Text.Json.Serialization;
-using WinTab.Helpers;
 
 namespace WinTab.Models;
 
-public class WindowRecord(string location, nint handle = 0, string[]? selectedItems = null, string name = "", bool restore = false)
+/// <summary>
+/// In-memory note of a folder a user recently closed or asked to open, kept briefly so a
+/// re-open of the same folder can restore its selection.
+/// </summary>
+public class WindowRecord(string location, nint handle = 0, string[]? selectedItems = null)
 {
-    [JsonConverter(typeof(IntPtrConverter))]
-    public nint Handle { get; set; } = handle;
-    public string Name { get; set; } = name;
-    public string Location { get; set; } = location;
-    public string[]? SelectedItems { get; set; } = selectedItems;
-    public long CreatedAt { get; set; } = Environment.TickCount;
-    public bool Restore { get; set; } = restore;
-
-    [JsonIgnore] public string DisplayLocation => Uri.UnescapeDataString(Location.Replace(@"file:\\\", ""));
-
-    [JsonConstructor]
-    private WindowRecord() : this(string.Empty)
-    {
-    }
+    public nint Handle { get; } = handle;
+    public string Location { get; } = location;
+    public string[]? SelectedItems { get; } = selectedItems;
+    public long CreatedAt { get; } = Environment.TickCount;
 }

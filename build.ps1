@@ -16,6 +16,9 @@
 .PARAMETER SkipInstaller
     Skip the Inno Setup compile step.
 
+.PARAMETER SkipTests
+    Skip building and running WinTab.Tests before publishing.
+
 .PARAMETER Combined
     Also build the combined (auto-detect) installer in addition to per-arch installers.
 
@@ -34,6 +37,7 @@ param(
     [string[]]$Arch = @('x64', 'x86', 'arm64'),
     [switch]$SkipPublish,
     [switch]$SkipInstaller,
+    [switch]$SkipTests,
     [switch]$Combined,
     [string]$IsccPath,
     [string]$MSBuildPath
@@ -44,6 +48,8 @@ Set-StrictMode -Version Latest
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectPath = Join-Path $RepoRoot 'WinTab\WinTab.csproj'
+$TestProjectPath = Join-Path $RepoRoot 'WinTab.Tests\WinTab.Tests.csproj'
+$TestExePath = Join-Path $RepoRoot 'WinTab.Tests\bin\Release\net9.0-windows\WinTab.Tests.exe'
 $AssetsDir = Join-Path $RepoRoot 'Assets'
 $AppIconPath = Join-Path $RepoRoot 'WinTab\Icon.ico'
 $AppLogoPath = Join-Path $RepoRoot 'WinTab\wintab-logo.png'
@@ -161,6 +167,18 @@ if (Test-Path $sourceLogo) {
 
 if (-not $SkipPublish) {
     $msbuild = Resolve-MSBuild -Hint $MSBuildPath
+
+    if (-not $SkipTests) {
+        Write-Host "`n==> Building and running unit tests" -ForegroundColor Cyan
+        & $msbuild $TestProjectPath /restore /t:Build /p:Configuration=Release /nologo /v:minimal
+        if ($LASTEXITCODE -ne 0) { throw "Test project build failed (exit $LASTEXITCODE)" }
+        & $TestExePath
+        if ($LASTEXITCODE -ne 0) { throw "Unit tests failed (exit $LASTEXITCODE)" }
+    }
+    else {
+        Write-Host "`n==> SkipTests: not running unit tests" -ForegroundColor Yellow
+    }
+
     Write-Host "`n==> Publishing $($Arch.Count) arch(es) via $msbuild" -ForegroundColor Cyan
     foreach ($a in $Arch) {
         $out = Join-Path $PublishRoot $a

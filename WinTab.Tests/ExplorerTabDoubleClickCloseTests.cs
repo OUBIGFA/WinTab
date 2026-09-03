@@ -6,7 +6,14 @@ using WinTab.Hooks;
 
 internal static class ExplorerTabDoubleClickCloseTests
 {
-    public static Task ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick()
+    public static IEnumerable<(string Name, Func<Task> Body)> All()
+    {
+        yield return ("double-click close can continue after a tab-strip hit-test refresh gap", ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick);
+        yield return ("double-click close chain ignores points outside the double-click geometry", CloseChainFallbackIgnoresDifferentPoints);
+        yield return ("double-click close is inert while the feature is disabled", DisabledEnvironmentNeverSwallowsClicks);
+    }
+
+    private static Task ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick()
     {
         var environment = new FakeDoubleClickEnvironment();
         var controller = new ExplorerTabDoubleClickCloseController(environment);
@@ -14,33 +21,33 @@ internal static class ExplorerTabDoubleClickCloseTests
         var point = new Point(240, 48);
 
         environment.HitTestResults.Enqueue(true);
-        Assert(!controller.HandleLeftMouseDown(point, 1_000).Handled,
+        Check.That(!controller.HandleLeftMouseDown(point, 1_000).Handled,
             "The first click should arm a tab-title candidate without swallowing native Explorer behavior.");
-        Assert(!controller.HandleLeftMouseUp(1_020).Handled,
+        Check.That(!controller.HandleLeftMouseUp(1_020).Handled,
             "A normal first mouse-up should not be swallowed.");
 
         environment.HitTestResults.Enqueue(true);
-        Assert(controller.HandleLeftMouseDown(point, 1_080).Handled,
+        Check.That(controller.HandleLeftMouseDown(point, 1_080).Handled,
             "The second click on the same tab title should be swallowed and converted into a close request.");
         RecordClose(controller.HandleLeftMouseUp(1_100), closeRequests);
-        AssertEqual(1, closeRequests.Count, "The first double-click should close one tab.");
+        Check.Equal(1, closeRequests.Count, "The first double-click should close one tab.");
 
         environment.HitTestResults.Enqueue(false);
-        Assert(!controller.HandleLeftMouseDown(point, 1_220).Handled,
+        Check.That(!controller.HandleLeftMouseDown(point, 1_220).Handled,
             "The first click after closing should still arm the next tab even while the tab-strip hit-test cache is refreshing.");
-        Assert(!controller.HandleLeftMouseUp(1_240).Handled,
+        Check.That(!controller.HandleLeftMouseUp(1_240).Handled,
             "The first mouse-up in the next pair should not be swallowed.");
 
         environment.HitTestResults.Enqueue(false);
-        Assert(controller.HandleLeftMouseDown(point, 1_300).Handled,
+        Check.That(controller.HandleLeftMouseDown(point, 1_300).Handled,
             "The second click after the refresh gap should close the next tab without requiring an intermediate click.");
         RecordClose(controller.HandleLeftMouseUp(1_320), closeRequests);
-        AssertEqual(2, closeRequests.Count, "Two consecutive double-clicks should close two tabs.");
+        Check.Equal(2, closeRequests.Count, "Two consecutive double-clicks should close two tabs.");
 
         return Task.CompletedTask;
     }
 
-    public static Task CloseChainFallbackIgnoresDifferentPoints()
+    private static Task CloseChainFallbackIgnoresDifferentPoints()
     {
         var environment = new FakeDoubleClickEnvironment();
         var controller = new ExplorerTabDoubleClickCloseController(environment);
@@ -52,45 +59,50 @@ internal static class ExplorerTabDoubleClickCloseTests
         _ = controller.HandleLeftMouseDown(tabPoint, 2_000);
         _ = controller.HandleLeftMouseUp(2_020);
         environment.HitTestResults.Enqueue(true);
-        Assert(controller.HandleLeftMouseDown(tabPoint, 2_080).Handled,
+        Check.That(controller.HandleLeftMouseDown(tabPoint, 2_080).Handled,
             "The setup double-click should be recognized.");
         RecordClose(controller.HandleLeftMouseUp(2_100), closeRequests);
-        AssertEqual(1, closeRequests.Count, "The setup double-click should close one tab.");
+        Check.Equal(1, closeRequests.Count, "The setup double-click should close one tab.");
 
         environment.HitTestResults.Enqueue(false);
-        Assert(!controller.HandleLeftMouseDown(otherPoint, 2_180).Handled,
+        Check.That(!controller.HandleLeftMouseDown(otherPoint, 2_180).Handled,
             "A click away from the closed tab should not use the close-chain fallback.");
-        Assert(!controller.HandleLeftMouseUp(2_200).Handled,
+        Check.That(!controller.HandleLeftMouseUp(2_200).Handled,
             "The mouse-up away from the closed tab should remain native.");
 
         environment.HitTestResults.Enqueue(false);
-        Assert(!controller.HandleLeftMouseDown(otherPoint, 2_240).Handled,
+        Check.That(!controller.HandleLeftMouseDown(otherPoint, 2_240).Handled,
             "A second click away from the closed tab should not close anything.");
-        Assert(!controller.HandleLeftMouseUp(2_260).Handled,
+        Check.That(!controller.HandleLeftMouseUp(2_260).Handled,
             "The second mouse-up away from the closed tab should remain native.");
-        AssertEqual(1, closeRequests.Count, "Only the setup close should have been requested.");
+        Check.Equal(1, closeRequests.Count, "Only the setup close should have been requested.");
 
         return Task.CompletedTask;
     }
 
     private static void RecordClose(MouseHookDecision decision, ICollection<ExplorerTabCloseRequest> closeRequests)
     {
-        Assert(decision.Handled, "The matching mouse-up should be swallowed.");
+        Check.That(decision.Handled, "The matching mouse-up should be swallowed.");
         var closeRequest = decision.CloseRequest;
-        Assert(closeRequest.HasValue, "The matching mouse-up should emit a native close request.");
+        Check.That(closeRequest.HasValue, "The matching mouse-up should emit a native close request.");
         closeRequests.Add(closeRequest.GetValueOrDefault());
     }
 
-    private static void AssertEqual(int expected, int actual, string message)
+    private static Task DisabledEnvironmentNeverSwallowsClicks()
     {
-        if (expected != actual)
-            throw new InvalidOperationException($"{message} Expected {expected}, got {actual}.");
-    }
+        var environment = new FakeDoubleClickEnvironment { IsEnabled = false };
+        var controller = new ExplorerTabDoubleClickCloseController(environment);
+        var point = new Point(240, 48);
 
-    private static void Assert(bool condition, string message)
-    {
-        if (!condition)
-            throw new InvalidOperationException(message);
+        environment.HitTestResults.Enqueue(true);
+        Check.That(!controller.HandleLeftMouseDown(point, 3_000).Handled, "A disabled hook must not swallow the first click.");
+        Check.That(!controller.HandleLeftMouseUp(3_020).Handled, "A disabled hook must not swallow the first mouse-up.");
+        environment.HitTestResults.Enqueue(true);
+        Check.That(!controller.HandleLeftMouseDown(point, 3_080).Handled, "A disabled hook must not turn the second click into a close request.");
+        var up = controller.HandleLeftMouseUp(3_100);
+        Check.That(!up.Handled && up.CloseRequest is null, "A disabled hook must never emit a close request.");
+
+        return Task.CompletedTask;
     }
 
     private sealed class FakeDoubleClickEnvironment : IExplorerTabDoubleClickEnvironment

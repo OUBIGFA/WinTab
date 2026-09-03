@@ -31,8 +31,6 @@ public partial class App : Application
 
             _mainWindow = new MainWindow();
             StartShowMainWindowRequestListener();
-            if (SettingsManager.IsFirstRun)
-                SettingsManager.IsFirstRun = false;
 
             var launchInBackground = e.Args.Any(arg => string.Equals(arg, Constants.BackgroundLaunchArg, StringComparison.OrdinalIgnoreCase));
             if (!launchInBackground)

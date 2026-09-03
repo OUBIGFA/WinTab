@@ -4,6 +4,10 @@ using WinTab.Hooks;
 
 namespace WinTab.Managers;
 
+/// <summary>
+/// Single owner of the hook on/off state: every UI surface calls the Set* methods here, which
+/// persist the setting, apply it to the hooks, and keep the two coupled toggles consistent.
+/// </summary>
 public sealed class HookManager : IDisposable
 {
     private readonly SynchronizationContext _syncContext;
@@ -20,7 +24,7 @@ public sealed class HookManager : IDisposable
     {
         _syncContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
-        _explorerWatcher = new ExplorerWatcher(ExplorerWatcherSettings.Instance);
+        _explorerWatcher = new ExplorerWatcher(RegistryManager.GetDefaultExplorerLaunchId);
         _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab);
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
@@ -41,8 +45,10 @@ public sealed class HookManager : IDisposable
         SetDoubleClickClose(SettingsManager.DoubleClickCloseTab);
     }
 
+    /// <summary>Turning window merging off also turns tab reuse off; reuse needs the merge hook.</summary>
     public void SetWindowHook(bool enabled)
     {
+        SettingsManager.IsWindowHookActive = enabled;
         ChangeHookStatus(_explorerWatcher, enabled);
 
         if (!enabled && SettingsManager.ReuseTabs)
@@ -54,8 +60,10 @@ public sealed class HookManager : IDisposable
         RaiseStateChanged();
     }
 
+    /// <summary>Turning tab reuse on also turns window merging on; reuse needs the merge hook.</summary>
     public void SetReuseTabs(bool enabled)
     {
+        SettingsManager.ReuseTabs = enabled;
         _explorerWatcher.SetReuseTabs(enabled);
 
         if (enabled && !SettingsManager.IsWindowHookActive)
@@ -69,6 +77,7 @@ public sealed class HookManager : IDisposable
 
     public void SetDoubleClickClose(bool enabled)
     {
+        SettingsManager.DoubleClickCloseTab = enabled;
         ChangeHookStatus(_doubleClickHook, enabled);
         RaiseStateChanged();
     }

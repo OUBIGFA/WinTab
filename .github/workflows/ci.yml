@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      # COMReference requires the .NET Framework MSBuild, so `dotnet build` cannot be used here.
+      - name: Build solution
+        shell: pwsh
+        run: msbuild WinTab.sln /restore /t:Build /p:Configuration=Release /nologo /v:minimal
+
+      - name: Run unit tests
+        shell: pwsh
+        run: |
+          & "WinTab.Tests\bin\Release\net9.0-windows\WinTab.Tests.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Unit tests failed (exit $LASTEXITCODE)" }

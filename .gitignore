@@ -5,6 +5,11 @@
 
 # 自动排除根目录下的所有点文件夹
 /.[!.]*/
+# .github 是仓库的 CI / issue 模板，必须保留
+!/.github/
+
+# 本地工具生成的评分历史，不属于源码
+.brooks-lint-history.json
 
 # User-specific files
 *.rsuser

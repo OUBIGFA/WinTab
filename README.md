@@ -30,9 +30,9 @@ WinTab 是一款 Windows 11 工具，自动将新打开的资源管理器窗口�
 
 根据 CPU 架构选择对应安装器（[Releases](https://github.com/OUBIGFA/WinTab/releases)）：
 
-- `WinTab_v1.0.0_x64_Setup.exe` — 64 位 Intel/AMD（大多数用户）
-- `WinTab_v1.0.0_arm64_Setup.exe` — ARM64 Windows（Surface Pro X 等）
-- `WinTab_v1.0.0_x86_Setup.exe` — 32 位 Windows
+- `WinTab_<版本>_x64_Setup.exe` — 64 位 Intel/AMD（大多数用户）
+- `WinTab_<版本>_arm64_Setup.exe` — ARM64 Windows（Surface Pro X 等）
+- `WinTab_<版本>_x86_Setup.exe` — 32 位 Windows
 
 ## 系统要求
 

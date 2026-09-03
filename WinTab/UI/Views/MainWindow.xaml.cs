@@ -9,8 +9,8 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using WinTab.Helpers;
 using WinTab.Managers;
+using WinTab.UI.Localization;
 using WinTab.UI.Views.Controls;
-using WinTab.WinAPI;
 
 namespace WinTab.UI.Views;
 
@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     private bool _isCheckingForUpdates;
     private DispatcherTimer? _autoUpdateTimer;
     private DispatcherTimer? _maintenanceFeedbackTimer;
-    private (string Zh, string En)? _maintenanceFeedback;
+    private Func<string>? _maintenanceFeedback;
     private readonly string _appVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
 
     public MainWindow()
@@ -41,45 +41,36 @@ public partial class MainWindow : Window
         _trayIcon = new SystemTrayIcon(_hookManager, ShowMainWindow, ExitApplication);
 
         SetupEventHandlers();
-        LoadSettingsIntoUi();
-        ApplyThemeText();
+        SyncSettingsIntoUi();
+        ApplyTheme();
         ApplyLanguage();
         _hookManager.ApplySettings();
-        RefreshUiState();
 
         if (SettingsManager.AutoUpdate)
             ScheduleAutomaticUpdateCheck();
     }
 
-    private bool IsChinese => string.Equals(SettingsManager.Language, "zh-CN", StringComparison.OrdinalIgnoreCase);
-    private bool IsDarkTheme => ThemeManager.IsDarkTheme;
-
     private void SetupEventHandlers()
     {
         Application.Current.Exit += OnApplicationExit;
-        _hookManager.StateChanged += RefreshUiState;
-        _hookManager.ShellInitialized += OnShellInitialized;
-        _trayIcon.SettingsChanged += TrayIcon_SettingsChanged;
+        _hookManager.StateChanged += SyncSettingsIntoUi;
+        _hookManager.ShellInitialized += SyncSettingsIntoUi;
+        _trayIcon.StartupChanged += (_, _) => SyncSettingsIntoUi();
         SettingsManager.StaticPropertyChanged += SettingsManager_StaticPropertyChanged;
 
         TitleBar.MouseLeftButtonDown += TitleBar_MouseLeftButtonDown;
-        MinimizeButton.Click += (_, _) => HideToTray();
-        CloseButton.Click += (_, _) => HideToTray();
-        HideWindowButton.Click += (_, _) => HideToTray();
+        MinimizeButton.Click += (_, _) => Hide();
+        CloseButton.Click += (_, _) => Hide();
+        HideWindowButton.Click += (_, _) => Hide();
         CheckUpdatesButton.Click += CheckUpdatesButton_Click;
         LanguageToggleButton.Click += LanguageToggleButton_Click;
         ThemeToggleButton.Click += ThemeToggleButton_Click;
 
-        WindowHookToggle.Checked += WindowHookToggle_Changed;
-        WindowHookToggle.Unchecked += WindowHookToggle_Changed;
-        ReuseTabsToggle.Checked += ReuseTabsToggle_Changed;
-        ReuseTabsToggle.Unchecked += ReuseTabsToggle_Changed;
-        DoubleClickCloseToggle.Checked += DoubleClickCloseToggle_Changed;
-        DoubleClickCloseToggle.Unchecked += DoubleClickCloseToggle_Changed;
-        ShowTrayIconToggle.Checked += ShowTrayIconToggle_Changed;
-        ShowTrayIconToggle.Unchecked += ShowTrayIconToggle_Changed;
-        AutoUpdateToggle.Checked += AutoUpdateToggle_Changed;
-        AutoUpdateToggle.Unchecked += AutoUpdateToggle_Changed;
+        WindowHookToggle.Click += (_, _) => _hookManager.SetWindowHook(WindowHookToggle.IsChecked == true);
+        ReuseTabsToggle.Click += (_, _) => _hookManager.SetReuseTabs(ReuseTabsToggle.IsChecked == true);
+        DoubleClickCloseToggle.Click += (_, _) => _hookManager.SetDoubleClickClose(DoubleClickCloseToggle.IsChecked == true);
+        ShowTrayIconToggle.Click += (_, _) => SettingsManager.ShowTrayIcon = ShowTrayIconToggle.IsChecked == true;
+        AutoUpdateToggle.Click += (_, _) => SettingsManager.AutoUpdate = AutoUpdateToggle.IsChecked == true;
         StartupToggle.Click += StartupToggle_Click;
         CornerResizeThumb.DragDelta += CornerResizeThumb_DragDelta;
 
@@ -87,7 +78,32 @@ public partial class MainWindow : Window
         Closing += MainWindow_Closing;
     }
 
-    private void LoadSettingsIntoUi()
+    private void StartupToggle_Click(object sender, RoutedEventArgs e)
+    {
+        RegistryManager.ToggleStartup();
+        SyncSettingsIntoUi();
+    }
+
+    private void LanguageToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsManager.Language = UiStrings.IsChinese ? "en-US" : "zh-CN";
+    }
+
+    private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsManager.Theme = ThemeManager.IsDarkTheme ? "Light" : "Dark";
+        ThemeManager.ApplyTheme();
+        ApplyTheme();
+    }
+
+    private void SettingsManager_StaticPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        SyncSettingsIntoUi();
+        ApplyLanguage();
+    }
+
+    /// <summary>Mirrors the persisted settings into every toggle; safe to call from any change source.</summary>
+    private void SyncSettingsIntoUi()
     {
         WindowHookToggle.IsChecked = SettingsManager.IsWindowHookActive;
         ReuseTabsToggle.IsChecked = SettingsManager.ReuseTabs;
@@ -95,65 +111,6 @@ public partial class MainWindow : Window
         ShowTrayIconToggle.IsChecked = SettingsManager.ShowTrayIcon;
         AutoUpdateToggle.IsChecked = SettingsManager.AutoUpdate;
         StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
-    }
-
-    private void WindowHookToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsManager.IsWindowHookActive = WindowHookToggle.IsChecked == true;
-        _hookManager.SetWindowHook(SettingsManager.IsWindowHookActive);
-        ReuseTabsToggle.IsChecked = SettingsManager.ReuseTabs;
-    }
-
-    private void ReuseTabsToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsManager.ReuseTabs = ReuseTabsToggle.IsChecked == true;
-        _hookManager.SetReuseTabs(SettingsManager.ReuseTabs);
-        WindowHookToggle.IsChecked = SettingsManager.IsWindowHookActive;
-    }
-
-    private void DoubleClickCloseToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsManager.DoubleClickCloseTab = DoubleClickCloseToggle.IsChecked == true;
-        _hookManager.SetDoubleClickClose(SettingsManager.DoubleClickCloseTab);
-    }
-
-    private void AutoUpdateToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsManager.AutoUpdate = AutoUpdateToggle.IsChecked == true;
-    }
-
-    private void ShowTrayIconToggle_Changed(object sender, RoutedEventArgs e)
-    {
-        SettingsManager.ShowTrayIcon = ShowTrayIconToggle.IsChecked == true;
-        _trayIcon.RefreshState();
-        ApplyLanguage();
-    }
-
-    private void StartupToggle_Click(object sender, RoutedEventArgs e)
-    {
-        RegistryManager.ToggleStartup();
-        StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
-    }
-
-    private void LanguageToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        SettingsManager.Language = IsChinese ? "en-US" : "zh-CN";
-        ApplyThemeText();
-        ApplyLanguage();
-        RefreshUiState();
-    }
-
-    private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
-    {
-        SettingsManager.Theme = IsDarkTheme ? "Light" : "Dark";
-        ThemeManager.ApplyTheme();
-        ApplyThemeText();
-    }
-
-    private void RefreshUiState()
-    {
-        StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
-        ShowTrayIconToggle.IsChecked = SettingsManager.ShowTrayIcon;
         _trayIcon.RefreshState();
     }
 
@@ -185,82 +142,44 @@ public partial class MainWindow : Window
         _autoUpdateTimer = null;
     }
 
-    private void SettingsManager_StaticPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        SyncSettingsIntoUi();
-        ApplyLanguage();
-    }
-
-    private void TrayIcon_SettingsChanged(object? sender, EventArgs e)
-    {
-        SyncSettingsIntoUi();
-        ApplyLanguage();
-    }
-
-    private void SyncSettingsIntoUi()
-    {
-        WindowHookToggle.IsChecked = SettingsManager.IsWindowHookActive;
-        ReuseTabsToggle.IsChecked = SettingsManager.ReuseTabs;
-        DoubleClickCloseToggle.IsChecked = SettingsManager.DoubleClickCloseTab;
-        ShowTrayIconToggle.IsChecked = SettingsManager.ShowTrayIcon;
-        AutoUpdateToggle.IsChecked = SettingsManager.AutoUpdate;
-        StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
-        _trayIcon.ApplyVisibility();
-        _trayIcon.RefreshState();
-    }
-
-    private void OnShellInitialized()
-    {
-        RefreshUiState();
-    }
-
     private void ApplyLanguage()
     {
         HeroTitleText.Text = "WinTab";
-        HeroDescriptionText.Text = T("\u8ba9\u8d44\u6e90\u7ba1\u7406\u5668\u7a97\u53e3\u56de\u5230\u540c\u4e00\u7ec4\u6807\u7b7e\u3002", "Keep File Explorer windows in one tab set.");
-        StatusPillText.Text = T("\u8fd0\u884c\u4e2d", "Running");
-        StatusTrayText.Text = SettingsManager.ShowTrayIcon
-            ? T("\u53ef\u4ece\u6258\u76d8\u6253\u5f00", "Available from the tray")
-            : T("\u6258\u76d8\u56fe\u6807\u5df2\u9690\u85cf", "Tray icon is hidden");
-        StatusBypassText.Text = T("\u6309\u4f4f Ctrl + Shift \u53ef\u6253\u5f00\u72ec\u7acb\u7a97\u53e3", "Hold Ctrl + Shift to open a separate window");
+        HeroDescriptionText.Text = UiStrings.HeroDescription;
+        StatusPillText.Text = UiStrings.StatusRunning;
+        StatusTrayText.Text = SettingsManager.ShowTrayIcon ? UiStrings.StatusTrayAvailable : UiStrings.StatusTrayHidden;
+        StatusBypassText.Text = UiStrings.StatusBypassHint;
         OpenSourceLicenseText.Text = "MIT License";
-        OpenSourceVersionText.Text = T($"\u7248\u672c\uff1av{_appVersion}", $"Version: v{_appVersion}");
+        OpenSourceVersionText.Text = UiStrings.Version(_appVersion);
         OpenSourceLinkText.Text = "GitHub";
 
-        WindowHookTitleText.Text = T("\u5408\u5e76\u65b0\u7a97\u53e3", "Merge new windows");
-        WindowHookDescText.Text = T("\u5c06\u65b0\u6253\u5f00\u7684\u6587\u4ef6\u5939\u6536\u56de\u5f53\u524d\u6807\u7b7e\u7ec4\u3002", "Send new folders back to the active Explorer tab group.");
-        ReuseTabsTitleText.Text = T("\u590d\u7528\u5df2\u6709\u6807\u7b7e", "Reuse existing tabs");
-        ReuseTabsDescText.Text = T("\u8def\u5f84\u5df2\u6253\u5f00\u65f6\uff0c\u76f4\u63a5\u805a\u7126\u5bf9\u5e94\u6807\u7b7e\u3002", "Open a matching path by focusing its current tab.");
-        DoubleClickTitleText.Text = T("\u53cc\u51fb\u5173\u95ed\u6807\u7b7e", "Double-click closes tab");
-        DoubleClickDescText.Text = T("\u5728\u6807\u9898\u533a\u53cc\u51fb\u5173\u95ed\u5f53\u524d\u6807\u7b7e\u3002", "Close the current Explorer tab from its title area.");
-        StartupTitleText.Text = T("\u5f00\u673a\u542f\u52a8", "Start with Windows");
-        StartupDescText.Text = T("\u767b\u5f55\u540e\u9759\u9ed8\u8fd0\u884c\u3002", "Run quietly after sign-in.");
-        ShowTrayIconTitleText.Text = T("\u663e\u793a\u6258\u76d8\u56fe\u6807", "Show tray icon");
-        ShowTrayIconDescText.Text = T("\u5173\u95ed\u7a97\u53e3\u540e\u53ef\u4ece\u901a\u77e5\u533a\u6253\u5f00\u3002", "Keep WinTab available from the notification area.");
-        AutoUpdateTitleText.Text = T("\u68c0\u67e5\u66f4\u65b0", "Check for updates");
-        AutoUpdateDescText.Text = T("\u6709 GitHub Release \u65f6\u63d0\u793a\u3002", "Notify when a GitHub release is available.");
+        WindowHookTitleText.Text = UiStrings.WindowHookTitle;
+        WindowHookDescText.Text = UiStrings.WindowHookDescription;
+        ReuseTabsTitleText.Text = UiStrings.ReuseTabsTitle;
+        ReuseTabsDescText.Text = UiStrings.ReuseTabsDescription;
+        DoubleClickTitleText.Text = UiStrings.DoubleClickTitle;
+        DoubleClickDescText.Text = UiStrings.DoubleClickDescription;
+        StartupTitleText.Text = UiStrings.StartupTitle;
+        StartupDescText.Text = UiStrings.StartupDescription;
+        ShowTrayIconTitleText.Text = UiStrings.ShowTrayIconTitle;
+        ShowTrayIconDescText.Text = UiStrings.ShowTrayIconDescription;
+        AutoUpdateTitleText.Text = UiStrings.AutoUpdateTitle;
+        AutoUpdateDescText.Text = UiStrings.AutoUpdateDescription;
 
-        ActionsTitleText.Text = T("\u7ef4\u62a4", "Maintenance");
+        ActionsTitleText.Text = UiStrings.MaintenanceTitle;
         ApplyMaintenanceDescription();
-        CheckUpdatesButton.Content = _isCheckingForUpdates ? T("\u68c0\u67e5\u4e2d", "Checking") : T("\u68c0\u67e5", "Check");
-        HideWindowButton.Content = T("\u9690\u85cf", "Hide");
+        CheckUpdatesButton.Content = _isCheckingForUpdates ? UiStrings.CheckingButton : UiStrings.CheckButton;
+        HideWindowButton.Content = UiStrings.HideButton;
 
-        LanguageToggleButton.ToolTip = IsChinese ? "Switch to English" : "\u5207\u6362\u5230\u4e2d\u6587";
-        _trayIcon.ApplyLanguage(IsChinese);
+        LanguageToggleButton.ToolTip = UiStrings.LanguageToggleTooltip;
+        ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(ThemeManager.IsDarkTheme);
+        _trayIcon.ApplyLanguage();
     }
 
-    private void ApplyThemeText()
+    private void ApplyTheme()
     {
-        ThemeToggleIconPath.Data = Geometry.Parse(IsDarkTheme ? LightThemeIconPathData : DarkThemeIconPathData);
-        ThemeToggleButton.ToolTip = IsDarkTheme
-            ? T("\u5207\u6362\u4e3a\u6d45\u8272", "Switch to light mode")
-            : T("\u5207\u6362\u4e3a\u6df1\u8272", "Switch to dark mode");
-        _trayIcon.ApplyThemeText(IsDarkTheme, IsChinese);
-    }
-
-    private static string T(string zh, string en)
-    {
-        return string.Equals(SettingsManager.Language, "zh-CN", StringComparison.OrdinalIgnoreCase) ? zh : en;
+        ThemeToggleIconPath.Data = Geometry.Parse(ThemeManager.IsDarkTheme ? LightThemeIconPathData : DarkThemeIconPathData);
+        ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(ThemeManager.IsDarkTheme);
     }
 
     private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)
@@ -270,44 +189,44 @@ public partial class MainWindow : Window
 
         _isCheckingForUpdates = true;
         CheckUpdatesButton.IsEnabled = false;
-        CheckUpdatesButton.Content = T("\u68c0\u67e5\u4e2d", "Checking");
-        SetMaintenanceFeedback("\u6b63\u5728\u8054\u7f51\u68c0\u67e5\u6700\u65b0\u7248\u672c\u3002", "Checking the latest release online.", autoReset: false);
+        CheckUpdatesButton.Content = UiStrings.CheckingButton;
+        SetMaintenanceFeedback(() => UiStrings.UpdateChecking, autoReset: false);
 
         try
         {
             var result = await UpdateManager.CheckForUpdatesWithResultAsync().ConfigureAwait(true);
             if (!result.Completed)
             {
-                SetMaintenanceFeedback("\u68c0\u67e5\u5931\u8d25\uff0c\u7a0d\u540e\u518d\u8bd5\u3002", "Update check failed. Try again later.");
+                SetMaintenanceFeedback(() => UiStrings.UpdateFailed);
                 return;
             }
 
             if (!result.UpdateAvailable)
             {
-                SetMaintenanceFeedback("\u5f53\u524d\u5df2\u662f\u6700\u65b0\u7248\u672c\u3002", "You're on the latest version.");
+                SetMaintenanceFeedback(() => UiStrings.UpdateUpToDate);
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(result.DownloadUrl))
             {
-                SetMaintenanceFeedback("\u53d1\u73b0\u65b0\u7248\u672c\uff0c\u4f46\u672a\u627e\u5230\u5339\u914d\u5f53\u524d\u67b6\u6784\u7684\u5b89\u88c5\u5668\u3002", "Update found, but no installer matches this device.");
+                SetMaintenanceFeedback(() => UiStrings.UpdateNoMatchingInstaller);
                 return;
             }
 
-            SetMaintenanceFeedback("\u53d1\u73b0\u65b0\u7248\u672c\uff0c\u6b63\u5728\u6253\u5f00\u66f4\u65b0\u7a97\u53e3\u3002", "Update found. Opening the update window.");
+            SetMaintenanceFeedback(() => UiStrings.UpdateOpening);
             UpdateManager.CheckForUpdates();
         }
         finally
         {
             _isCheckingForUpdates = false;
             CheckUpdatesButton.IsEnabled = true;
-            CheckUpdatesButton.Content = T("\u68c0\u67e5", "Check");
+            CheckUpdatesButton.Content = UiStrings.CheckButton;
         }
     }
 
-    private void SetMaintenanceFeedback(string zh, string en, bool autoReset = true)
+    private void SetMaintenanceFeedback(Func<string> feedback, bool autoReset = true)
     {
-        _maintenanceFeedback = (zh, en);
+        _maintenanceFeedback = feedback;
         ApplyMaintenanceDescription();
 
         _maintenanceFeedbackTimer?.Stop();
@@ -332,15 +251,13 @@ public partial class MainWindow : Window
 
     private void ApplyMaintenanceDescription()
     {
-        if (_maintenanceFeedback is { } feedback)
+        if (_maintenanceFeedback != null)
         {
-            ActionsDescText.Text = T(feedback.Zh, feedback.En);
+            ActionsDescText.Text = _maintenanceFeedback();
             return;
         }
 
-        ActionsDescText.Text = SettingsManager.ShowTrayIcon
-            ? T("\u5173\u95ed\u6b64\u7a97\u53e3\u540e\uff0cWinTab \u7ee7\u7eed\u7559\u5728\u6258\u76d8\u3002", "The app stays in the tray when this window closes.")
-            : T("\u6258\u76d8\u56fe\u6807\u9690\u85cf\u65f6\uff0cWinTab \u4f1a\u76f4\u63a5\u5728\u540e\u53f0\u8fd0\u884c\u3002", "When the tray icon is hidden, WinTab keeps running in the background.");
+        ActionsDescText.Text = SettingsManager.ShowTrayIcon ? UiStrings.MaintenanceTrayVisible : UiStrings.MaintenanceTrayHidden;
     }
 
     private void OpenSourceLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
@@ -360,11 +277,6 @@ public partial class MainWindow : Window
 
         Activate();
         Helper.RestoreWindowToForeground(_handle);
-    }
-
-    private void HideToTray()
-    {
-        Hide();
     }
 
     private void ExitApplication()
@@ -388,7 +300,6 @@ public partial class MainWindow : Window
         StopAutomaticUpdateCheck();
         _maintenanceFeedbackTimer?.Stop();
         Application.Current.Exit -= OnApplicationExit;
-        _trayIcon.SettingsChanged -= TrayIcon_SettingsChanged;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
         SettingsManager.SaveSettings();
         _trayIcon.Dispose();
@@ -407,7 +318,7 @@ public partial class MainWindow : Window
             return;
 
         e.Cancel = true;
-        HideToTray();
+        Hide();
     }
 
     private void CornerResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)

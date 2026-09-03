@@ -5,6 +5,11 @@ using WinTab.WinAPI;
 
 namespace WinTab.Helpers;
 
+/// <summary>
+/// Conceals Explorer windows by making them fully transparent (alpha 0) and restores them later.
+/// Transparency is used instead of SW_HIDE so Explorer keeps the window registered with the shell
+/// and the taskbar while a merge is in flight.
+/// </summary>
 public static class ExplorerWindowVisibility
 {
     private const int SM_XVIRTUALSCREEN = 76;
@@ -13,7 +18,7 @@ public static class ExplorerWindowVisibility
     private const int SM_CYVIRTUALSCREEN = 79;
     private const int OffscreenRestoreMargin = 120;
 
-    private static readonly ConcurrentDictionary<nint, RECT?> HiddenWindows = new();
+    private static readonly ConcurrentDictionary<nint, byte> HiddenWindows = new();
 
     public static IEnumerable<nint> HiddenWindowHandles => HiddenWindows.Keys;
 
@@ -21,43 +26,17 @@ public static class ExplorerWindowVisibility
 
     public static bool Forget(nint hWnd) => HiddenWindows.TryRemove(hWnd, out _);
 
-    public static void Hide(nint hWnd, bool keepTheme = false)
+    public static void Hide(nint hWnd)
     {
-        var originalPos = HiddenWindows.GetOrAdd(hWnd, static (hWnd, keepTheme) =>
-        {
-            if (!keepTheme)
-                return null;
+        HiddenWindows.TryAdd(hWnd, 0);
 
-            return WinApi.GetWindowRect(hWnd, out var originalPos) ? originalPos : null;
-        }, keepTheme);
-
-        if (!keepTheme)
-        {
-            UpdateWindowLayered(hWnd, remove: false);
-            WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
-            return;
-        }
-
-        if (originalPos == null && WinApi.GetWindowRect(hWnd, out var currentPos))
-        {
-            originalPos = currentPos;
-            HiddenWindows[hWnd] = currentPos;
-        }
-
-        const uint flags = WinApi.SWP_HIDEWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
-        WinApi.SetWindowPos(hWnd, 0, -32_000, -32_000, 0, 0, flags);
+        // Explorer can reset the extended style while the window initializes, so reapply both
+        // the layered style and alpha=0 on every call rather than only on the first hide.
+        UpdateLayeredStyle(hWnd, remove: false);
+        WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
     }
 
-    public static bool Show(nint hWnd, bool removeCache)
-    {
-        var restored = Restore(hWnd, removeCache, removeLayeredStyle: false);
-        if (restored)
-            WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);
-
-        return restored;
-    }
-
-    public static int RestoreAll(bool removeLayeredStyle = true)
+    public static int RestoreAll()
     {
         var restored = 0;
         var candidates = ExplorerWindowDiscovery.GetAllExplorerWindows()
@@ -67,14 +46,18 @@ public static class ExplorerWindowVisibility
 
         foreach (var hWnd in candidates)
         {
-            if (Restore(hWnd, removeCache: true, removeLayeredStyle))
+            if (Restore(hWnd, removeCache: true))
                 restored++;
         }
 
         return restored;
     }
 
-    public static bool Restore(nint hWnd, bool removeCache = true, bool removeLayeredStyle = true)
+    /// <summary>
+    /// Makes a concealed Explorer window visible again. Also repairs windows that are transparent
+    /// or off-screen without a cache entry, so orphans left behind by a crash are recovered too.
+    /// </summary>
+    public static bool Restore(nint hWnd, bool removeCache = true)
     {
         if (hWnd == 0 || !ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
         {
@@ -84,7 +67,7 @@ public static class ExplorerWindowVisibility
             return false;
         }
 
-        var hasCache = HiddenWindows.TryGetValue(hWnd, out var originalPos);
+        var hasCache = HiddenWindows.ContainsKey(hWnd);
         var exStyle = WinApi.GetWindowLong(hWnd, WinApi.GWL_EXSTYLE);
         var isLayered = (exStyle & WinApi.WS_EX_LAYERED) != 0;
         var alpha = (byte)255;
@@ -104,11 +87,7 @@ public static class ExplorerWindowVisibility
             Forget(hWnd);
 
         const uint showFlags = WinApi.SWP_SHOWWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
-        if (originalPos != null)
-        {
-            WinApi.SetWindowPos(hWnd, 0, originalPos.Value.Left, originalPos.Value.Top, 0, 0, showFlags);
-        }
-        else if (isOffscreen)
+        if (isOffscreen)
         {
             var x = WinApi.GetSystemMetrics(SM_XVIRTUALSCREEN) + OffscreenRestoreMargin;
             var y = WinApi.GetSystemMetrics(SM_YVIRTUALSCREEN) + OffscreenRestoreMargin;
@@ -124,19 +103,13 @@ public static class ExplorerWindowVisibility
         if (isLayered)
         {
             WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);
-            if (removeLayeredStyle)
-                UpdateWindowLayered(hWnd, remove: true);
+            UpdateLayeredStyle(hWnd, remove: true);
         }
 
         return true;
     }
 
     public static void UpdateLayeredStyle(nint hWnd, bool remove)
-    {
-        UpdateWindowLayered(hWnd, remove);
-    }
-
-    private static void UpdateWindowLayered(nint hWnd, bool remove)
     {
         var exStyle = WinApi.GetWindowLong(hWnd, WinApi.GWL_EXSTYLE);
         var isLayered = (exStyle & WinApi.WS_EX_LAYERED) != 0;

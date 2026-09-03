@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Reflection;
@@ -45,15 +44,15 @@ internal static class UpdateManager
                 return UpdateCheckResult.Failed();
 
             var tagName = jsonNode["tag_name"]?.GetValue<string>();
-            if (string.IsNullOrWhiteSpace(tagName) || !TryNormalizeVersion(tagName, out var latestVersion))
+            if (string.IsNullOrWhiteSpace(tagName) || !UpdateReleaseParser.TryNormalizeVersion(tagName, out var latestVersion))
                 return UpdateCheckResult.Failed();
 
-            var installedVersion = NormalizeVersion(Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0));
+            var installedVersion = UpdateReleaseParser.NormalizeVersion(Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0));
             return new UpdateCheckResult(
                 Completed: true,
                 UpdateAvailable: latestVersion.CompareTo(installedVersion) > 0,
                 LatestVersion: tagName,
-                DownloadUrl: FindMatchingUpdateAssetUrl(jsonNode),
+                DownloadUrl: UpdateReleaseParser.FindMatchingAssetUrl(jsonNode, RuntimeInformation.ProcessArchitecture),
                 ErrorMessage: null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -78,85 +77,13 @@ internal static class UpdateManager
                 CurrentVersion = tagName.TrimStart('v'),
                 ChangelogText = jsonNode["body"]?.GetValue<string>() ?? string.Empty,
                 ChangelogURL = jsonNode["html_url"]?.GetValue<string>() ?? string.Empty,
-                DownloadURL = FindMatchingUpdateAssetUrl(jsonNode)
+                DownloadURL = UpdateReleaseParser.FindMatchingAssetUrl(jsonNode, RuntimeInformation.ProcessArchitecture)
             };
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Update check failed: {ex.Message}");
         }
-    }
-
-    private static string? FindMatchingUpdateAssetUrl(JsonNode jsonNode)
-    {
-        if (jsonNode["assets"] is not JsonArray assets)
-            return null;
-
-        var setupAssets = new List<(string Name, string Url)>();
-        foreach (var asset in assets)
-        {
-            var assetName = asset?["name"]?.GetValue<string>();
-            var downloadUrl = asset?["browser_download_url"]?.GetValue<string>();
-
-            if (!string.IsNullOrWhiteSpace(assetName) &&
-                !string.IsNullOrWhiteSpace(downloadUrl) &&
-                assetName.EndsWith("_Setup.exe", StringComparison.OrdinalIgnoreCase))
-            {
-                setupAssets.Add((assetName, downloadUrl));
-            }
-        }
-
-        if (setupAssets.Count == 0)
-            return null;
-
-        var architectureSuffix = GetInstallerArchitectureSuffix();
-        if (architectureSuffix != null)
-        {
-            foreach (var asset in setupAssets)
-            {
-                if (asset.Name.EndsWith(architectureSuffix, StringComparison.OrdinalIgnoreCase))
-                    return asset.Url;
-            }
-        }
-
-        return setupAssets[0].Url;
-    }
-
-    private static string? GetInstallerArchitectureSuffix()
-    {
-        return RuntimeInformation.ProcessArchitecture switch
-        {
-            Architecture.X64 => "_x64_Setup.exe",
-            Architecture.X86 => "_x86_Setup.exe",
-            Architecture.Arm64 => "_arm64_Setup.exe",
-            _ => null
-        };
-    }
-
-    private static bool TryNormalizeVersion(string value, out Version version)
-    {
-        var normalized = value.Trim().TrimStart('v', 'V');
-        var suffixIndex = normalized.IndexOfAny(['-', '+']);
-        if (suffixIndex >= 0)
-            normalized = normalized[..suffixIndex];
-
-        if (!Version.TryParse(normalized, out var parsed))
-        {
-            version = new Version(0, 0);
-            return false;
-        }
-
-        version = NormalizeVersion(parsed);
-        return true;
-    }
-
-    private static Version NormalizeVersion(Version version)
-    {
-        return new Version(
-            Math.Max(0, version.Major),
-            Math.Max(0, version.Minor),
-            Math.Max(0, version.Build),
-            Math.Max(0, version.Revision));
     }
 }
 
