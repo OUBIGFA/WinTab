@@ -14,7 +14,7 @@ on:
 
 env:
   PROJECT_NAME: WinTab
-  VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
 
 jobs:
   build:
@@ -82,7 +82,7 @@ jobs:
         shell: pwsh
         run: |
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-            /DMyAppVersion="${{ env.VERSION }}" `
+            /DMyAppVersion="${{ env.RELEASE_TAG }}" `
             /DPublishRoot="..\publish\net9.0-windows" `
             /DOutputDir="..\dist" `
             /DArch="${{ matrix.arch }}" `
@@ -146,8 +146,8 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.VERSION }}
-          name: ${{ env.PROJECT_NAME }} ${{ env.VERSION }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.PROJECT_NAME }} ${{ env.RELEASE_TAG }}
           draft: false
           body: |
             ${{ steps.generate_changelog.outputs.changelog }}
@@ -156,8 +156,8 @@ jobs:
 
             Pick the installer that matches your CPU architecture:
 
-            - `${{ env.PROJECT_NAME }}_${{ env.VERSION }}_x64_Setup.exe` — 64-bit Intel/AMD (most users)
-            - `${{ env.PROJECT_NAME }}_${{ env.VERSION }}_arm64_Setup.exe` — ARM64 Windows (Surface Pro X, Snapdragon laptops)
-            - `${{ env.PROJECT_NAME }}_${{ env.VERSION }}_x86_Setup.exe` — 32-bit Windows
+            - `${{ env.PROJECT_NAME }}_${{ env.RELEASE_TAG }}_x64_Setup.exe` — 64-bit Intel/AMD (most users)
+            - `${{ env.PROJECT_NAME }}_${{ env.RELEASE_TAG }}_arm64_Setup.exe` — ARM64 Windows (Surface Pro X, Snapdragon laptops)
+            - `${{ env.PROJECT_NAME }}_${{ env.RELEASE_TAG }}_x86_Setup.exe` — 32-bit Windows
           files: |
             release-artifacts/*.exe
