@@ -48,6 +48,7 @@ Set-StrictMode -Version Latest
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectPath = Join-Path $RepoRoot 'WinTab\WinTab.csproj'
+$SolutionPath = Join-Path $RepoRoot 'WinTab.sln'
 $TestProjectPath = Join-Path $RepoRoot 'WinTab.Tests\WinTab.Tests.csproj'
 $TestExePath = Join-Path $RepoRoot 'WinTab.Tests\bin\Release\net9.0-windows\WinTab.Tests.exe'
 $AssetsDir = Join-Path $RepoRoot 'Assets'
@@ -170,7 +171,7 @@ if (-not $SkipPublish) {
 
     if (-not $SkipTests) {
         Write-Host "`n==> Building and running unit tests" -ForegroundColor Cyan
-        & $msbuild $TestProjectPath /restore /t:Build /p:Configuration=Release /nologo /v:minimal
+        & $msbuild $SolutionPath /restore /t:Build /p:Configuration=Release /nologo /v:minimal
         if ($LASTEXITCODE -ne 0) { throw "Test project build failed (exit $LASTEXITCODE)" }
         & $TestExePath
         if ($LASTEXITCODE -ne 0) { throw "Unit tests failed (exit $LASTEXITCODE)" }

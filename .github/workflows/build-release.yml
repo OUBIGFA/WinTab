@@ -28,20 +28,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup MSBuild environments
+      - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
-        with:
-          vs-version: "17.0"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
 
-      - name: Build and run unit tests
+      - name: Build solution and run unit tests
         shell: pwsh
         run: |
-          msbuild WinTab.Tests/WinTab.Tests.csproj /restore /t:Build /p:Configuration=Release /nologo /v:minimal
+          msbuild WinTab.sln /restore /t:Build /p:Configuration=Release /nologo /v:minimal
+          if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
           & "WinTab.Tests\bin\Release\net9.0-windows\WinTab.Tests.exe"
           if ($LASTEXITCODE -ne 0) { throw "Unit tests failed (exit $LASTEXITCODE)" }
 
