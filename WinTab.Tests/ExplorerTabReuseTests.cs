@@ -1,0 +1,137 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using WinTab.Hooks;
+
+internal static class ExplorerTabReuseTests
+{
+    public static IEnumerable<(string Name, Func<Task> Body)> All()
+    {
+        yield return ("cached tab matches without reading other COM locations", CachedMatchAvoidsUnneededReads);
+        yield return ("stale cached location falls back to the live location", StaleCacheFallsBackToLiveLocation);
+        yield return ("different locations are not misclassified as a reuse match", DifferentLocationsDoNotMatch);
+        yield return ("a single tab publishes its active handle immediately", SingleTabPublishesImmediately);
+        yield return ("multiple tabs do not use the active handle as a shortcut", MultipleTabsRequireExactResolution);
+    }
+
+    private static Task CachedMatchAvoidsUnneededReads()
+    {
+        var reads = new[] { 0, 0, 0 };
+        var candidates = new[]
+        {
+            new ExplorerTabReuseCandidate(101, @"C:\Work", () =>
+            {
+                reads[0]++;
+                return @"C:\Work";
+            }),
+            new ExplorerTabReuseCandidate(202, @"C:\Other", () =>
+            {
+                reads[1]++;
+                return @"C:\Other";
+            }),
+            new ExplorerTabReuseCandidate(303, @"C:\Archive", () =>
+            {
+                reads[2]++;
+                return @"C:\Archive";
+            })
+        };
+
+        var found = ExplorerTabReuseMatcher.TryFind(
+            @"c:\work",
+            candidates,
+            AreSameLocation,
+            out var handle);
+
+        Check.That(found, "A matching cached location must be reusable.");
+        Check.Equal((nint)101, handle, "The cached matching tab must be selected.");
+        Check.Equal(1, reads[0], "Only the matching tab needs one live confirmation.");
+        Check.Equal(0, reads[1], "Nonmatching tabs must not incur a COM location read on a cache hit.");
+        Check.Equal(0, reads[2], "Nonmatching tabs must not incur a COM location read on a cache hit.");
+        return Task.CompletedTask;
+    }
+
+    private static Task StaleCacheFallsBackToLiveLocation()
+    {
+        var cachedLocation = @"C:\Old";
+        var candidates = new[]
+        {
+            new ExplorerTabReuseCandidate(
+                404,
+                cachedLocation,
+                () => @"C:\Current",
+                location => cachedLocation = location)
+        };
+
+        var found = ExplorerTabReuseMatcher.TryFind(
+            @"C:\Current",
+            candidates,
+            AreSameLocation,
+            out var handle);
+
+        Check.That(found, "A stale cache must not prevent finding the tab's current location.");
+        Check.Equal((nint)404, handle, "The live matching tab must be selected.");
+        Check.Equal(@"C:\Current", cachedLocation, "A successful live fallback must refresh the cache.");
+        return Task.CompletedTask;
+    }
+
+    private static Task DifferentLocationsDoNotMatch()
+    {
+        var candidates = new[]
+        {
+            new ExplorerTabReuseCandidate(505, @"C:\Other", () => @"C:\Other")
+        };
+
+        var found = ExplorerTabReuseMatcher.TryFind(
+            @"C:\Target",
+            candidates,
+            AreSameLocation,
+            out var handle);
+
+        Check.That(!found, "Different folders must not be reported as the same tab.");
+        Check.Equal((nint)0, handle, "A nonmatching search must not return a tab handle.");
+        return Task.CompletedTask;
+    }
+
+    private static Task SingleTabPublishesImmediately()
+    {
+        var activeReads = 0;
+        var published = ExplorerTabHandlePublisher.TryGetSingleTabHandle(
+            [707],
+            () =>
+            {
+                activeReads++;
+                return 707;
+            },
+            out var handle);
+
+        Check.That(published, "A single tab with a valid active handle can be published immediately.");
+        Check.Equal((nint)707, handle, "The single tab handle must be returned.");
+        Check.Equal(1, activeReads, "The active handle should be read once.");
+        return Task.CompletedTask;
+    }
+
+    private static Task MultipleTabsRequireExactResolution()
+    {
+        var activeReads = 0;
+        var published = ExplorerTabHandlePublisher.TryGetSingleTabHandle(
+            [808, 909],
+            () =>
+            {
+                activeReads++;
+                return 808;
+            },
+            out var handle);
+
+        Check.That(!published, "Multiple tabs must not be assigned through the single-tab shortcut.");
+        Check.Equal((nint)0, handle, "The shortcut must not return an ambiguous handle.");
+        Check.Equal(0, activeReads, "The shortcut should reject multiple tabs before reading the active handle.");
+        return Task.CompletedTask;
+    }
+
+    private static bool AreSameLocation(string left, string right)
+    {
+        left = left.TrimEnd('\\');
+        right = right.TrimEnd('\\');
+        return StringComparer.OrdinalIgnoreCase.Equals(left, right);
+    }
+}

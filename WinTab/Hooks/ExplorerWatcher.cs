@@ -100,42 +100,70 @@ public class ExplorerWatcher : IHook
         foundWindow = null;
         try
         {
-            targetPidl = _shellPathComparer.GetPidlFromPath(targetPath);
-            if (targetPidl == 0) return false;
+            var normalizedTargetPath = Helper.NormalizeLocation(targetPath);
+            var targetPidlAttempted = false;
+            var candidates = new List<ExplorerTabReuseCandidate>();
 
             // Hold the lock for the whole scan: concurrent .Add/.Remove during enumeration would
             // throw and the outer catch would silently fail the search.
             lock (_windowEntryDictLock)
             {
-                foreach (var (window, _, tab) in _windowEntryDict)
+                foreach (var (window, windowInfo, tab) in _windowEntryDict)
                 {
                     if (!tab.HasValue || tab.Value == 0)
                         continue;
 
-                    var topLevelWindow = SafeGetWindowHandle(window);
+                    var topLevelWindow = windowInfo.HookedTopLevelHWnd;
+                    if (topLevelWindow == 0)
+                        topLevelWindow = SafeGetWindowHandle(window);
                     if (topLevelWindow == 0)
                         continue;
 
                     if (excludedTopLevelWindow != 0 && topLevelWindow == excludedTopLevelWindow)
                         continue;
 
-                    var comparePath = TryGetLocation(window);
-                    if (string.IsNullOrWhiteSpace(comparePath))
-                        continue;
-
-                    if (_shellPathComparer.IsEquivalent(targetPath, comparePath, targetPidl))
-                    {
-                        foundWindow = window;
-                        tabHandle = tab.Value;
-                        return true;
-                    }
+                    candidates.Add(new ExplorerTabReuseCandidate(
+                        tab.Value,
+                        windowInfo.Location,
+                        () => TryGetLocation(window),
+                        location => windowInfo.Location = location));
                 }
             }
 
-            return false;
+            bool AreEquivalent(string left, string right)
+            {
+                if (StringComparer.OrdinalIgnoreCase.Equals(left, right))
+                    return true;
+
+                if (StringComparer.OrdinalIgnoreCase.Equals(
+                        normalizedTargetPath,
+                        Helper.NormalizeLocation(right)))
+                    return true;
+
+                if (!targetPidlAttempted)
+                {
+                    targetPidlAttempted = true;
+                    targetPidl = _shellPathComparer.GetPidlFromPath(left);
+                }
+
+                return targetPidl != 0 && _shellPathComparer.IsEquivalent(left, right, targetPidl);
+            }
+
+            if (!ExplorerTabReuseMatcher.TryFind(targetPath, candidates, AreEquivalent, out var matchedTabHandle))
+                return false;
+
+            lock (_windowEntryDictLock)
+            {
+                if (!_windowEntryDict.TryGetValue(matchedTabHandle, out foundWindow) || foundWindow == null)
+                    return false;
+            }
+
+            tabHandle = matchedTabHandle;
+            return true;
         }
         catch
         {
+            tabHandle = 0;
             return false;
         }
         finally
@@ -541,7 +569,7 @@ public class ExplorerWatcher : IHook
             {
                 ExplorerDebugLog.Write($"Registered already-processed hwnd={hWnd}");
                 await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                 return;
             }
 
@@ -549,15 +577,14 @@ public class ExplorerWatcher : IHook
             {
                 ExplorerDebugLog.Write($"Registered release ctrl-shift hwnd={hWnd}");
                 await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                 return;
             }
 
             if (HasOtherTrackedShellWindowForTopLevel(window, hWnd))
             {
                 ExplorerDebugLog.Write($"Registered sibling hwnd={hWnd}");
-                _ = await GetTabHandle(window);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                 return;
             }
 
@@ -566,7 +593,7 @@ public class ExplorerWatcher : IHook
             {
                 ExplorerDebugLog.Write($"Registered release disabled hwnd={hWnd}");
                 await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                 return;
             }
 
@@ -574,20 +601,22 @@ public class ExplorerWatcher : IHook
             {
                 ExplorerDebugLog.Write($"Registered already-processed late hwnd={hWnd}");
                 await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                 return;
             }
 
             HideMergeSourceWindow(hWnd);
 
             var location = await ResolveInitialLocation(window);
+            if (!string.IsNullOrWhiteSpace(location))
+                windowInfo.Location = location;
             ExplorerDebugLog.Write($"Registered resolved hwnd={hWnd} target={targetWindow} location={location}");
             if (string.IsNullOrWhiteSpace(location) ||
                 location.StartsWith("shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}", StringComparison.OrdinalIgnoreCase))
             {
                 ExplorerDebugLog.Write($"Registered release unsupported-location hwnd={hWnd} location={location}");
                 await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                 return;
             }
 
@@ -600,7 +629,7 @@ public class ExplorerWatcher : IHook
                 {
                     ExplorerDebugLog.Write($"Registered release tab-count hwnd={hWnd} count={tabCount}");
                     await RestoreMergeSourceWindowAsync(hWnd);
-                    RegisterIndependentWindow(window, windowInfo, hWnd);
+                    await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                     return;
                 }
             }
@@ -610,7 +639,7 @@ public class ExplorerWatcher : IHook
             {
                 ExplorerDebugLog.Write($"Registered release no-target hwnd={hWnd} location={location}");
                 await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                 return;
             }
 
@@ -638,7 +667,7 @@ public class ExplorerWatcher : IHook
                 if (ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
                 {
                     await RestoreMergeSourceWindowAsync(hWnd);
-                    RegisterIndependentWindow(window, windowInfo, hWnd);
+                    await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
                 }
                 else
                 {
@@ -661,7 +690,7 @@ public class ExplorerWatcher : IHook
             }
             else
             {
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
             }
         }
         catch (Exception ex)
@@ -673,14 +702,44 @@ public class ExplorerWatcher : IHook
             if (!removed && showAgain && hWnd != 0)
             {
                 await RestoreMergeSourceWindowAsync(hWnd);
-                RegisterIndependentWindow(window, windowInfo, hWnd);
+                await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
             }
         }
     }
-    private void RegisterIndependentWindow(InternetExplorer window, WindowInfo windowInfo, nint hWnd)
+    private async Task RegisterIndependentWindowAsync(InternetExplorer window, WindowInfo windowInfo, nint hWnd)
     {
         if (hWnd != 0)
             PreventWindowHiding(hWnd);
+
+        var tabHandlePublished = false;
+        try
+        {
+            var tabHandles = hWnd == 0
+                ? Array.Empty<nint>()
+                : ExplorerWindowDiscovery.GetAllExplorerTabs(hWnd).Take(2).ToArray();
+
+            if (ExplorerTabHandlePublisher.TryGetSingleTabHandle(
+                    tabHandles,
+                    () => GetActiveTabHandle(hWnd),
+                    out var tabHandle))
+            {
+                tabHandlePublished = TryPublishTabHandle(window, tabHandle);
+                if (tabHandlePublished)
+                    ExplorerDebugLog.Write($"Registered single-tab handle={tabHandle} hwnd={hWnd}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ExplorerDebugLog.Write($"Registered single-tab shortcut failed hwnd={hWnd} error={ex.GetType().Name}:{ex.Message}");
+        }
+
+        if (!tabHandlePublished)
+        {
+            await ExplorerTabHandleResolver.WaitAsync(
+                () => GetTabHandle(window),
+                timeoutMs: 2_000,
+                pollSleepMs: 50);
+        }
 
         HookWindowEvents(window, windowInfo);
     }
@@ -887,10 +946,20 @@ public class ExplorerWatcher : IHook
 
             RemoveWindowAndUnhookEvents(window, windowInfo);
         };
+        windowInfo.OnNavigateHandler = (object _, ref object url) =>
+        {
+            var location = url?.ToString();
+            if (!string.IsNullOrWhiteSpace(location))
+                windowInfo.Location = Helper.NormalizeLocation(location);
+        };
 
         try
         {
+            if (string.IsNullOrWhiteSpace(windowInfo.Location))
+                windowInfo.Location = TryGetLocation(window);
+
             window.OnQuit += windowInfo.OnQuitHandler;
+            window.NavigateComplete2 += windowInfo.OnNavigateHandler;
             windowInfo.EventsHooked = true;
 
             // Make sure the window is still alive (User might have closed it immediately after opening it)
@@ -900,6 +969,12 @@ public class ExplorerWatcher : IHook
         }
         catch
         {
+            if (windowInfo.OnNavigateHandler != null)
+                window.NavigateComplete2 -= windowInfo.OnNavigateHandler;
+            if (windowInfo.OnQuitHandler != null)
+                window.OnQuit -= windowInfo.OnQuitHandler;
+            windowInfo.OnNavigateHandler = null;
+            windowInfo.OnQuitHandler = null;
             ReleaseHookedTopLevel(windowInfo);
             lock (_windowEntryDictLock)
                 _windowEntryDict.Remove(window);
@@ -911,6 +986,9 @@ public class ExplorerWatcher : IHook
             return;
 
         if (windowInfo.OnQuitHandler != null) window.OnQuit -= windowInfo.OnQuitHandler;
+        if (windowInfo.OnNavigateHandler != null) window.NavigateComplete2 -= windowInfo.OnNavigateHandler;
+        windowInfo.OnQuitHandler = null;
+        windowInfo.OnNavigateHandler = null;
         windowInfo.EventsHooked = false;
         ReleaseHookedTopLevel(windowInfo);
     }
@@ -1406,6 +1484,28 @@ public class ExplorerWatcher : IHook
 
         return QueryTabHandle(window, updateDictionary: true);
     }
+    private bool TryPublishTabHandle(InternetExplorer window, nint tabHandle)
+    {
+        if (tabHandle == 0)
+            return false;
+
+        try
+        {
+            lock (_windowEntryDictLock)
+            {
+                if (!_windowEntryDict.ContainsKey(window))
+                    return false;
+
+                _windowEntryDict.UpdateOptionalKey(window, tabHandle);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            ExplorerDebugLog.Write($"Tab handle publish failed handle={tabHandle} error={ex.GetType().Name}:{ex.Message}");
+            return false;
+        }
+    }
     private Task<nint> QueryTabHandle(InternetExplorer window, bool updateDictionary)
     {
         return RunInStaThread(() =>
@@ -1761,6 +1861,7 @@ public class ExplorerWatcher : IHook
         foreach (var (window, windowInfo) in windowEntries)
         {
             if (windowInfo.OnQuitHandler != null) window.OnQuit -= windowInfo.OnQuitHandler;
+            if (windowInfo.OnNavigateHandler != null) window.NavigateComplete2 -= windowInfo.OnNavigateHandler;
             Marshal.ReleaseComObject(window);
         }
 

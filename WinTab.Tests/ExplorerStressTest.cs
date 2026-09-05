@@ -314,15 +314,16 @@ internal static class ExplorerStressTest
         var startupDelayMs = int.TryParse(GetOption(args, "--startup-delay"), out var parsedStartupDelay) ? parsedStartupDelay : 2_500;
         var repeatDelayMs = int.TryParse(GetOption(args, "--repeat-delay"), out var parsedRepeatDelay) ? parsedRepeatDelay : 250;
         var externalShellOpen = HasOption(args, "--external-shell");
+        var firstOpenMode = HasOption(args, "--first-open");
         var stressRoot = Path.Combine(Path.GetTempPath(), "WinTabExplorerStress");
         KillExistingWinTabProcesses();
         CloseTestShellWindows(stressRoot);
 
         var root = Path.Combine(stressRoot, DateTime.Now.ToString("yyyyMMddHHmmssfff"));
         var debugLog = Path.Combine(root, "wintab-reuse-debug.log");
-        var baseline = CreateBaseline(root);
+        string? baseline = firstOpenMode ? null : CreateBaseline(root);
         var target = string.IsNullOrWhiteSpace(targetOverride)
-            ? Path.Combine(root, "新建文件夹")
+            ? Path.Combine(root, firstOpenMode ? "FirstOpenTarget" : "NewTarget")
             : targetOverride;
 
         if (!Directory.Exists(target))
@@ -330,8 +331,16 @@ internal static class ExplorerStressTest
         if (!string.IsNullOrWhiteSpace(targetOverride))
             CloseShellWindowsByFolder(target);
 
-        StartExplorer(baseline);
-        await WaitForFolderWindowAsync(baseline);
+        if (firstOpenMode)
+        {
+            StartFolder(target, externalShellOpen);
+            await WaitForFolderWindowAsync(target);
+        }
+        else if (baseline != null)
+        {
+            StartExplorer(baseline);
+            await WaitForFolderWindowAsync(baseline);
+        }
         var before = GetShellWindows();
         var beforeDefaultCount = before.Count(IsDefaultLocation);
         var baselineTopLevelWindows = ExplorerWindowDiscovery.GetAllExplorerWindows()
@@ -343,7 +352,8 @@ internal static class ExplorerStressTest
         {
             await Task.Delay(startupDelayMs);
 
-            StartFolder(target, externalShellOpen);
+            if (!firstOpenMode)
+                StartFolder(target, externalShellOpen);
             var firstTargetWindow = await WaitForTargetsAsync([target], beforeDefaultCount, baselineTopLevelWindows);
             var unmergedFirstTargetWindows = GetUnexpectedTargetTopLevelWindows(firstTargetWindow, [target], baselineTopLevelWindows);
             if (firstTargetWindow.Count(window => IsSameFolder(window, target)) != 1 ||
@@ -359,7 +369,7 @@ internal static class ExplorerStressTest
             var targetWindowHandle = (nint)firstTargetTab.Hwnd;
             var targetTabHandle = GetActiveTabHandle(targetWindowHandle);
             if (targetTabHandle == 0 ||
-                !await SelectAnyOtherTabAsync(targetWindowHandle, targetTabHandle, 2_000))
+                (!firstOpenMode && !await SelectAnyOtherTabAsync(targetWindowHandle, targetTabHandle, 2_000)))
             {
                 Console.Error.WriteLine("Explorer reuse test failed: could not move away from the first target tab before reopening it.");
                 Console.Error.WriteLine($"TargetWindow={targetWindowHandle} TargetTab={targetTabHandle}");

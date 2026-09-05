@@ -30,6 +30,8 @@ internal static class UnitTestRunner
             .Concat(TabSelectionEngineTests.All())
             .Concat(MergeSourceConcealPulseTests.All())
             .Concat(ExplorerTabDoubleClickCloseTests.All())
+            .Concat(ExplorerTabRegistrationTests.All())
+            .Concat(ExplorerTabReuseTests.All())
             .Concat(UpdateReleaseParserTests.All())
             .Concat(DualKeyDictionaryTests.All())
             .ToList();
