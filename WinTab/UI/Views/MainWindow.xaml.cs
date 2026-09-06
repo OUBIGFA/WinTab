@@ -301,9 +301,11 @@ public partial class MainWindow : Window
         _maintenanceFeedbackTimer?.Stop();
         Application.Current.Exit -= OnApplicationExit;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
-        SettingsManager.SaveSettings();
+        var settingsSaveTask = SettingsManager.FlushSettingsAsync(TimeSpan.FromSeconds(1));
         _trayIcon.Dispose();
         _hookManager.Dispose();
+        if (!settingsSaveTask.GetAwaiter().GetResult())
+            Trace.TraceError("Could not confirm settings were saved before exit.");
     }
 
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)

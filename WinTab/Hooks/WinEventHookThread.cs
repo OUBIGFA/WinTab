@@ -30,7 +30,6 @@ internal sealed class WinEventHookThread : IDisposable
         _thread = new Thread(Run)
         {
             IsBackground = true,
-            Priority = ThreadPriority.Highest,
             Name = "WinTab Explorer WinEvent Hook"
         };
         _thread.SetApartmentState(ApartmentState.STA);
@@ -82,8 +81,12 @@ internal sealed class WinEventHookThread : IDisposable
             WinApi.PostThreadMessage(_threadId, WinApi.WM_QUIT, 0, 0);
 
         if (!_stopped.Wait(2_000))
+        {
             ExplorerDebugLog.Write("WinEvent hook thread did not stop within 2000ms");
+            return;
+        }
 
+        _thread?.Join();
         _started.Dispose();
         _stopped.Dispose();
     }

@@ -45,6 +45,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+[Console]::InputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
+$OutputEncoding = $utf8
 
 $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectPath = Join-Path $RepoRoot 'WinTab\WinTab.csproj'
@@ -159,6 +163,47 @@ function ConvertTo-Ico {
     }
 }
 
+function Test-InstallerRuntime {
+    param([string]$CompilerPath)
+
+    $temporaryRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot '_temp'))
+    $testDirectory = Join-Path $temporaryRoot ('installer-tests-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $testDirectory -Force | Out-Null
+    try {
+        foreach ($architecture in @('x64', 'x86', 'arm64', 'combined')) {
+            $compilerArguments = @('/Q', "/DTestOutputDir=$testDirectory")
+            if ($architecture -ne 'combined') { $compilerArguments += "/DArch=$architecture" }
+            $compilerArguments += (Join-Path $RepoRoot 'WinTab.Tests\InstallerRuntimeTests.iss')
+            & $CompilerPath @compilerArguments
+            if ($LASTEXITCODE -ne 0) { throw "Installer self-test compile failed for $architecture (exit $LASTEXITCODE)" }
+
+            $reportPath = Join-Path $testDirectory "$architecture-result.txt"
+            $testExe = Join-Path $testDirectory "RuntimeTests_$architecture.exe"
+            $arguments = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /ResultFile="' + $reportPath + '"'
+            $process = Start-Process -FilePath $testExe -ArgumentList $arguments -WindowStyle Hidden -PassThru -Wait
+            if (-not (Test-Path -LiteralPath $reportPath)) {
+                throw "Installer self-test did not produce a result for $architecture"
+            }
+            $report = Get-Content -LiteralPath $reportPath -Encoding UTF8 -Raw
+            if ($report -ne 'PASS' -or $process.ExitCode -ne 1) {
+                throw "Installer self-test failed for $architecture (exit $($process.ExitCode)): $report"
+            }
+            Write-Host "    PASS installer runtime selection and validation: $architecture"
+        }
+    }
+    finally {
+        $resolvedDirectory = [System.IO.Path]::GetFullPath($testDirectory)
+        if (-not $resolvedDirectory.StartsWith($temporaryRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing to clean a test directory outside $temporaryRoot"
+        }
+        Add-Type -AssemblyName Microsoft.VisualBasic
+        [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(
+            $resolvedDirectory,
+            [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+            [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin)
+    }
+}
+
 Write-Host "`n==> Preparing app assets" -ForegroundColor Cyan
 ConvertTo-Ico -AssetsPath $AssetsDir -DestinationPath $AppIconPath
 $sourceLogo = Join-Path $AssetsDir 'logo.png'
@@ -209,6 +254,10 @@ if ($SkipInstaller) {
 }
 
 $iscc = Resolve-Iscc -Hint $IsccPath
+if (-not $SkipTests) {
+    Write-Host "`n==> Testing installer runtime selection and validation" -ForegroundColor Cyan
+    Test-InstallerRuntime -CompilerPath $iscc
+}
 Write-Host "`n==> Compiling installers with $iscc" -ForegroundColor Cyan
 
 if (-not (Test-Path $DistDir)) { New-Item -ItemType Directory -Path $DistDir | Out-Null }

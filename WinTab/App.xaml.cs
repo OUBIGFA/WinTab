@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows.Controls;
 using WinTab.UI.Views;
 using WinTab.Helpers;
+using WinTab.Hooks;
 using WinTab.Managers;
 
 namespace WinTab;
@@ -47,8 +48,10 @@ public partial class App : Application
     {
         _isExiting = true;
         _showMainWindowEvent?.Dispose();
-        _mutex?.Dispose();
         base.OnExit(e);
+        if (!ExplorerDebugLog.Complete(TimeSpan.FromMilliseconds(100)))
+            System.Diagnostics.Debug.WriteLine("Diagnostic logging is still pending; shutdown will not wait longer.");
+        _mutex?.Dispose();
     }
 
     private void StartShowMainWindowRequestListener()

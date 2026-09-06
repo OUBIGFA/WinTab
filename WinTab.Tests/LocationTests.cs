@@ -14,6 +14,7 @@ internal static class LocationTests
         yield return ("NormalizeLocation keeps the UNC prefix while trimming the trailing separator", KeepsUncPrefix);
         yield return ("NormalizeLocation trims quotes and trailing separators from local paths", TrimsQuotesAndSeparators);
         yield return ("NormalizeLocation expands environment variables", ExpandsEnvironmentVariables);
+        yield return ("NormalizeLocation preserves absolute drive roots and rooted paths", PreservesRoots);
         yield return ("NormalizeLocation prefixes bare shell CLSID forms with shell:", PrefixesShellClsidForms);
         yield return ("Recycle Bin and virtual folder PIDL resolution and equivalence", RecycleBinAndVirtualFolderPidlEquivalence);
         yield return ("Different real folders are not reported as equivalent", DifferentFoldersAreNotEquivalent);
@@ -51,6 +52,16 @@ internal static class LocationTests
     {
         var expectedRoot = Environment.GetEnvironmentVariable("SystemRoot")!;
         Check.EqualIgnoreCase(expectedRoot + @"\System32", Helper.NormalizeLocation(@"%SystemRoot%\System32\"));
+        return Task.CompletedTask;
+    }
+
+    private static Task PreservesRoots()
+    {
+        Check.Equal(@"C:\", Helper.NormalizeLocation(@"C:\"));
+        Check.Equal(@"D:\", Helper.NormalizeLocation("D:/"));
+        Check.Equal(@"C:\", Helper.NormalizeLocation("file:///C:/"));
+        Check.Equal(@"\folder", Helper.NormalizeLocation(@"\folder\"));
+        Check.Equal(@"C:folder", Helper.NormalizeLocation(@"C:folder\"));
         return Task.CompletedTask;
     }
 

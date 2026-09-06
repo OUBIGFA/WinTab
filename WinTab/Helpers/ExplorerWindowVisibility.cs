@@ -5,108 +5,102 @@ using WinTab.WinAPI;
 
 namespace WinTab.Helpers;
 
-/// <summary>
-/// Conceals Explorer windows by making them fully transparent (alpha 0) and restores them later.
-/// Transparency is used instead of SW_HIDE so Explorer keeps the window registered with the shell
-/// and the taskbar while a merge is in flight.
-/// </summary>
 public static class ExplorerWindowVisibility
 {
-    private const int SM_XVIRTUALSCREEN = 76;
-    private const int SM_YVIRTUALSCREEN = 77;
-    private const int SM_CXVIRTUALSCREEN = 78;
-    private const int SM_CYVIRTUALSCREEN = 79;
-    private const int OffscreenRestoreMargin = 120;
+    private sealed record VisibilityState(WindowIdentity Identity, bool WasLayered, uint ColorKey, byte Alpha, uint Flags)
+    {
+        public bool Recovering;
+    }
 
-    private static readonly ConcurrentDictionary<nint, byte> HiddenWindows = new();
+    private static readonly ConcurrentDictionary<nint, VisibilityState> HiddenWindows = new();
 
     public static IEnumerable<nint> HiddenWindowHandles => HiddenWindows.Keys;
 
-    public static bool Contains(nint hWnd) => HiddenWindows.ContainsKey(hWnd);
+    public static bool Contains(nint hWnd) => HiddenWindows.TryGetValue(hWnd, out var state) && state.Identity.IsCurrent;
 
     public static bool Forget(nint hWnd) => HiddenWindows.TryRemove(hWnd, out _);
 
+    internal static bool Forget(WindowIdentity identity) =>
+        HiddenWindows.TryGetValue(identity.Handle, out var state) && state.Identity == identity &&
+        HiddenWindows.TryRemove(new KeyValuePair<nint, VisibilityState>(identity.Handle, state));
+
     public static void Hide(nint hWnd)
     {
-        HiddenWindows.TryAdd(hWnd, 0);
+        Hide(WindowIdentity.Capture(hWnd));
+    }
 
-        // Explorer can reset the extended style while the window initializes, so reapply both
-        // the layered style and alpha=0 on every call rather than only on the first hide.
-        UpdateLayeredStyle(hWnd, remove: false);
-        WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
+    internal static void Hide(WindowIdentity identity)
+    {
+        if (!identity.IsCurrent)
+            return;
+        var hWnd = identity.Handle;
+        if (HiddenWindows.TryGetValue(hWnd, out var stale) && !stale.Identity.IsCurrent)
+            Forget(stale.Identity);
+        if (!HiddenWindows.TryGetValue(hWnd, out var state))
+        {
+            var wasLayered = (WinApi.GetWindowLong(hWnd, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) != 0;
+            uint colorKey = 0, flags = WinApi.LWA_ALPHA;
+            byte alpha = 255;
+            if (wasLayered && !WinApi.GetLayeredWindowAttributes(hWnd, out colorKey, out alpha, out flags))
+                return;
+            state = HiddenWindows.GetOrAdd(hWnd, new VisibilityState(identity, wasLayered, colorKey, alpha, flags));
+        }
+        lock (state)
+        {
+            if (state.Recovering || state.Identity != identity || !identity.IsCurrent)
+                return;
+            UpdateLayeredStyle(hWnd, remove: false);
+            WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
+        }
     }
 
     public static int RestoreAll()
     {
         var restored = 0;
-        var candidates = ExplorerWindowDiscovery.GetAllExplorerWindows()
-            .Concat(HiddenWindows.Keys)
-            .Distinct()
-            .ToArray();
-
-        foreach (var hWnd in candidates)
+        foreach (var state in HiddenWindows.Values.ToArray())
         {
-            if (Restore(hWnd, removeCache: true))
+            if (Restore(state.Identity))
                 restored++;
         }
 
         return restored;
     }
 
-    /// <summary>
-    /// Makes a concealed Explorer window visible again. Also repairs windows that are transparent
-    /// or off-screen without a cache entry, so orphans left behind by a crash are recovered too.
-    /// </summary>
     public static bool Restore(nint hWnd, bool removeCache = true)
     {
-        if (hWnd == 0 || !ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
-        {
-            if (removeCache)
-                Forget(hWnd);
+        return HiddenWindows.TryGetValue(hWnd, out var state) && Restore(state.Identity, removeCache);
+    }
 
+    internal static bool Restore(WindowIdentity identity, bool removeCache = true)
+    {
+        if (!identity.IsCurrent)
+        {
+            Forget(identity);
             return false;
         }
-
-        var hasCache = HiddenWindows.ContainsKey(hWnd);
-        var exStyle = WinApi.GetWindowLong(hWnd, WinApi.GWL_EXSTYLE);
-        var isLayered = (exStyle & WinApi.WS_EX_LAYERED) != 0;
-        var alpha = (byte)255;
-        var alphaFlags = 0u;
-        var isTransparent = isLayered &&
-                            WinApi.GetLayeredWindowAttributes(hWnd, out _, out alpha, out alphaFlags) &&
-                            (alphaFlags & (uint)WinApi.LWA_ALPHA) != 0 &&
-                            alpha == 0;
-        var isVisible = WinApi.IsWindowVisible(hWnd);
-        var hasRect = WinApi.GetWindowRect(hWnd, out var rect);
-        var isOffscreen = hasRect && IsExplorerWindowOffscreen(rect);
-
-        if (!hasCache && !isTransparent && isVisible && !isOffscreen)
-            return false;
-
-        if (removeCache)
-            Forget(hWnd);
-
-        const uint showFlags = WinApi.SWP_SHOWWINDOW | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED;
-        if (isOffscreen)
+        if (!HiddenWindows.TryGetValue(identity.Handle, out var state))
+            return true;
+        lock (state)
         {
-            var x = WinApi.GetSystemMetrics(SM_XVIRTUALSCREEN) + OffscreenRestoreMargin;
-            var y = WinApi.GetSystemMetrics(SM_YVIRTUALSCREEN) + OffscreenRestoreMargin;
-            WinApi.SetWindowPos(hWnd, 0, x, y, 0, 0, showFlags);
+            if (state.Identity != identity || !identity.IsCurrent)
+                return false;
+            state.Recovering = true;
+            bool restored;
+            if (state.WasLayered)
+            {
+                UpdateLayeredStyle(identity.Handle, remove: false);
+                restored = WinApi.SetLayeredWindowAttributes(identity.Handle, state.ColorKey, state.Alpha, state.Flags);
+            }
+            else
+            {
+                WinApi.SetLayeredWindowAttributes(identity.Handle, 0, 255, WinApi.LWA_ALPHA);
+                UpdateLayeredStyle(identity.Handle, remove: true);
+                restored = (WinApi.GetWindowLong(identity.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0;
+            }
+            if (restored && removeCache)
+                Forget(identity);
+            return restored;
         }
-        else
-        {
-            WinApi.ShowWindow(hWnd, WinApi.SW_SHOWNOACTIVATE);
-            if (hasRect)
-                WinApi.SetWindowPos(hWnd, 0, rect.Left, rect.Top, 0, 0, showFlags);
-        }
-
-        if (isLayered)
-        {
-            WinApi.SetLayeredWindowAttributes(hWnd, 0, 255, WinApi.LWA_ALPHA);
-            UpdateLayeredStyle(hWnd, remove: true);
-        }
-
-        return true;
     }
 
     public static void UpdateLayeredStyle(nint hWnd, bool remove)
@@ -121,21 +115,4 @@ public static class ExplorerWindowVisibility
             WinApi.SetWindowLong(hWnd, WinApi.GWL_EXSTYLE, exStyle | WinApi.WS_EX_LAYERED);
     }
 
-    private static bool IsExplorerWindowOffscreen(RECT rect)
-    {
-        var width = rect.Right - rect.Left;
-        var height = rect.Bottom - rect.Top;
-        if (width < 80 || height < 80)
-            return false;
-
-        var virtualLeft = WinApi.GetSystemMetrics(SM_XVIRTUALSCREEN);
-        var virtualTop = WinApi.GetSystemMetrics(SM_YVIRTUALSCREEN);
-        var virtualRight = virtualLeft + WinApi.GetSystemMetrics(SM_CXVIRTUALSCREEN);
-        var virtualBottom = virtualTop + WinApi.GetSystemMetrics(SM_CYVIRTUALSCREEN);
-
-        return rect.Right < virtualLeft - OffscreenRestoreMargin ||
-               rect.Bottom < virtualTop - OffscreenRestoreMargin ||
-               rect.Left > virtualRight + OffscreenRestoreMargin ||
-               rect.Top > virtualBottom + OffscreenRestoreMargin;
-    }
 }

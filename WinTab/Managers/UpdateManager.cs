@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -34,12 +35,17 @@ internal static class UpdateManager
 
     public static void CheckForUpdates() => AutoUpdater.Start(Constants.UpdateUrl);
 
-    public static async Task<UpdateCheckResult> CheckForUpdatesWithResultAsync(CancellationToken cancellationToken = default)
+    public static Task<UpdateCheckResult> CheckForUpdatesWithResultAsync(CancellationToken cancellationToken = default) =>
+        CheckForUpdatesWithResultAsync(UpdateHttpClient, cancellationToken);
+
+    internal static async Task<UpdateCheckResult> CheckForUpdatesWithResultAsync(HttpClient client, CancellationToken cancellationToken = default)
     {
+        using var requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        requestCancellation.CancelAfter(client.Timeout);
         try
         {
-            await using var stream = await UpdateHttpClient.GetStreamAsync(Constants.UpdateUrl, cancellationToken).ConfigureAwait(false);
-            var jsonNode = await JsonSerializer.DeserializeAsync<JsonNode>(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            await using var stream = await client.GetStreamAsync(Constants.UpdateUrl, requestCancellation.Token).ConfigureAwait(false);
+            var jsonNode = await JsonSerializer.DeserializeAsync<JsonNode>(stream, cancellationToken: requestCancellation.Token).ConfigureAwait(false);
             if (jsonNode == null)
                 return UpdateCheckResult.Failed();
 
@@ -55,7 +61,11 @@ internal static class UpdateManager
                 DownloadUrl: UpdateReleaseParser.FindMatchingAssetUrl(jsonNode, RuntimeInformation.ProcessArchitecture),
                 ErrorMessage: null);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return UpdateCheckResult.Failed("The update request timed out. Please try again.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or InvalidOperationException or FormatException)
         {
             Debug.WriteLine($"Manual update check failed: {ex.Message}");
             return UpdateCheckResult.Failed(ex.Message);

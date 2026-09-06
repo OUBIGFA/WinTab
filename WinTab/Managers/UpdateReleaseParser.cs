@@ -20,6 +20,8 @@ internal static class UpdateReleaseParser
 
             if (!string.IsNullOrWhiteSpace(assetName) &&
                 !string.IsNullOrWhiteSpace(downloadUrl) &&
+                Uri.TryCreate(downloadUrl, UriKind.Absolute, out var downloadUri) &&
+                downloadUri.Scheme == Uri.UriSchemeHttps &&
                 assetName.EndsWith("_Setup.exe", StringComparison.OrdinalIgnoreCase))
             {
                 setupAssets.Add((assetName, downloadUrl));
@@ -39,7 +41,7 @@ internal static class UpdateReleaseParser
             }
         }
 
-        return setupAssets[0].Url;
+        return null;
     }
 
     public static bool TryNormalizeVersion(string value, out Version version)

@@ -13,10 +13,6 @@
 #define MyAppExeName MyAppName + ".exe"
 #define MyAppRelativePath MyAppName + "\" + MyAppExeName
 #define MyAppURL "https://github.com/OUBIGFA/WinTab"
-#define DotNet9InstallerUrl "https://download.visualstudio.microsoft.com/download/pr/63f0335a-6012-4017-845f-5d655d56a44f/f8d5150469889387a1de578d45415201/windowsdesktop-runtime-9.0.3-win-x64.exe"
-#define DotNet9InstallerUrlX86 "https://download.visualstudio.microsoft.com/download/pr/48649e20-00b9-43d4-95df-112b80ff7d4e/5652d3ca690f5dc13bbb93ec816c763c/windowsdesktop-runtime-9.0.3-win-x86.exe"
-#define DotNet9InstallerUrlArm64 "https://download.visualstudio.microsoft.com/download/pr/b2f2a05c-c22b-4409-b41e-5f32aaa119a8/71171816b6261ddf0050b3b9172a75ce/windowsdesktop-runtime-9.0.3-win-arm64.exe"
-#define DotNet9Version "9.0"
 
 #ifndef PublishRoot
   #define PublishRoot "..\publish\net9.0-windows"
@@ -49,6 +45,7 @@
 [Setup]
 AppId={{E1F2A3C4-F5D4-3B2E-1D5A-8F7B2F8D3E7A}
 AppName={#MyAppName}
+AppMutex=__WinTabHook__Mutex
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
@@ -115,11 +112,7 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppRelativePath}"; Task
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "{#MyAppName}"; ValueData: """{app}\{#MyAppRelativePath}"" --background"; Flags: uninsdeletevalue; Tasks: startupicon
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"; ValueType: binary; ValueName: "{#MyAppName}"; ValueData: 02 00 00 00 00 00 00 00 00 00 00 00; Flags: uninsdeletevalue; Tasks: startupicon
 
-[InstallDelete]
-Type: filesandordirs; Name: "{app}\*"
-
 [UninstallDelete]
-Type: filesandordirs; Name: "{app}\*"
 Type: dirifempty; Name: "{app}"
 
 [Run]
@@ -128,7 +121,10 @@ Filename: "{app}\{#MyAppRelativePath}"; Description: "{cm:LaunchProgram,{#String
 [Code]
 var
   DotNet9Detected: Boolean;
+  DotNet9RestartRequired: Boolean;
   DownloadPage: TDownloadWizardPage;
+
+#include "Runtime.iss"
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
@@ -137,85 +133,6 @@ begin
     RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#MyAppName}');
     RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run', '{#MyAppName}');
   end;
-end;
-
-function IsDotNet9Installed: Boolean;
-var
-  ResultCode: Integer;
-begin
-  if Exec('cmd.exe', '/c dotnet --list-runtimes | find "Microsoft.WindowsDesktop.App {#DotNet9Version}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    Result := (ResultCode = 0)
-  else
-    Result := False;
-end;
-
-function IsX86: Boolean;
-begin
-  Result := not IsWin64;
-end;
-
-function IsX64: Boolean;
-begin
-  Result := IsWin64 and (ProcessorArchitecture = paX64);
-end;
-
-function IsArm64: Boolean;
-begin
-  Result := IsWin64 and (ProcessorArchitecture = paARM64);
-end;
-
-function GetArchitectureString: String;
-begin
-#ifdef Arch
-  #if Arch == "x86"
-  Result := 'x86';
-  #elif Arch == "arm64"
-  Result := 'ARM64';
-  #else
-  Result := 'x64';
-  #endif
-#else
-  if IsX86 then
-    Result := 'x86'
-  else if IsArm64 then
-    Result := 'ARM64'
-  else
-    Result := 'x64';
-#endif
-end;
-
-function GetDotNet9Url(Param: string): string;
-begin
-#ifdef Arch
-  #if Arch == "x86"
-  Result := '{#DotNet9InstallerUrlX86}';
-  #elif Arch == "arm64"
-  Result := '{#DotNet9InstallerUrlArm64}';
-  #else
-  Result := '{#DotNet9InstallerUrl}';
-  #endif
-#else
-  if IsX86 then
-    Result := '{#DotNet9InstallerUrlX86}'
-  else if IsArm64 then
-    Result := '{#DotNet9InstallerUrlArm64}'
-  else
-    Result := '{#DotNet9InstallerUrl}';
-#endif
-end;
-
-function GetDotNet9Filename: string;
-begin
-#ifdef Arch
-  Result := 'dotnet9-{#Arch}.exe';
-#else
-  if IsX86 then
-    Result := 'dotnet9-x86.exe'
-  else if IsArm64 then
-    Result := 'dotnet9-arm64.exe'
-  else
-    Result := 'dotnet9-x64.exe';
-#endif
 end;
 
 function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
@@ -249,7 +166,7 @@ begin
   Result := False;
   ArchString := GetArchitectureString;
   DownloadPage.Clear;
-  DownloadPage.Add(GetDotNet9Url(''), GetDotNet9Filename(), '');
+  DownloadPage.Add(GetDotNet9Url(''), GetDotNet9Filename(), GetDotNet9Hash);
 
   try
     DownloadPage.SetText('Downloading .NET 9 Desktop Runtime (' + ArchString + ')',
@@ -282,13 +199,15 @@ begin
       try
         if Exec(DotNetInstallerPath, '/install /passive /norestart', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
         begin
-          if ResultCode = 0 then
+          if IsSuccessfulRuntimeExitCode(ResultCode) then
           begin
+            DotNet9RestartRequired := ResultCode = 3010;
             Log('Successfully installed .NET 9 Desktop Runtime');
             DownloadPage.SetProgress(100, 100);
             Result := True;
 
-            if not IsDotNet9Installed then
+            DotNet9Detected := IsDotNet9Installed;
+            if not DotNet9Detected then
             begin
               Log('Installation completed but .NET 9 Desktop Runtime is still not detected');
               SuppressibleMsgBox('Installation completed but .NET 9 Desktop Runtime is still not detected.',
@@ -342,12 +261,9 @@ begin
   end;
 end;
 
-function InitializeUninstall(): Boolean;
-var
-  ResultCode: Integer;
+function NeedRestart: Boolean;
 begin
-  Exec('taskkill.exe', '/f /im {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Result := True;
+  Result := DotNet9RestartRequired;
 end;
 
 procedure InitializeWizard;

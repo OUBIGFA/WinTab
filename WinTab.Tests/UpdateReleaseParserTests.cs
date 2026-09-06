@@ -10,7 +10,8 @@ internal static class UpdateReleaseParserTests
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
         yield return ("update asset selection prefers the installer for each architecture", PrefersMatchingArchitectureInstaller);
-        yield return ("update asset selection falls back to the first installer for unknown architectures", FallsBackToFirstInstaller);
+        yield return ("update asset selection rejects incompatible installers", RejectsIncompatibleInstaller);
+        yield return ("update asset selection rejects insecure download URLs", RejectsInsecureUrl);
         yield return ("update asset selection ignores non-installer assets", IgnoresNonInstallerAssets);
         yield return ("release tags normalize to comparable versions", NormalizesReleaseTags);
     }
@@ -28,14 +29,25 @@ internal static class UpdateReleaseParserTests
         return Task.CompletedTask;
     }
 
-    private static Task FallsBackToFirstInstaller()
+    private static Task RejectsIncompatibleInstaller()
     {
         var release = BuildRelease(
             ("WinTab_v1.2.0_x86_Setup.exe", "https://dl/x86"),
             ("WinTab_v1.2.0_x64_Setup.exe", "https://dl/x64"));
 
-        Check.Equal("https://dl/x86", UpdateReleaseParser.FindMatchingAssetUrl(release, Architecture.Arm64), "no arm64 asset");
-        Check.Equal("https://dl/x86", UpdateReleaseParser.FindMatchingAssetUrl(release, Architecture.Wasm), "unknown architecture");
+        Check.Equal<string?>(null, UpdateReleaseParser.FindMatchingAssetUrl(release, Architecture.Arm64), "no arm64 asset");
+        Check.Equal<string?>(null, UpdateReleaseParser.FindMatchingAssetUrl(release, Architecture.Wasm), "unknown architecture");
+        return Task.CompletedTask;
+    }
+
+    private static Task RejectsInsecureUrl()
+    {
+        foreach (var url in new[] { "http://dl/x64", "file:///C:/setup.exe", "not a URL" })
+        {
+            var release = BuildRelease(("WinTab_v1.2.0_x64_Setup.exe", url));
+            Check.Equal<string?>(null, UpdateReleaseParser.FindMatchingAssetUrl(release, Architecture.X64),
+                "Only absolute HTTPS downloads may be handed to the updater.");
+        }
         return Task.CompletedTask;
     }
 

@@ -11,6 +11,7 @@ internal static class ExplorerTabDoubleClickCloseTests
         yield return ("double-click close can continue after a tab-strip hit-test refresh gap", ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick);
         yield return ("double-click close chain ignores points outside the double-click geometry", CloseChainFallbackIgnoresDifferentPoints);
         yield return ("double-click close is inert while the feature is disabled", DisabledEnvironmentNeverSwallowsClicks);
+        yield return ("disabling double-click close cancels an already pending close", DisablingCancelsPendingClose);
     }
 
     private static Task ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick()
@@ -102,6 +103,22 @@ internal static class ExplorerTabDoubleClickCloseTests
         var up = controller.HandleLeftMouseUp(3_100);
         Check.That(!up.Handled && up.CloseRequest is null, "A disabled hook must never emit a close request.");
 
+        return Task.CompletedTask;
+    }
+
+    private static Task DisablingCancelsPendingClose()
+    {
+        var environment = new FakeDoubleClickEnvironment();
+        var controller = new ExplorerTabDoubleClickCloseController(environment);
+        var point = new Point(240, 48);
+        environment.HitTestResults.Enqueue(true);
+        controller.HandleLeftMouseDown(point, 1_000);
+        controller.HandleLeftMouseUp(1_020);
+        environment.HitTestResults.Enqueue(true);
+        controller.HandleLeftMouseDown(point, 1_080);
+        environment.IsEnabled = false;
+        Check.That(controller.HandleLeftMouseUp(1_100).CloseRequest is null,
+            "Disabling the feature must cancel the close, even after the second mouse-down.");
         return Task.CompletedTask;
     }
 

@@ -1,204 +1,100 @@
 using System;
-using System.IO;
-using System.Text.Json;
-using System.Windows;
 using System.ComponentModel;
-using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
-using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
 using WinTab.Helpers;
 
 namespace WinTab.Managers;
 
 public static class SettingsManager
 {
-    private static readonly AppSettings Settings;
-    private static readonly object SettingsLock = new();
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
-    private static readonly TimeSpan DeferredSaveDelay = TimeSpan.FromMilliseconds(500);
-    private static Timer? _deferredSaveTimer;
-    private static bool _hasPendingDeferredSave;
-    public static event EventHandler<PropertyChangedEventArgs>? StaticPropertyChanged;
-
-    private static readonly string SettingsDirectory = Path.Combine(
+    private static readonly SettingsStore Store = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "WinTab");
-    private static readonly string SettingsFilePath = Path.Combine(SettingsDirectory, Constants.SettingsFileName);
+        "WinTab", Constants.SettingsFileName));
+
+    public static event EventHandler<PropertyChangedEventArgs>? StaticPropertyChanged;
+    public static event Action? StorageErrorChanged;
+    public static Exception? StorageError => Store.LastError;
 
     static SettingsManager()
     {
-        Directory.CreateDirectory(SettingsDirectory);
-
-        if (!File.Exists(SettingsFilePath))
-        {
-            Settings = new AppSettings();
-            return;
-        }
-
-        try
-        {
-            var json = File.ReadAllText(SettingsFilePath);
-            Settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
-        }
-        catch
-        {
-            Settings = new AppSettings();
-        }
+        Store.ErrorChanged += () => StorageErrorChanged?.Invoke();
     }
 
     public static bool IsWindowHookActive
     {
-        get => ReadProperty(() => Settings.WindowHook);
-        set => SetProperty(() => Settings.WindowHook, value, v => Settings.WindowHook = v);
+        get => Store.Snapshot.WindowHook;
+        set => SetProperty(settings => settings with { WindowHook = value });
     }
 
     public static bool ReuseTabs
     {
-        get => ReadProperty(() => Settings.ReuseTabs);
-        set => SetProperty(() => Settings.ReuseTabs, value, v => Settings.ReuseTabs = v);
+        get => Store.Snapshot.ReuseTabs;
+        set => SetProperty(settings => settings with { ReuseTabs = value });
     }
 
     public static bool DoubleClickCloseTab
     {
-        get => ReadProperty(() => Settings.DoubleClickCloseTab);
-        set => SetProperty(() => Settings.DoubleClickCloseTab, value, v => Settings.DoubleClickCloseTab = v);
+        get => Store.Snapshot.DoubleClickCloseTab;
+        set => SetProperty(settings => settings with { DoubleClickCloseTab = value });
     }
 
     public static bool AutoUpdate
     {
-        get => ReadProperty(() => Settings.AutoUpdate);
-        set => SetProperty(() => Settings.AutoUpdate, value, v => Settings.AutoUpdate = v);
+        get => Store.Snapshot.AutoUpdate;
+        set => SetProperty(settings => settings with { AutoUpdate = value });
     }
 
     public static bool ShowTrayIcon
     {
-        get => ReadProperty(() => Settings.ShowTrayIcon);
-        set => SetProperty(() => Settings.ShowTrayIcon, value, v => Settings.ShowTrayIcon = v);
+        get => Store.Snapshot.ShowTrayIcon;
+        set => SetProperty(settings => settings with { ShowTrayIcon = value });
     }
 
     public static string Language
     {
-        get => ReadProperty(() => NormalizeLanguage(Settings.Language));
-        set => SetProperty(() => NormalizeLanguage(Settings.Language), NormalizeLanguage(value), v => Settings.Language = v);
+        get => NormalizeLanguage(Store.Snapshot.Language);
+        set => SetProperty(settings => settings with { Language = NormalizeLanguage(value) });
     }
 
     public static string Theme
     {
-        get => ReadProperty(() => NormalizeTheme(Settings.Theme));
-        set => SetProperty(() => NormalizeTheme(Settings.Theme), NormalizeTheme(value), v => Settings.Theme = v);
+        get => NormalizeTheme(Store.Snapshot.Theme);
+        set => SetProperty(settings => settings with { Theme = NormalizeTheme(value) });
     }
 
     public static Size FormSize
     {
-        get => ReadProperty(() => Settings.FormSize);
-        set => SetProperty(() => Settings.FormSize, value, v => Settings.FormSize = v, notify: false, saveMode: SaveMode.Deferred);
+        get => Store.Snapshot.FormSize;
+        set => SetProperty(settings => settings with { FormSize = value }, notify: false, deferred: true);
     }
 
-    private static T ReadProperty<T>(Func<T> read)
+    private static void SetProperty(Func<AppSettings, AppSettings> update,
+        [CallerMemberName] string propertyName = "", bool notify = true, bool deferred = false)
     {
-        lock (SettingsLock)
-            return read();
-    }
-
-    private static void SetProperty<T>(
-        Func<T> readCurrent,
-        T value,
-        Action<T> assign,
-        [CallerMemberName] string propertyName = "",
-        bool notify = true,
-        SaveMode saveMode = SaveMode.Immediate)
-    {
-        var changed = false;
-        lock (SettingsLock)
-        {
-            if (EqualityComparer<T>.Default.Equals(readCurrent(), value))
-                return;
-
-            assign(value);
-            if (saveMode == SaveMode.Immediate)
-            {
-                SaveSettingsCore();
-                CancelDeferredSaveCore();
-            }
-            else
-            {
-                ScheduleDeferredSaveCore();
-            }
-            changed = true;
-        }
-
-        if (changed && notify)
+        if (Store.Update(update, deferred) && notify)
             StaticPropertyChanged?.Invoke(null, new PropertyChangedEventArgs(propertyName));
     }
 
-    public static void SaveSettings()
-    {
-        lock (SettingsLock)
-        {
-            CancelDeferredSaveCore();
-            SaveSettingsCore();
-        }
-    }
+    public static void SaveSettings() => _ = Store.FlushAsync();
 
-    private static void SaveSettingsCore()
+    public static async Task<bool> FlushSettingsAsync(TimeSpan timeout)
     {
         try
         {
-            Directory.CreateDirectory(SettingsDirectory);
-            var json = JsonSerializer.Serialize(Settings, SerializerOptions);
-            File.WriteAllText(SettingsFilePath, json);
+            return await Store.FlushAsync().WaitAsync(timeout).ConfigureAwait(false);
         }
-        catch
+        catch (TimeoutException)
         {
-            // 忽略保存失败，保持当前内存设置继续运行。
+            System.Diagnostics.Trace.TraceError("Settings save timed out; the last valid settings file is retained.");
+            return false;
         }
-    }
-
-    private static void ScheduleDeferredSaveCore()
-    {
-        _hasPendingDeferredSave = true;
-        _deferredSaveTimer ??= new Timer(_ => FlushDeferredSave(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-        _deferredSaveTimer.Change(DeferredSaveDelay, Timeout.InfiniteTimeSpan);
-    }
-
-    private static void FlushDeferredSave()
-    {
-        lock (SettingsLock)
-        {
-            if (!_hasPendingDeferredSave)
-                return;
-
-            _hasPendingDeferredSave = false;
-            SaveSettingsCore();
-        }
-    }
-
-    private static void CancelDeferredSaveCore()
-    {
-        _hasPendingDeferredSave = false;
-        _deferredSaveTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     private static string NormalizeLanguage(string? value) => string.IsNullOrWhiteSpace(value) ? "zh-CN" : value;
 
     private static string NormalizeTheme(string? value) =>
         string.Equals(value, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
-
-    private enum SaveMode
-    {
-        Immediate,
-        Deferred
-    }
-}
-
-internal sealed class AppSettings
-{
-    public bool WindowHook { get; set; } = true;
-    public bool ReuseTabs { get; set; } = true;
-    public bool DoubleClickCloseTab { get; set; } = true;
-    public bool AutoUpdate { get; set; } = true;
-    public bool ShowTrayIcon { get; set; } = true;
-    public string Language { get; set; } = "zh-CN";
-    public string Theme { get; set; } = "Light";
-    public Size FormSize { get; set; } = new(1020, 720);
 }

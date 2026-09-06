@@ -54,7 +54,7 @@ internal sealed class MergeSourceConcealPulse
         {
             try
             {
-                while (DateTime.UtcNow.Ticks < Volatile.Read(ref _untilTicks))
+                while (isEnabled() && DateTime.UtcNow.Ticks < Volatile.Read(ref _untilTicks))
                 {
                     try
                     {

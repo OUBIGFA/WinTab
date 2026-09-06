@@ -76,8 +76,11 @@ internal sealed class ExplorerTabDoubleClickCloseController(IExplorerTabDoubleCl
 
         var pending = _pendingNativeClose;
         _pendingNativeClose = null;
-        if (pending == null)
+        if (pending == null || !environment.IsEnabled)
+        {
+            _recentNativeClose = null;
             return MouseHookDecision.HandledOnly;
+        }
 
         _recentNativeClose = new ClickCandidate(pending.ExplorerWindow, pending.Point, now) { OnTabStrip = true };
         return new MouseHookDecision(

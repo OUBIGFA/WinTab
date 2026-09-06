@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Collections.Generic;
+using System.IO;
 using WinTab.WinAPI;
 
 namespace WinTab.Helpers;
@@ -31,35 +32,31 @@ public static class Helper
             sleepMs,
             cancellationToken);
     }
-    public static async Task<T> DoUntilConditionAsync<T>(Func<T> action, Predicate<T> predicate, int timeMs = 500, int sleepMs = 20, CancellationToken cancellationToken = default)
-    {
-        var startTicks = Stopwatch.GetTimestamp();
-
-        while (!cancellationToken.IsCancellationRequested && !IsTimeUp(startTicks, timeMs))
-        {
-            var result = action();
-            if (predicate(result))
-                return result;
-
-            await Task.Delay(sleepMs, cancellationToken).ConfigureAwait(false);
-        }
-
-        return action();
-    }
+    public static Task<T> DoUntilConditionAsync<T>(Func<T> action, Predicate<T> predicate, int timeMs = 500, int sleepMs = 20, CancellationToken cancellationToken = default) =>
+        DoUntilConditionAsync(() => Task.FromResult(action()), predicate, timeMs, sleepMs, cancellationToken);
     public static async Task<T> DoUntilConditionAsync<T>(Func<Task<T>> action, Predicate<T> predicate, int timeMs = 500, int sleepMs = 20, CancellationToken cancellationToken = default)
     {
         var startTicks = Stopwatch.GetTimestamp();
-
-        while (!cancellationToken.IsCancellationRequested && !IsTimeUp(startTicks, timeMs))
+        var remainingMs = Math.Max(1, timeMs);
+        T result;
+        do
         {
-            var result = await action().ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            result = await action().WaitAsync(TimeSpan.FromMilliseconds(remainingMs), cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             if (predicate(result))
                 return result;
 
-            await Task.Delay(sleepMs, cancellationToken).ConfigureAwait(false);
+            remainingMs = timeMs - (int)Stopwatch.GetElapsedTime(startTicks).TotalMilliseconds;
+            if (remainingMs <= 0)
+                break;
+            await Task.Delay(Math.Min(Math.Max(1, sleepMs), remainingMs), cancellationToken).ConfigureAwait(false);
+            remainingMs = timeMs - (int)Stopwatch.GetElapsedTime(startTicks).TotalMilliseconds;
         }
+        while (remainingMs > 0);
 
-        return await action().ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
     }
 
     public static bool IsTimeUp(long startTicks, int timeMs)
@@ -106,20 +103,11 @@ public static class Helper
             location = Environment.ExpandEnvironmentVariables(location);
 
         location = location.Trim(' ', '\n', '\'', '"');
-        bool isUnc = location.StartsWith("\\\\") || location.StartsWith("//");
-        if (isUnc)
-        {
-            location = location.TrimEnd('/', '\\');
-        }
-        else
-        {
-            location = location.Trim('/', '\\');
-        }
 
         if (Uri.TryCreate(location, UriKind.Absolute, out var uri) &&
             (location.Contains("://", StringComparison.Ordinal) || location.StartsWith("file:", StringComparison.OrdinalIgnoreCase)))
         {
-            return uri.IsFile ? uri.LocalPath.TrimEnd('\\', '/') : location;
+            return uri.IsFile ? NormalizeFileSystemPath(uri.LocalPath) : location;
         }
 
         if (location.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
@@ -131,7 +119,17 @@ public static class Helper
         else if (location.StartsWith("{", StringComparison.Ordinal))
             location = $"shell:::{location}";
 
-        return location.Replace('/', '\\');
+        return NormalizeFileSystemPath(location);
+    }
+
+    private static string NormalizeFileSystemPath(string location)
+    {
+        location = location.Replace('/', '\\');
+        var root = Path.GetPathRoot(location) ?? string.Empty;
+        var trimmed = location.TrimEnd('\\');
+        return trimmed.Length < root.Length && (root.Length == 1 || root.EndsWith(":\\", StringComparison.Ordinal))
+            ? root
+            : trimmed;
     }
     public static string GetExecutablePath()
     {

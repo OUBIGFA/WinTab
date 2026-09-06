@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using WinTab.WinAPI;
 
@@ -20,22 +21,22 @@ public static class ExplorerWindowDiscovery
         return IsFileExplorerWindow(foregroundWindow);
     }
 
-    public static Task<nint> ListenForNewExplorerWindowAsync(IReadOnlyCollection<nint> currentWindows, int searchTimeMs = 1000)
+    public static Task<nint> ListenForNewExplorerWindowAsync(IReadOnlyCollection<nint> currentWindows, int searchTimeMs = 1000, CancellationToken cancellationToken = default)
     {
         var knownWindows = CreateKnownHandleSet(currentWindows);
         return Helper.DoUntilNotDefaultAsync(() =>
                 GetAllExplorerWindows()
                     .FirstOrDefault(window => IsUnknownHandle(window, knownWindows)),
-            searchTimeMs);
+            searchTimeMs, cancellationToken: cancellationToken);
     }
 
-    public static Task<nint> ListenForNewExplorerTabAsync(nint window, IReadOnlyCollection<nint> currentTabs, int searchTimeMs = 1000)
+    public static Task<nint> ListenForNewExplorerTabAsync(nint window, IReadOnlyCollection<nint> currentTabs, int searchTimeMs = 1000, CancellationToken cancellationToken = default)
     {
         var knownTabs = CreateKnownHandleSet(currentTabs);
         return Helper.DoUntilNotDefaultAsync(() =>
                 GetAllExplorerTabs(window)
                     .FirstOrDefault(tab => IsUnknownHandle(tab, knownTabs)),
-            searchTimeMs);
+            searchTimeMs, cancellationToken: cancellationToken);
     }
 
     public static IEnumerable<nint> GetAllExplorerTabs(nint window)

@@ -31,6 +31,7 @@ public static class WinApi
     public const uint SWP_FRAMECHANGED = 0x0020;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_HIDEWINDOW = 0x0080;
+    public const uint SWP_ASYNCWINDOWPOS = 0x4000;
 
     public const int GWL_EXSTYLE = -20; // Extended window style.
     public const int WS_EX_LAYERED = 0x80000; // Layered window.
@@ -89,6 +90,25 @@ public static class WinApi
     public static extern bool ShowWindow(nint handle, int nCmdShow);
 
     [DllImport("user32.dll")]
+    public static extern bool ShowWindowAsync(nint handle, int command);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern bool SetProp(nint handle, string name, nint value);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern nint GetProp(nint handle, string name);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern nint RemoveProp(nint handle, string name);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern nint SendMessageTimeout(nint handle, uint message, nint parameter, nint argument,
+        uint flags, uint timeout, out nint result);
+
+    public static bool TrySendMessage(nint handle, uint message, nint parameter, nint argument, uint timeoutMs = 200) =>
+        handle != 0 && SendMessageTimeout(handle, message, parameter, argument, 0x0002 | 0x0020, timeoutMs, out _) != 0;
+
+    [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(nint hWnd);
 
     [DllImport("user32.dll")]
@@ -114,6 +134,9 @@ public static class WinApi
 
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int X, int Y);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out Point point);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetForegroundWindow(nint hWnd);
