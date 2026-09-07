@@ -19,7 +19,7 @@ internal static class TabSelectionEngine
         if (targetTab == 0) return false;
 
         var tabs = getAllTabs();
-        if (tabs.Length == 0) return false;
+        if (Array.IndexOf(tabs, targetTab) < 0) return false;
 
         if (getActiveTab() == targetTab) return true;
 

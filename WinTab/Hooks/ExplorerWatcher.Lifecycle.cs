@@ -98,10 +98,8 @@ public partial class ExplorerWatcher
         if (info == null || !IsCurrentWindow(window, info))
             return Task.CompletedTask;
 
-        var location = info.Location;
-        var selection = TryGetSelectedItems(window);
-        if (IsCurrentWindow(window, info) && info.Location == location && GetActiveTabHandle(handle) == tab)
-            info.SelectedItems = selection;
+        info.RefreshSelection(() => TryGetSelectedItems(window),
+            () => IsCurrentWindow(window, info) && GetActiveTabHandle(handle) == tab);
         return Task.CompletedTask;
     }
 
@@ -165,7 +163,7 @@ public partial class ExplorerWatcher
         try
         {
             await Task.WhenAll(_registrationWork.WhenIdle, _selectionWork.WhenIdle).ConfigureAwait(false);
-            await Task.Factory.StartNew(() =>
+            await Task.Factory.StartNew(async () =>
             {
                 if (_disposed)
                     return;
@@ -174,13 +172,13 @@ public partial class ExplorerWatcher
                 _shellLifetime = new CancellationTokenSource();
                 Interlocked.Increment(ref _shellGeneration);
                 _mainExplorerProcessId = processId;
-                InitializeShellObjects();
+                await InitializeShellObjectsAsync();
                 if (!_disposed && !_shellLifetime.IsCancellationRequested)
                 {
                     _selectionTimer.Change(500, 500);
                     OnShellInitialized?.Invoke();
                 }
-            }, CancellationToken.None, TaskCreationOptions.DenyChildAttach, _staTaskScheduler).ConfigureAwait(false);
+            }, CancellationToken.None, TaskCreationOptions.DenyChildAttach, _staTaskScheduler).Unwrap().ConfigureAwait(false);
         }
         catch (Exception exception)
         {

@@ -1,7 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
+
+Console.InputEncoding = new UTF8Encoding(false);
+Console.OutputEncoding = new UTF8Encoding(false);
+
+if (args.Length == 3 && args[0] == "--conceal-test-window")
+    return WindowSafetyTests.ConcealRecoveryWindow(args[1], args[2]);
 
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--stress"))
     return await ExplorerStressTest.RunAsync(args);
@@ -33,11 +40,14 @@ internal static class UnitTestRunner
             .Concat(BackgroundWorkTests.All())
             .Concat(BufferedDiagnosticLogTests.All())
             .Concat(WindowSafetyTests.All())
+            .Concat(SelectionSnapshotTests.All())
             .Concat(TabSelectionEngineTests.All())
             .Concat(MergeSourceConcealPulseTests.All())
             .Concat(ExplorerTabDoubleClickCloseTests.All())
             .Concat(ExplorerTabRegistrationTests.All())
             .Concat(ExplorerTabReuseTests.All())
+            .Concat(ExplorerTabActivationTests.All())
+            .Concat(ExplorerReuseSelectionTests.All())
             .Concat(UpdateReleaseParserTests.All())
             .Concat(UpdateManagerTests.All())
             .Concat(DualKeyDictionaryTests.All())

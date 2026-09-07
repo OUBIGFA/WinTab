@@ -7,6 +7,8 @@ namespace WinTab.Helpers;
 
 internal sealed class BackgroundRefreshCache<TKey, TValue> : IDisposable where TKey : notnull where TValue : class
 {
+    private const int WorkerCount = 2;
+
     private sealed class Entry
     {
         public TValue? Value;
@@ -18,14 +20,18 @@ internal sealed class BackgroundRefreshCache<TKey, TValue> : IDisposable where T
     private readonly BlockingCollection<(TKey Key, Entry Entry)> _queue = new(64);
     private readonly object _queueGate = new();
     private readonly Func<TKey, TValue?> _compute;
+    private int _remainingWorkers = WorkerCount;
     private bool _disposed;
 
     public BackgroundRefreshCache(Func<TKey, TValue?> compute)
     {
         _compute = compute;
-        var thread = new Thread(Run) { IsBackground = true, Name = "WinTab tab bounds" };
-        thread.SetApartmentState(ApartmentState.MTA);
-        thread.Start();
+        for (var index = 0; index < WorkerCount; index++)
+        {
+            var thread = new Thread(Run) { IsBackground = true, Name = $"WinTab tab bounds {index + 1}" };
+            thread.SetApartmentState(ApartmentState.MTA);
+            thread.Start();
+        }
     }
 
     public bool TryGet(TKey key, out TValue? value)
@@ -104,7 +110,8 @@ internal sealed class BackgroundRefreshCache<TKey, TValue> : IDisposable where T
         }
         finally
         {
-            _queue.Dispose();
+            if (Interlocked.Decrement(ref _remainingWorkers) == 0)
+                _queue.Dispose();
         }
     }
 

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using WinTab.WinAPI;
 
@@ -7,7 +8,7 @@ namespace WinTab.Helpers;
 
 public static class ExplorerWindowVisibility
 {
-    private sealed record VisibilityState(WindowIdentity Identity, bool WasLayered, uint ColorKey, byte Alpha, uint Flags)
+    private sealed record VisibilityState(WindowIdentity Identity, WindowVisibilitySnapshot Snapshot)
     {
         public bool Recovering;
     }
@@ -18,11 +19,20 @@ public static class ExplorerWindowVisibility
 
     public static bool Contains(nint hWnd) => HiddenWindows.TryGetValue(hWnd, out var state) && state.Identity.IsCurrent;
 
-    public static bool Forget(nint hWnd) => HiddenWindows.TryRemove(hWnd, out _);
+    public static bool Forget(nint hWnd) =>
+        HiddenWindows.TryGetValue(hWnd, out var state) && Forget(state.Identity);
 
-    internal static bool Forget(WindowIdentity identity) =>
-        HiddenWindows.TryGetValue(identity.Handle, out var state) && state.Identity == identity &&
-        HiddenWindows.TryRemove(new KeyValuePair<nint, VisibilityState>(identity.Handle, state));
+    internal static bool Forget(WindowIdentity identity)
+    {
+        if (!HiddenWindows.TryGetValue(identity.Handle, out var state) || state.Identity != identity)
+            return false;
+        lock (state)
+        {
+            state.Recovering = true;
+            state.Snapshot.Remove(identity.Handle);
+            return HiddenWindows.TryRemove(new KeyValuePair<nint, VisibilityState>(identity.Handle, state));
+        }
+    }
 
     public static void Hide(nint hWnd)
     {
@@ -38,17 +48,20 @@ public static class ExplorerWindowVisibility
             Forget(stale.Identity);
         if (!HiddenWindows.TryGetValue(hWnd, out var state))
         {
-            var wasLayered = (WinApi.GetWindowLong(hWnd, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) != 0;
-            uint colorKey = 0, flags = WinApi.LWA_ALPHA;
-            byte alpha = 255;
-            if (wasLayered && !WinApi.GetLayeredWindowAttributes(hWnd, out colorKey, out alpha, out flags))
+            var snapshot = WindowVisibilitySnapshot.Read(hWnd) ?? WindowVisibilitySnapshot.Capture(hWnd);
+            if (snapshot == null)
                 return;
-            state = HiddenWindows.GetOrAdd(hWnd, new VisibilityState(identity, wasLayered, colorKey, alpha, flags));
+            state = HiddenWindows.GetOrAdd(hWnd, new VisibilityState(identity, snapshot));
         }
         lock (state)
         {
             if (state.Recovering || state.Identity != identity || !identity.IsCurrent)
                 return;
+            if (!state.Snapshot.Save(hWnd))
+            {
+                Trace.TraceError($"Window recovery record could not be saved; the source was not hidden: {hWnd}");
+                return;
+            }
             UpdateLayeredStyle(hWnd, remove: false);
             WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
         }
@@ -57,9 +70,9 @@ public static class ExplorerWindowVisibility
     public static int RestoreAll()
     {
         var restored = 0;
-        foreach (var state in HiddenWindows.Values.ToArray())
+        foreach (var handle in HiddenWindows.Keys.Concat(ExplorerWindowDiscovery.GetAllExplorerWindows()).Distinct().ToArray())
         {
-            if (Restore(state.Identity))
+            if (Restore(handle))
                 restored++;
         }
 
@@ -68,7 +81,16 @@ public static class ExplorerWindowVisibility
 
     public static bool Restore(nint hWnd, bool removeCache = true)
     {
-        return HiddenWindows.TryGetValue(hWnd, out var state) && Restore(state.Identity, removeCache);
+        if (HiddenWindows.TryGetValue(hWnd, out var state))
+            return Restore(state.Identity, removeCache);
+        var snapshot = WindowVisibilitySnapshot.Read(hWnd);
+        if (snapshot == null)
+            return false;
+        var identity = WindowIdentity.Capture(hWnd);
+        if (!identity.IsCurrent)
+            return false;
+        HiddenWindows.TryAdd(hWnd, new VisibilityState(identity, snapshot));
+        return Restore(identity, removeCache);
     }
 
     internal static bool Restore(WindowIdentity identity, bool removeCache = true)
@@ -86,10 +108,11 @@ public static class ExplorerWindowVisibility
                 return false;
             state.Recovering = true;
             bool restored;
-            if (state.WasLayered)
+            var snapshot = state.Snapshot;
+            if (snapshot.WasLayered)
             {
                 UpdateLayeredStyle(identity.Handle, remove: false);
-                restored = WinApi.SetLayeredWindowAttributes(identity.Handle, state.ColorKey, state.Alpha, state.Flags);
+                restored = WinApi.SetLayeredWindowAttributes(identity.Handle, snapshot.ColorKey, snapshot.Alpha, snapshot.Flags);
             }
             else
             {

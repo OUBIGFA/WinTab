@@ -16,6 +16,11 @@ internal static class SettingsStoreTests
         yield return ("settings writes coalesce changes without concurrent file access", WritesLatestSnapshot);
         yield return ("settings save failure is reported without losing in-memory state", ReportsWriteFailure);
         yield return ("settings retain a valid backup and recover from a damaged primary file", RecoversBackup);
+        yield return ("settings recover a backup after a negative width", () => RecoversInvalidValues("""{"FormSize":{"Width":-1,"Height":720}}"""));
+        yield return ("settings recover a backup after a negative height", () => RecoversInvalidValues("""{"FormSize":{"Width":1020,"Height":-1}}"""));
+        yield return ("settings recover a backup after a zero dimension", () => RecoversInvalidValues("""{"FormSize":{"Width":1020,"Height":0}}"""));
+        yield return ("settings recover a backup after a nonfinite dimension", () => RecoversInvalidValues("""{"FormSize":{"Width":1e999,"Height":720}}"""));
+        yield return ("invalid settings and backup use valid defaults and retain the error", InvalidBackupUsesDefaults);
         yield return ("failed settings replacement preserves the previous file", FailedReplacementPreservesFile);
     }
 
@@ -121,6 +126,43 @@ internal static class SettingsStoreTests
         {
             RecycleDirectory(path);
         }
+    }
+
+    private static async Task RecoversInvalidValues(string json)
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, json, Encoding.UTF8);
+            File.WriteAllText(path + ".bak", """{"Theme":"Dark","FormSize":{"Width":1100,"Height":760}}""", Encoding.UTF8);
+            using var recovered = new SettingsStore(path);
+            Check.Equal("Dark", recovered.Snapshot.Theme, "Invalid values must recover the backup rather than prevent startup.");
+            Check.Equal(1100d, recovered.Snapshot.FormSize.Width, "The valid backup width must be preserved.");
+            Check.Equal(760d, recovered.Snapshot.FormSize.Height, "The valid backup height must be preserved.");
+            Check.That(recovered.LastError is JsonException, "The invalid setting must be reported as damaged data.");
+            Check.That(await recovered.FlushAsync(), "Recovered values must be writable.");
+            using var reloaded = new SettingsStore(path);
+            Check.Equal("Dark", reloaded.Snapshot.Theme, "The repaired primary file must retain the backup values.");
+        }
+        finally { RecycleDirectory(path); }
+    }
+
+    private static Task InvalidBackupUsesDefaults()
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, """{"FormSize":{"Width":-1,"Height":720}}""", Encoding.UTF8);
+            File.WriteAllText(path + ".bak", """{"FormSize":{"Width":1020,"Height":-1}}""", Encoding.UTF8);
+            using var recovered = new SettingsStore(path);
+            Check.Equal(1020d, recovered.Snapshot.FormSize.Width, "An invalid backup must not replace the valid default width.");
+            Check.Equal(720d, recovered.Snapshot.FormSize.Height, "An invalid backup must not replace the valid default height.");
+            Check.That(recovered.LastError is JsonException, "Using defaults must not hide the damaged-settings error.");
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
     }
 
     private static async Task FailedReplacementPreservesFile()

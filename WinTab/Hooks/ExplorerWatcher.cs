@@ -191,6 +191,7 @@ public partial class ExplorerWatcher : IHook
             var tabIdentity = WindowIdentity.Capture(tabHandle);
             EnsureWindowIdentity(parentIdentity);
             EnsureWindowIdentity(tabIdentity);
+            Helper.RestoreWindowToForeground(windowHandle);
             var selected = await TabSelectionEngine.CycleToTabAsync(tabHandle,
                 () => ExplorerWindowDiscovery.GetAllExplorerTabs(windowHandle).ToArray(),
                 () => GetActiveTabHandle(windowHandle),
@@ -667,6 +668,8 @@ public partial class ExplorerWatcher : IHook
             if (sourceAlive && !IsStartupExplorerLocation(location))
                 HideMergeSourceWindow(hWnd);
 
+            windowInfo.RefreshSelection(() => TryGetSelectedItems(window), () => IsCurrentWindow(window, windowInfo));
+            EnsureCurrentMerge();
             var selectedItems = windowInfo.SelectedItems;
             if ((selectedItems == null || selectedItems.Length == 0) &&
                 recentlyClosedWindow?.SelectedItems?.Length > 0)
@@ -909,6 +912,7 @@ public partial class ExplorerWatcher : IHook
         // Create a strongly-typed handler so we can remove it later
         windowInfo.OnQuitHandler = () =>
         {
+            windowInfo.RefreshSelection(() => TryGetSelectedItems(window), () => IsCurrentWindow(window, windowInfo));
             // Remember real folders so a quick re-open of the same folder can restore its selection.
             // Home, This PC, etc. carry nothing worth restoring.
             var location = windowInfo.Location;
@@ -1101,13 +1105,17 @@ public partial class ExplorerWatcher : IHook
             ExplorerDebugLog.Write($"OpenTab lock target={windowToOpen.Location}");
             if (_reuseTabs && TrackedWindowCount > 0 && !string.IsNullOrWhiteSpace(windowToOpen.Location))
             {
-                if (TrySearchForTab(windowToOpen.Location, windowToOpen.Handle, out var existingTab, out _))
+                if (TrySearchForTab(windowToOpen.Location, windowToOpen.Handle, out var existingTab, out var existingWindow))
                 {
                     windowHandle = WinApi.GetParent(existingTab);
                     if (!await SelectTabByHandle(windowHandle, existingTab))
                         return false;
                     EnsureCurrentMerge();
-                    Helper.RestoreWindowToForeground(windowHandle);
+                    if (existingWindow == null || !SelectItems(existingWindow, windowToOpen.SelectedItems))
+                    {
+                        ExplorerDebugLog.Write($"OpenTab reuse-selection-failed target={windowToOpen.Location}");
+                        return false;
+                    }
                     ExplorerDebugLog.Write($"OpenTab reused target={windowToOpen.Location}");
                     return true;
                 }
@@ -1606,14 +1614,21 @@ public partial class ExplorerWatcher : IHook
     }
     private static string[]? GetSelectedItems(InternetExplorer window)
     {
-        var selectedItems = (window.Document as ShellFolderView)!.SelectedItems();
+        if (window.Document is not ShellFolderView document)
+            return null;
+        var selectedItems = document.SelectedItems();
+        if (selectedItems == null)
+            return null;
         var count = selectedItems.Count;
-        if (count == 0) return null;
+        if (count == 0) return Array.Empty<string>();
 
         var result = new string[count];
-        for (var i = 0; i < count; i++)
+        for (var index = 0; index < count; index++)
         {
-            result[i] = selectedItems.Item(i).Name;
+            var item = selectedItems.Item(index);
+            if (item == null)
+                return null;
+            result[index] = item.Name;
         }
 
         return result;
@@ -1624,27 +1639,32 @@ public partial class ExplorerWatcher : IHook
         {
             return GetSelectedItems(window);
         }
-        catch
+        catch (Exception exception) when (exception is COMException or InvalidComObjectException)
         {
+            ExplorerDebugLog.Write($"Selection capture unavailable error={exception.GetType().Name}");
             return null;
         }
     }
-    private void SelectItems(InternetExplorer window, string[]? names)
+    private bool SelectItems(InternetExplorer window, string[]? names)
     {
-        if (names == null || names.Length == 0) return;
+        if (names == null || names.Length == 0) return true;
         var identity = WindowIdentity.Capture(SafeGetWindowHandle(window));
         EnsureWindowIdentity(identity);
 
-        if (window.Document is not ShellFolderView document) return;
+        if (window.Document is not ShellFolderView document) return false;
 
-        for (var i = 0; i < names.Length; i++)
+        const int selectItem = 1;
+        const int deselectOthers = 4;
+        var selectedAny = false;
+        foreach (var name in names)
         {
-            var name = names[i];
             EnsureWindowIdentity(identity);
             object item = document.Folder.ParseName(name);
             if (item == null) continue;
-            document.SelectItem(ref item, 1);
+            document.SelectItem(ref item, selectedAny ? selectItem : selectItem | deselectOthers);
+            selectedAny = true;
         }
+        return selectedAny;
     }
     private static string GetLocation(InternetExplorer window)
     {
@@ -1754,7 +1774,7 @@ public partial class ExplorerWatcher : IHook
         }
     }
 
-    private void InitializeShellObjects()
+    private async Task InitializeShellObjectsAsync()
     {
         _preExistingExplorerWindowsProtected = false;
         _shellPathComparer = new ShellPathComparer();
@@ -1779,6 +1799,7 @@ public partial class ExplorerWatcher : IHook
         _winEventHookThread.Start();
 
         // Hook the event handlers for already-open windows
+        var registrations = new List<Task>();
         var count = _shellWindows.Count;
         for (var i = 0; i < count; i++)
         {
@@ -1802,12 +1823,13 @@ public partial class ExplorerWatcher : IHook
             if (_mainWindowHandle == 0)
                 _mainWindowHandle = new IntPtr(window.HWND);
 
-            _ = GetTabHandle(window);
-            HookWindowEvents(window, windowInfo);
+            registrations.Add(RegisterIndependentWindowAsync(window, windowInfo, windowInfo.Identity.Handle));
         }
 
+        await Task.WhenAll(registrations);
         _shellLifetime.Token.ThrowIfCancellationRequested();
         _preExistingExplorerWindowsProtected = true;
+        ScheduleShellWindowRegistration();
         if (_isForcingTabs)
             StartMergeSourceConcealPulse(500);
     }

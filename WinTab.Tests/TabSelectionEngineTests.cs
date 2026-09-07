@@ -51,7 +51,7 @@ internal static class TabSelectionEngineTests
         var ok = await TabSelectionEngine.CycleToTabAsync(99, fixture.GetTabs, fixture.GetActive, fixture.SendSelectByIndex, totalTimeoutMs: 200, pollSleepMs: 1);
 
         Check.That(!ok, "Cycling must report failure when no index activates the requested handle.");
-        Check.That(fixture.SelectionCalls.Count <= 3, "Cycling must stop after exhausting the available tab indexes.");
+        Check.Equal(0, fixture.SelectionCalls.Count, "A missing target must not switch through unrelated tabs.");
     }
 
     private static async Task RefusesZeroTarget()

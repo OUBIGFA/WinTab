@@ -1,3 +1,4 @@
+using System;
 using SHDocVw;
 using WinTab.Helpers;
 
@@ -14,4 +15,14 @@ public class WindowInfo
     public string? Location { get; set; }
     public DWebBrowserEvents2_OnQuitEventHandler? OnQuitHandler { get; set; }
     public DWebBrowserEvents2_NavigateComplete2EventHandler? OnNavigateHandler { get; set; }
+
+    internal void RefreshSelection(Func<string[]?> readSelection, Func<bool> isCurrent)
+    {
+        if (!isCurrent())
+            return;
+        var location = Location;
+        var selection = readSelection();
+        if (selection != null && isCurrent() && Location == location)
+            SelectedItems = selection;
+    }
 }

@@ -140,9 +140,25 @@ internal sealed class SettingsStore : IDisposable
         }
     }
 
-    private static AppSettings Read(string path) =>
-        JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path, Encoding.UTF8))
-        ?? throw new JsonException("The settings file does not contain an object.");
+    private static AppSettings Read(string path)
+    {
+        var json = File.ReadAllText(path, Encoding.UTF8);
+        AppSettings settings;
+        try
+        {
+            settings = JsonSerializer.Deserialize<AppSettings>(json)
+                ?? throw new JsonException("The settings file does not contain an object.");
+        }
+        catch (ArgumentException exception)
+        {
+            throw new JsonException("The settings file contains an invalid value.", exception);
+        }
+
+        var size = settings.FormSize;
+        if (!double.IsFinite(size.Width) || !double.IsFinite(size.Height) || size.Width <= 0 || size.Height <= 0)
+            throw new JsonException("The saved window dimensions must be finite and positive.");
+        return settings;
+    }
 
     private void WriteAtomically(AppSettings snapshot)
     {
