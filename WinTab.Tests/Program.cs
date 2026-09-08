@@ -45,6 +45,7 @@ internal static class UnitTestRunner
             .Concat(MergeSourceConcealPulseTests.All())
             .Concat(ExplorerTabDoubleClickCloseTests.All())
             .Concat(ExplorerTabRegistrationTests.All())
+            .Concat(ExplorerTabLifetimeTests.All())
             .Concat(ExplorerTabReuseTests.All())
             .Concat(ExplorerTabActivationTests.All())
             .Concat(ExplorerReuseSelectionTests.All())

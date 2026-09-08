@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -58,7 +59,7 @@ internal static class ExplorerTabActivationTests
         private readonly HwndSource _host;
         private readonly nint[] _tabs;
 
-        public ActivationWindow()
+        public ActivationWindow(int tabCount = 2)
         {
             Check.That(TabClass != 0, "The isolated tab window class must be registered.");
             _host = new HwndSource(new HwndSourceParameters("WinTab isolated tab activation")
@@ -70,8 +71,8 @@ internal static class ExplorerTabActivationTests
                 Width = 10,
                 Height = 10
             });
-            _tabs = [CreateTab(), CreateTab()];
-            Check.That(_tabs[0] != 0 && _tabs[1] != 0, "Both isolated tab windows must exist.");
+            _tabs = Enumerable.Range(0, tabCount).Select(tabIndex => CreateTab()).ToArray();
+            Check.That(_tabs.Length > 0 && _tabs.All(handle => handle != 0), "All isolated tab windows must exist.");
             _host.AddHook(ProcessMessage);
         }
 

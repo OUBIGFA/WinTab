@@ -8,6 +8,7 @@ internal static class ExplorerTabReuseTests
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
         yield return ("cached tab matches without reading other COM locations", CachedMatchAvoidsUnneededReads);
+        yield return ("cached tab reuse survives repeated unavailable Explorer reads", CachedMatchSurvivesUnavailableReads);
         yield return ("stale cached location falls back to the live location", StaleCacheFallsBackToLiveLocation);
         yield return ("different locations are not misclassified as a reuse match", DifferentLocationsDoNotMatch);
         yield return ("a single tab publishes its active handle immediately", SingleTabPublishesImmediately);
@@ -44,9 +45,30 @@ internal static class ExplorerTabReuseTests
 
         Check.That(found, "A matching cached location must be reusable.");
         Check.Equal((nint)101, handle, "The cached matching tab must be selected.");
-        Check.Equal(1, reads[0], "Only the matching tab needs one live confirmation.");
+        Check.Equal(0, reads[0], "A known matching tab must not wait for another COM location read.");
         Check.Equal(0, reads[1], "Nonmatching tabs must not incur a COM location read on a cache hit.");
         Check.Equal(0, reads[2], "Nonmatching tabs must not incur a COM location read on a cache hit.");
+        return Task.CompletedTask;
+    }
+
+    private static Task CachedMatchSurvivesUnavailableReads()
+    {
+        foreach (var location in new[] { @"C:\Work", @"\\server\share\Archive" })
+        {
+            var candidates = new[]
+            {
+                new ExplorerTabReuseCandidate(606, location,
+                    () => throw new System.Runtime.InteropServices.COMException("Explorer is temporarily unavailable."))
+            };
+
+            for (var attempt = 0; attempt < 1_000; attempt++)
+            {
+                var found = ExplorerTabReuseMatcher.TryFind(location, candidates, AreSameLocation, out var handle);
+                Check.That(found, "A transient Explorer read failure must not disable an already known tab.");
+                Check.Equal((nint)606, handle, "Repeated reuse must keep selecting the original tab.");
+            }
+        }
+
         return Task.CompletedTask;
     }
 

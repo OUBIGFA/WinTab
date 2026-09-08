@@ -7,6 +7,7 @@ namespace WinTab.Models;
 public class WindowInfo
 {
     internal WindowIdentity Identity { get; init; }
+    internal WindowIdentity TabIdentity { get; set; }
     internal int Generation { get; init; }
     internal bool Closed { get; set; }
     internal string[]? SelectedItems { get; set; }

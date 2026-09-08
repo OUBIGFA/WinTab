@@ -49,6 +49,7 @@ internal static class ExplorerReuseSelectionTests
             var info = new WindowInfo
             {
                 Identity = WindowIdentity.Capture(fixture.Handle),
+                TabIdentity = WindowIdentity.Capture(fixture.FirstTab),
                 HookedTopLevelHWnd = fixture.Handle,
                 Location = location
             };

@@ -54,11 +54,8 @@ internal static class ExplorerTabReuseMatcher
                 continue;
             }
 
-            if (TryConfirmLiveMatch(candidate, targetLocation, areEquivalent))
-            {
-                tabHandle = candidate.TabHandle;
-                return true;
-            }
+            tabHandle = candidate.TabHandle;
+            return true;
         }
 
         foreach (var candidate in liveScanCandidates)
