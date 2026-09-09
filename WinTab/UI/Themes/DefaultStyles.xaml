@@ -3,9 +3,9 @@
                     xmlns:system="clr-namespace:System;assembly=mscorlib">
 
     <!-- Fonts -->
-    <FontFamily x:Key="DefaultFontFamily">Aptos, Segoe UI Variable, Microsoft YaHei UI, Segoe UI, Arial</FontFamily>
+    <FontFamily x:Key="DefaultFontFamily">Segoe UI Variable, Microsoft YaHei UI, Aptos, Segoe UI, Arial</FontFamily>
     <FontWeight x:Key="DefaultFontWeight">Normal</FontWeight>
-    <system:Double x:Key="DefaultFontSize">16</system:Double>
+    <system:Double x:Key="DefaultFontSize">14.5</system:Double>
     <Duration x:Key="MotionPressDuration">0:0:0.08</Duration>
 
     <!-- Default style for all controls -->
@@ -53,6 +53,16 @@
         <Style.Triggers>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Keep links inside the neutral palette; only interaction changes emphasis. -->
+    <Style TargetType="{x:Type Hyperlink}">
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             </Trigger>
         </Style.Triggers>
     </Style>

@@ -13,33 +13,39 @@ public static class ThemeManager
         if (Application.Current == null)
             return;
 
-        var dark = IsDarkTheme;
+        ApplyTheme(IsDarkTheme);
+    }
 
-        SetColor("PrimaryColor", dark ? "#F0F0F0" : "#1F1F1F");
-        SetColor("PrimaryLightColor", dark ? "#C9C9C9" : "#515151");
-        SetColor("TextPrimaryColor", dark ? "#F0F0F0" : "#1D1D1D");
-        SetColor("TextSecondaryColor", dark ? "#BDBDBD" : "#565656");
-        SetColor("TextTertiaryColor", dark ? "#9A9A9A" : "#767676");
-        SetColor("TextAccentColor", dark ? "#FFFFFF" : "#111111");
-        SetColor("BorderColor", dark ? "#343434" : "#D4D4D4");
-        SetColor("DividerColor", dark ? "#2A2A2A" : "#E1E1E1");
-        SetColor("ControlBackgroundColor", dark ? "#202020" : "#F2F2F2");
-        SetColor("ControlHoverColor", dark ? "#2A2A2A" : "#E9E9E9");
-        SetColor("DropdownBackgroundColor", dark ? "#181818" : "#FDFDFD");
-        SetColor("ShadowColor", dark ? "#050505" : "#6A6A6A");
-        SetColor("CheckBoxCheckedBackgroundColor", dark ? "#F0F0F0" : "#1F1F1F");
-        SetColor("CheckBoxCheckedBorderColor", dark ? "#F0F0F0" : "#1F1F1F");
-        SetColor("CheckBoxCheckedGlyphColor", dark ? "#171717" : "#F8F8F8");
-        SetColor("StatusPillBackgroundColor", dark ? "#232323" : "#EEEEEE");
-        SetColor("StatusPillBorderColor", dark ? "#393939" : "#D4D4D4");
-        SetColor("FocusRingColor", dark ? "#D0D0D0" : "#3A3A3A");
+    internal static void ApplyTheme(bool dark)
+    {
+        if (Application.Current == null)
+            return;
 
-        SetBrush("WindowBackgroundBrush", dark ? "#121212" : "#F7F7F7");
-        SetBrush("WindowTitleBarBrush", dark ? "#161616" : "#F7F7F7");
-        SetBrush("WindowBorderBrush", dark ? "#343434" : "#D4D4D4");
-        SetBrush("SurfaceBrush", dark ? "#181818" : "#FDFDFD");
-        SetBrush("SurfaceMutedBrush", dark ? "#202020" : "#F2F2F2");
-        SetBrush("SurfaceRaisedBrush", dark ? "#1C1C1C" : "#FFFFFF");
+        SetColor("PrimaryColor", dark ? "#E8E8E8" : "#2A2A2A");
+        SetColor("PrimaryLightColor", dark ? "#BDBDBD" : "#5E5E5E");
+        SetColor("TextPrimaryColor", dark ? "#E5E5E5" : "#252525");
+        SetColor("TextSecondaryColor", dark ? "#B2B2B2" : "#606060");
+        SetColor("TextTertiaryColor", dark ? "#909090" : "#7A7A7A");
+        SetColor("TextAccentColor", dark ? "#F0F0F0" : "#181818");
+        SetColor("BorderColor", dark ? "#383838" : "#CCCCCC");
+        SetColor("DividerColor", dark ? "#2B2B2B" : "#DEDEDE");
+        SetColor("ControlBackgroundColor", dark ? "#242424" : "#EFEFEF");
+        SetColor("ControlHoverColor", dark ? "#303030" : "#E4E4E4");
+        SetColor("DropdownBackgroundColor", dark ? "#1B1B1B" : "#FAFAFA");
+        SetColor("ShadowColor", dark ? "#111111" : "#5A5A5A");
+        SetColor("CheckBoxCheckedBackgroundColor", dark ? "#E5E5E5" : "#2A2A2A");
+        SetColor("CheckBoxCheckedBorderColor", dark ? "#E5E5E5" : "#2A2A2A");
+        SetColor("CheckBoxCheckedGlyphColor", dark ? "#242424" : "#EEEEEE");
+        SetColor("StatusPillBackgroundColor", dark ? "#303030" : "#E8E8E8");
+        SetColor("StatusPillBorderColor", dark ? "#444444" : "#CCCCCC");
+        SetColor("FocusRingColor", dark ? "#C5C5C5" : "#444444");
+
+        SetBrush("WindowBackgroundBrush", dark ? "#151515" : "#F3F3F3");
+        SetBrush("WindowTitleBarBrush", dark ? "#191919" : "#F3F3F3");
+        SetBrush("WindowBorderBrush", dark ? "#373737" : "#C7C7C7");
+        SetBrush("SurfaceBrush", dark ? "#1D1D1D" : "#F8F8F8");
+        SetBrush("SurfaceMutedBrush", dark ? "#252525" : "#E9E9E9");
+        SetBrush("SurfaceRaisedBrush", dark ? "#202020" : "#F6F6F6");
     }
 
     private static void SetColor(string key, string hex)
