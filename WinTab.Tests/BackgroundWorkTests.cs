@@ -9,6 +9,9 @@ internal static class BackgroundWorkTests
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
         yield return ("registration storms retain only one running and one pending scan", CoalescesWork);
+        yield return ("failed background work still releases reconnect waiters", FailedWorkReleasesIdleWaiters);
+        yield return ("a failed scan preserves the pending recovery request", FailedWorkPreservesPendingRequest);
+        yield return ("failed background work still allows shutdown cleanup", FailedWorkAllowsShutdown);
         yield return ("invalidated refreshes cannot publish an old result or overlap", InvalidatedRefreshDoesNotPublish);
         yield return ("forgotten refreshes cannot repopulate a new window cache", ForgottenRefreshDoesNotPublish);
         yield return ("a stalled window refresh does not block another window", SlowRefreshDoesNotBlockAnotherWindow);
@@ -37,6 +40,51 @@ internal static class BackgroundWorkTests
         await worker.StopAsync();
         worker.Request();
         Check.Equal(2, calls, "Stopped workers must ignore later events.");
+    }
+
+    private static async Task FailedWorkReleasesIdleWaiters()
+    {
+        var worker = new CoalescingAsyncWork(() => Task.FromException(new InvalidOperationException("scan failed")));
+        worker.Request();
+        var idle = worker.WhenIdle;
+        await Task.WhenAny(idle, Task.Delay(2_000));
+        Check.That(idle.IsCompletedSuccessfully, "An ended scan must release reconnect waiters even when the scan failed.");
+        Check.That(worker.LastError is InvalidOperationException { Message: "scan failed" },
+            "Separating completion from failure must not discard the original error.");
+        await worker.StopAsync();
+    }
+
+    private static async Task FailedWorkPreservesPendingRequest()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var worker = new CoalescingAsyncWork(async () =>
+        {
+            if (Interlocked.Increment(ref calls) != 1)
+                return;
+            started.SetResult();
+            await release.Task;
+            throw new InvalidOperationException("first scan failed");
+        });
+        worker.Request();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        worker.Request();
+        release.SetResult();
+        var idle = worker.WhenIdle;
+        await Task.WhenAny(idle, Task.Delay(2_000));
+        Check.Equal(2, calls, "A request queued during the failed scan must still execute once.");
+        Check.That(idle.IsCompletedSuccessfully, "Recovery must leave the worker ready for future events.");
+        await worker.StopAsync();
+    }
+
+    private static async Task FailedWorkAllowsShutdown()
+    {
+        var worker = new CoalescingAsyncWork(() => Task.FromException(new InvalidOperationException("scan failed")));
+        worker.Request();
+        await Task.WhenAny(worker.WhenIdle, Task.Delay(2_000));
+        var stopped = worker.StopAsync();
+        Check.That(stopped.IsCompletedSuccessfully, "Shutdown must not skip connection cleanup because of an earlier scan failure.");
     }
 
     private static async Task InvalidatedRefreshDoesNotPublish()

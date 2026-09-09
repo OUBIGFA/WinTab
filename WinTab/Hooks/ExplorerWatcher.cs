@@ -40,6 +40,7 @@ public partial class ExplorerWatcher : IHook
     private readonly CoalescingAsyncWork _registrationWork;
     private readonly CoalescingAsyncWork _selectionWork;
     private readonly Func<int> _getDefaultExplorerLaunchId;
+    private readonly Func<IEnumerable<nint>> _getExplorerWindows = ExplorerWindowDiscovery.GetAllExplorerWindows;
     private readonly ExplorerLaunchLocationResolver _locationResolver = new();
     private readonly ProcessWatcher _processWatcher;
     private int _mainExplorerProcessId;
@@ -102,7 +103,8 @@ public partial class ExplorerWatcher : IHook
     }
     public void SetReuseTabs(bool reuseTabs) => _reuseTabs = reuseTabs;
 
-    private bool TrySearchForTab(string targetPath, nint excludedTopLevelWindow, out nint tabHandle, out InternetExplorer? foundWindow)
+    private bool TrySearchForTab(string targetPath, nint excludedTopLevelWindow, out nint tabHandle,
+        out InternetExplorer? foundWindow)
     {
         nint targetPidl = 0;
         tabHandle = 0;
@@ -174,8 +176,9 @@ public partial class ExplorerWatcher : IHook
             tabHandle = matchedTabHandle;
             return true;
         }
-        catch
+        catch (COMException exception) when (!IsDisconnectedShell(exception))
         {
+            ExplorerDebugLog.Write($"Tab search temporarily unavailable error={exception.HResult:X8}");
             tabHandle = 0;
             return false;
         }
@@ -395,7 +398,7 @@ public partial class ExplorerWatcher : IHook
         {
             if (!_disposed && !concealed.Recovering && _isForcingTabs &&
                 concealed.Generation == _hookGeneration && concealed.Identity.IsCurrent &&
-                Environment.TickCount64 - concealed.StartedAt < MergeTimeoutMs)
+                Environment.TickCount64 < concealed.ExpiresAt)
                 ExplorerWindowVisibility.Hide(concealed.Identity);
         }
     }
@@ -458,10 +461,10 @@ public partial class ExplorerWatcher : IHook
     {
         _processedHWnds.TryRemove(hWnd, out _);
     }
-    private List<(InternetExplorer Window, WindowInfo WindowInfo)> AdoptNewShellWindows()
+    private List<(InternetExplorer Window, WindowInfo WindowInfo, bool IsNewTopLevel)> AdoptNewShellWindows()
     {
         RemoveExpiredWindowEntries();
-        var result = new List<(InternetExplorer Window, WindowInfo WindowInfo)>();
+        var result = new List<(InternetExplorer Window, WindowInfo WindowInfo, bool IsNewTopLevel)>();
         var singleTabTopLevelsInBatch = new HashSet<nint>();
         var count = _shellWindows.Count;
 
@@ -481,7 +484,7 @@ public partial class ExplorerWatcher : IHook
                     {
                         if (!tracked.Value.EventsHooked || !tracked.OptionalKey.HasValue ||
                             !IsCurrentTab(tracked.Value, tracked.OptionalKey.Value))
-                            result.Add((window, tracked.Value));
+                            result.Add((window, tracked.Value, false));
                         continue;
                     }
 
@@ -514,9 +517,9 @@ public partial class ExplorerWatcher : IHook
 
                 if (!wasTrackedTopLevel)
                     TryHideRegisteredMergeSourceWindow(hWnd);
-                result.Add((window, windowInfo));
+                result.Add((window, windowInfo, !wasTrackedTopLevel));
             }
-            catch (Exception exception) when (exception is COMException or InvalidComObjectException)
+            catch (COMException exception) when (!IsDisconnectedShell(exception))
             {
                 _registrationRetryPending = true;
                 ExplorerDebugLog.Write($"Shell window registration deferred error={exception.GetType().Name}");
@@ -560,12 +563,26 @@ public partial class ExplorerWatcher : IHook
                     }
                     return;
                 }
-                await Task.WhenAll(windows.Select(item => ProcessRegisteredShellWindowAsync(item.Window, item.WindowInfo)));
+                await Task.WhenAll(windows.Select(async item =>
+                {
+                    if (item.IsNewTopLevel)
+                    {
+                        await ProcessRegisteredShellWindowAsync(item.Window, item.WindowInfo);
+                        return;
+                    }
+                    await RestoreMergeSourceWindowAsync(item.WindowInfo.Identity.Handle);
+                    await RegisterIndependentWindowAsync(item.Window, item.WindowInfo, item.WindowInfo.Identity.Handle);
+                }));
             }
         }
         catch (OperationCanceledException)
         {
             ExplorerDebugLog.Write("Registration cancelled");
+        }
+        catch (Exception exception) when (IsDisconnectedShell(exception))
+        {
+            RetireShellConnection("shell-connection-lost");
+            ReportStatus($"Explorer catalog disconnected ({exception.HResult:X8}); reconnecting without restarting Explorer.");
         }
         catch (Exception exception)
         {
@@ -717,7 +734,6 @@ public partial class ExplorerWatcher : IHook
                 return;
             }
 
-            EnsureCurrentMerge();
             ExplorerDebugLog.Write($"Registered merge-succeeded hwnd={hWnd} location={location}");
             UnhookWindowEvents(window, windowInfo);
             if (await CloseMergedSourceWindowAsync(window, hWnd))
@@ -736,7 +752,7 @@ public partial class ExplorerWatcher : IHook
         {
             ExplorerDebugLog.Write($"Merge cancelled or timed out hwnd={hWnd}");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsDisconnectedShell(ex))
         {
             ExplorerDebugLog.Write($"Registered error hwnd={hWnd} error={ex.GetType().Name}:{ex.Message}");
         }
@@ -750,7 +766,7 @@ public partial class ExplorerWatcher : IHook
                 if (!removed && IsCurrentWindow(window, windowInfo))
                     await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (!IsDisconnectedShell(exception))
             {
                 ExplorerDebugLog.Write($"Window release failed error={exception.GetType().Name}");
             }
@@ -784,7 +800,11 @@ public partial class ExplorerWatcher : IHook
         var identity = operation.Identity;
         if (!identity.IsCurrent)
             return true;
-        _closingMergeSourceHWnds[handle] = operation;
+        using var completion = CreateMergeCompletionOperation(window, operation);
+        if (completion == null)
+            return false;
+        _currentMerge.Value = completion;
+        _closingMergeSourceHWnds[handle] = completion;
         try
         {
             for (var attempt = 0; attempt < 2; attempt++)
@@ -802,9 +822,16 @@ public partial class ExplorerWatcher : IHook
         }
         finally
         {
-            _closingMergeSourceHWnds.TryRemove(new KeyValuePair<nint, MergeOperation>(handle, operation));
-            if (identity.IsCurrent)
-                await RestoreMergeSourceWindowAsync(handle);
+            _closingMergeSourceHWnds.TryRemove(new KeyValuePair<nint, MergeOperation>(handle, completion));
+            try
+            {
+                if (identity.IsCurrent)
+                    await RestoreMergeSourceWindowAsync(handle);
+            }
+            finally
+            {
+                _currentMerge.Value = operation;
+            }
         }
     }
 
@@ -831,7 +858,7 @@ public partial class ExplorerWatcher : IHook
         {
             return window.Busy;
         }
-        catch
+        catch (COMException exception) when (!IsDisconnectedShell(exception))
         {
             return false;
         }
@@ -842,8 +869,9 @@ public partial class ExplorerWatcher : IHook
         {
             return GetLocation(window);
         }
-        catch
+        catch (COMException exception) when (!IsDisconnectedShell(exception))
         {
+            ExplorerDebugLog.Write($"Tab location temporarily unavailable error={exception.HResult:X8}");
             return string.Empty;
         }
     }
@@ -853,7 +881,7 @@ public partial class ExplorerWatcher : IHook
         {
             return new IntPtr(window.HWND);
         }
-        catch
+        catch (COMException exception) when (!IsDisconnectedShell(exception))
         {
             return 0;
         }
@@ -909,7 +937,14 @@ public partial class ExplorerWatcher : IHook
         // Create a strongly-typed handler so we can remove it later
         windowInfo.OnQuitHandler = () =>
         {
-            windowInfo.RefreshSelection(() => TryGetSelectedItems(window), () => IsCurrentWindow(window, windowInfo));
+            try
+            {
+                windowInfo.RefreshSelection(() => TryGetSelectedItems(window), () => IsCurrentWindow(window, windowInfo));
+            }
+            catch (Exception exception) when (IsDisconnectedShell(exception))
+            {
+                ExplorerDebugLog.Write($"Closing tab selection already disconnected error={exception.HResult:X8}");
+            }
             // Remember real folders so a quick re-open of the same folder can restore its selection.
             // Home, This PC, etc. carry nothing worth restoring.
             var location = windowInfo.Location;
@@ -943,9 +978,12 @@ public partial class ExplorerWatcher : IHook
             if (ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
                 TabStrip.ScheduleRefresh(hWnd);
         }
-        catch
+        catch (Exception exception)
         {
             RemoveWindowAndUnhookEvents(window, windowInfo);
+            if (IsDisconnectedShell(exception))
+                throw;
+            ExplorerDebugLog.Write($"Window event registration failed error={exception.GetType().Name}:{exception.Message}");
         }
     }
     private void UnhookWindowEvents(InternetExplorer window, WindowInfo windowInfo)
@@ -1190,6 +1228,8 @@ public partial class ExplorerWatcher : IHook
             catch (Exception ex)
             {
                 await CloseFailedNewTabAsync(mainWindowIdentity, newTabIdentity);
+                if (IsDisconnectedShell(ex))
+                    throw;
                 ExplorerDebugLog.Write($"OpenTab error tab={newTabHandle} target={windowToOpen.Location} error={ex.GetType().Name}:{ex.Message}");
                 return false;
             }
@@ -1221,6 +1261,8 @@ public partial class ExplorerWatcher : IHook
         catch (Exception ex)
         {
             await CloseFailedNewTabAsync(mainWindowIdentity, newTabIdentity);
+            if (IsDisconnectedShell(ex))
+                throw;
             ExplorerDebugLog.Write($"OpenTab post-create error tab={newTabHandle} target={windowToOpen.Location} error={ex.GetType().Name}:{ex.Message}");
             return false;
         }
@@ -1324,8 +1366,9 @@ public partial class ExplorerWatcher : IHook
             await Navigate(window, targetLocation);
             return true;
         }
-        catch
+        catch (COMException exception) when (!IsDisconnectedShell(exception))
         {
+            ExplorerDebugLog.Write($"Tab navigation temporarily unavailable error={exception.HResult:X8}");
             return false;
         }
     }
@@ -1398,7 +1441,7 @@ public partial class ExplorerWatcher : IHook
         if (IsPreferredMergeTargetWindow(_mainWindowHandle, otherThan, targetLocation))
             return _mainWindowHandle;
 
-        var allWindows = WinApi.FindAllWindowsEx("CabinetWClass").ToArray();
+        var allWindows = _getExplorerWindows().ToArray();
         var tabCounts = new Dictionary<nint, int>();
 
         int GetCachedTabCount(nint hWnd)
@@ -1525,7 +1568,7 @@ public partial class ExplorerWatcher : IHook
                 return true;
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsDisconnectedShell(ex))
         {
             ExplorerDebugLog.Write($"Tab handle publish failed handle={tabHandle} error={ex.GetType().Name}:{ex.Message}");
             return false;
@@ -1670,7 +1713,7 @@ public partial class ExplorerWatcher : IHook
         {
             return GetSelectedItems(window);
         }
-        catch (Exception exception) when (exception is COMException or InvalidComObjectException)
+        catch (COMException exception) when (!IsDisconnectedShell(exception))
         {
             ExplorerDebugLog.Write($"Selection capture unavailable error={exception.GetType().Name}");
             return null;
@@ -1703,8 +1746,9 @@ public partial class ExplorerWatcher : IHook
         if (!string.IsNullOrWhiteSpace(path)) return Helper.NormalizeLocation(path);
 
         // Recycle Bin, This PC, etc
-        path = ((window.Document as ShellFolderView)!.Folder as Folder2)!.Self.Path;
-        return Helper.NormalizeLocation(path);
+        if (window.Document is not ShellFolderView document || document.Folder is not Folder2 folder)
+            return string.Empty;
+        return Helper.NormalizeLocation(folder.Self.Path);
     }
     private async Task Navigate(InternetExplorer window, string path)
     {
@@ -1778,7 +1822,7 @@ public partial class ExplorerWatcher : IHook
             return;
         if (_mainExplorerProcessId != 0)
         {
-            if (HasPendingTabRegistrations())
+            if (HasPendingTabRegistrations() || HasUnregisteredExplorerTabs())
                 ScheduleShellWindowRegistration();
             return;
         }
@@ -1799,12 +1843,7 @@ public partial class ExplorerWatcher : IHook
             return;
         if (eventArgs.ProcessId == _mainExplorerProcessId)
         {
-            _preExistingExplorerWindowsProtected = false;
-            _mainExplorerProcessId = 0;
-            Interlocked.Increment(ref _shellGeneration);
-            _shellLifetime.Cancel();
-            StopMergeSourceConcealPulse();
-            RecoverHiddenExplorerWindows("explorer-restarted");
+            RetireShellConnection("explorer-restarted");
         }
         else
         {

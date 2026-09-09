@@ -71,4 +71,25 @@ public partial class ExplorerWatcher
         }
         return false;
     }
+
+    private bool HasUnregisteredExplorerTabs()
+    {
+        lock (_windowEntryDictLock)
+        {
+            foreach (var handle in _getExplorerWindows())
+            {
+                if (WinApi.GetWindowThreadProcessId(handle, out _) == 0)
+                    continue;
+
+                foreach (var tab in ExplorerWindowDiscovery.GetAllExplorerTabs(handle))
+                {
+                    if (!_windowEntryDict.TryGetValue(tab, out InternetExplorer? window) || window == null ||
+                        !_windowEntryDict.TryGetValue(window, out WindowInfo? info) ||
+                        info.Identity.Handle != handle || !IsCurrentWindow(window, info) || !IsCurrentTab(info, tab))
+                        return true;
+                }
+            }
+        }
+        return false;
+    }
 }

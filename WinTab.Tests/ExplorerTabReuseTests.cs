@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using WinTab.Hooks;
 
@@ -11,6 +12,8 @@ internal static class ExplorerTabReuseTests
         yield return ("cached tab reuse survives repeated unavailable Explorer reads", CachedMatchSurvivesUnavailableReads);
         yield return ("stale cached location falls back to the live location", StaleCacheFallsBackToLiveLocation);
         yield return ("different locations are not misclassified as a reuse match", DifferentLocationsDoNotMatch);
+        yield return ("a disconnected tab read is not reported as a missing tab", DisconnectedReadIsNotAMiss);
+        yield return ("a disconnected location comparison is not reported as a missing tab", DisconnectedComparisonIsNotAMiss);
         yield return ("a single tab publishes its active handle immediately", SingleTabPublishesImmediately);
         yield return ("multiple tabs do not use the active handle as a shortcut", MultipleTabsRequireExactResolution);
     }
@@ -111,6 +114,24 @@ internal static class ExplorerTabReuseTests
 
         Check.That(!found, "Different folders must not be reported as the same tab.");
         Check.Equal((nint)0, handle, "A nonmatching search must not return a tab handle.");
+        return Task.CompletedTask;
+    }
+
+    private static Task DisconnectedReadIsNotAMiss()
+    {
+        var candidate = new ExplorerTabReuseCandidate(404, null,
+            () => throw new COMException("Disconnected", unchecked((int)0x80010108)));
+        Check.Throws<COMException>(() => ExplorerTabReuseMatcher.TryFind(@"C:\Work", [candidate], AreSameLocation, out _),
+            "A broken connection must reach recovery instead of authorizing a duplicate tab.");
+        return Task.CompletedTask;
+    }
+
+    private static Task DisconnectedComparisonIsNotAMiss()
+    {
+        var candidate = new ExplorerTabReuseCandidate(505, @"C:\Work", () => @"C:\Work");
+        Check.Throws<InvalidComObjectException>(() => ExplorerTabReuseMatcher.TryFind(@"C:\Work", [candidate],
+            (_, _) => throw new InvalidComObjectException("Released connection"), out _),
+            "An unavailable comparer cannot confirm that there are no reusable tabs.");
         return Task.CompletedTask;
     }
 

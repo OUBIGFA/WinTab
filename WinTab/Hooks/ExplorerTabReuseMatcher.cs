@@ -38,7 +38,8 @@ internal static class ExplorerTabReuseMatcher
         string targetLocation,
         IEnumerable<ExplorerTabReuseCandidate> candidates,
         Func<string, string, bool> areEquivalent,
-        out nint tabHandle)
+        out nint tabHandle,
+        bool allowLiveReads = true)
     {
         tabHandle = 0;
         var liveScanCandidates = new List<ExplorerTabReuseCandidate>();
@@ -57,6 +58,9 @@ internal static class ExplorerTabReuseMatcher
             tabHandle = candidate.TabHandle;
             return true;
         }
+
+        if (!allowLiveReads)
+            return false;
 
         foreach (var candidate in liveScanCandidates)
         {
@@ -78,14 +82,7 @@ internal static class ExplorerTabReuseMatcher
         if (string.IsNullOrWhiteSpace(candidate.CachedLocation))
             return false;
 
-        try
-        {
-            return areEquivalent(targetLocation, candidate.CachedLocation);
-        }
-        catch
-        {
-            return false;
-        }
+        return areEquivalent(targetLocation, candidate.CachedLocation);
     }
 
     private static bool TryConfirmLiveMatch(
@@ -93,27 +90,12 @@ internal static class ExplorerTabReuseMatcher
         string targetLocation,
         Func<string, string, bool> areEquivalent)
     {
-        string? liveLocation;
-        try
-        {
-            liveLocation = candidate.ReadLocation();
-        }
-        catch
-        {
-            return false;
-        }
+        var liveLocation = candidate.ReadLocation();
 
         if (string.IsNullOrWhiteSpace(liveLocation))
             return false;
 
-        try
-        {
-            candidate.UpdateLocation(liveLocation);
-            return areEquivalent(targetLocation, liveLocation);
-        }
-        catch
-        {
-            return false;
-        }
+        candidate.UpdateLocation(liveLocation);
+        return areEquivalent(targetLocation, liveLocation);
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace WinTab.Helpers;
@@ -11,6 +12,9 @@ internal sealed class CoalescingAsyncWork(Func<Task> action)
     private bool _pending;
     private bool _running;
     private bool _stopped;
+    private Exception? _lastError;
+
+    public Exception? LastError => Volatile.Read(ref _lastError);
 
     public Task WhenIdle
     {
@@ -54,14 +58,8 @@ internal sealed class CoalescingAsyncWork(Func<Task> action)
             }
             catch (Exception exception)
             {
-                Trace.TraceError($"Background work failed: {exception.GetType().Name}");
-                lock (_gate)
-                {
-                    _running = false;
-                    _pending = false;
-                    _idle!.TrySetException(exception);
-                }
-                return;
+                Volatile.Write(ref _lastError, exception);
+                Trace.TraceError($"Background work failed: {exception}");
             }
         }
     }

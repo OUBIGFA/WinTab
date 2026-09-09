@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using WinTab.Helpers;
 using WinTab.Hooks;
+using WinTab.Interop;
 using WinTab.Models;
 
 internal static class ExplorerReuseSelectionTests
@@ -26,12 +27,17 @@ internal static class ExplorerReuseSelectionTests
         {
             using var lifetime = new CancellationTokenSource();
             using var openLock = new SemaphoreSlim(1);
+            using var pathComparer = new ShellPathComparer();
             using var fixture = new ExplorerTabActivationTests.ActivationWindow();
-            fixture.SetActive(0);
             var watcher = ExplorerTabActivationTests.CreateSelectionWatcher(lifetime);
             SetField(watcher, "_toOpenWindowsLock", openLock);
             SetField(watcher, "_windowEntryDictLock", new object());
+            SetField(watcher, "_staTaskScheduler", scheduler);
+            SetField(watcher, "_shellPathComparer", pathComparer);
+            SetField(watcher, "_preExistingExplorerWindowsProtected", true);
             SetField(watcher, "_reuseTabs", true);
+            SetField(watcher, "_isForcingTabs", true);
+            SetField(watcher, "_hookLifetime", lifetime);
 
             var selected = new List<string> { "previous.txt" };
             var view = viewAvailable ? CreateFolderView(selected) : null;
@@ -51,6 +57,7 @@ internal static class ExplorerReuseSelectionTests
                 Identity = WindowIdentity.Capture(fixture.Handle),
                 TabIdentity = WindowIdentity.Capture(fixture.FirstTab),
                 HookedTopLevelHWnd = fixture.Handle,
+                EventsHooked = true,
                 Location = location
             };
             dictionaryField.FieldType.GetMethods().Single(method => method.Name == "Add" && method.GetParameters().Length == 3)
@@ -62,7 +69,6 @@ internal static class ExplorerReuseSelectionTests
             Check.That(found && (nint)searchArguments[2]! == fixture.FirstTab,
                 "The reuse search must resolve the isolated test tab before the full flow is allowed to run.");
             var openMethod = typeof(ExplorerWatcher).GetMethod("OpenTabNavigateWithSelection", BindingFlags.Instance | BindingFlags.NonPublic)!;
-
             var reused = await (Task<bool>)openMethod.Invoke(watcher,
                 [new WindowRecord(location, selectedItems: requested), fixture.Handle])!;
 
