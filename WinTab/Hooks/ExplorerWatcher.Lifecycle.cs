@@ -37,6 +37,8 @@ public partial class ExplorerWatcher
         public long ExpiresAt = MergeBudgetNotStarted;
         public int RestoreAttempts;
         public bool Recovering;
+        /// <summary>Explorer picked up a close request but has not answered since; the window may still be closing.</summary>
+        public bool ClosePending;
     }
 
     public event Action<string>? StatusChanged;
@@ -82,6 +84,43 @@ public partial class ExplorerWatcher
         {
             Interlocked.CompareExchange(ref concealed.ExpiresAt, Environment.TickCount64 + MergeTimeoutMs, MergeBudgetNotStarted);
         }
+    }
+
+    /// <summary>Whether the window's thread is answering messages right now. WM_NULL asks nothing of Explorer.</summary>
+    private static bool IsWindowAnswering(nint handle) => WinApi.TrySendMessage(handle, WinApi.WM_NULL, 0, 0);
+
+    /// <summary>
+    /// A close request cannot be taken back once Explorer has picked it up, and Explorer destroys the frame
+    /// while handling it. A source that stops answering after the request therefore stays concealed until it
+    /// answers again or disappears; showing it earlier could flash a window that is being destroyed.
+    /// </summary>
+    private bool MarkClosePending(nint handle)
+    {
+        if (!_mergeSourceHWnds.TryGetValue(handle, out var concealed))
+            return false;
+        lock (concealed)
+        {
+            if (concealed.Recovering || !concealed.Identity.IsCurrent)
+                return false;
+            concealed.ClosePending = true;
+        }
+        _mergeSafetyTimer.Change(250, 250);
+        return true;
+    }
+
+    /// <summary>True while a pending close is still unanswered; the pending state ends once the window answers or is gone.</summary>
+    private static bool IsClosePending(ConcealedWindow concealed)
+    {
+        lock (concealed)
+        {
+            if (!concealed.ClosePending)
+                return false;
+        }
+        if (concealed.Identity.IsCurrent && !IsWindowAnswering(concealed.Identity.Handle))
+            return true;
+        lock (concealed)
+            concealed.ClosePending = false;
+        return false;
     }
 
     private void EnsureCurrentMerge()
@@ -159,12 +198,18 @@ public partial class ExplorerWatcher
             {
                 var concealed = pair.Value;
                 string? status = null;
+                // A source that has not answered since its close request may still be closing; it is neither
+                // shown nor reported until it answers again or disappears.
+                var closeRequested = concealed.ClosePending;
+                if (closeRequested && IsClosePending(concealed))
+                    continue;
                 lock (concealed)
                 {
                     // A frame the shell has shown (even if the show event was missed) starts its budget here.
                     StartMergeBudgetIfShown(concealed);
                     var open = concealed.Identity.IsCurrent;
-                    if (open && !concealed.Recovering && _isForcingTabs && concealed.Generation == _hookGeneration &&
+                    var keptOpen = closeRequested && open;
+                    if (!keptOpen && open && !concealed.Recovering && _isForcingTabs && concealed.Generation == _hookGeneration &&
                         Environment.TickCount64 < Interlocked.Read(ref concealed.ExpiresAt))
                         continue;
                     if (concealed.RestoreAttempts >= 8)
@@ -173,8 +218,10 @@ public partial class ExplorerWatcher
                     concealed.RestoreAttempts++;
                     if (RestoreConcealedWindow(concealed))
                     {
-                        // A frame that no longer exists (Explorer discarded it) is simply forgotten.
-                        if (open)
+                        // A frame that no longer exists (Explorer discarded it or finished closing it) is simply forgotten.
+                        if (keptOpen)
+                            status = "Explorer kept the merged source window open; it has been restored.";
+                        else if (open)
                             status = "A merge exceeded its time limit; the source window was restored.";
                     }
                     else if (concealed.RestoreAttempts == 8)

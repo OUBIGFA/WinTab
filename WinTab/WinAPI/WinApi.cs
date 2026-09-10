@@ -17,6 +17,7 @@ public static class WinApi
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
 
+    public const uint WM_NULL = 0x0000; // Answered by every window without side effects; shows whether its thread is pumping messages
     public const uint WM_QUIT = 0x0012;
     public const uint WM_CLOSE = 0x0010;
     public const int WM_COMMAND = 0x111; // Send a command

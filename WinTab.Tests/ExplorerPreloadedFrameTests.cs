@@ -26,6 +26,10 @@ internal static class ExplorerPreloadedFrameTests
         yield return ("a hidden Explorer frame does not cause periodic COM scans", HiddenFrameDoesNotRescanCatalog);
         yield return ("a source that closes after a slow close acknowledgement counts as merged", SlowCloseAcknowledgementStillCounts);
         yield return ("a source that stays open after the close request is restored", UnclosedSourceIsRestored);
+        yield return ("a busy merge source cannot execute a close after recovery", BusySourceCannotCloseAfterRecovery);
+        yield return ("a source still handling its close is neither shown nor reported as restored", PendingCloseKeepsSourceConcealed);
+        yield return ("a source that answers after a pending close is restored without a second close", PendingCloseThatIsRefusedIsRestoredLater);
+        yield return ("stopping with a pending close restores the window without resending the close", StoppingWithPendingCloseRestoresWithoutResending);
         yield return ("a slow tab-switch acknowledgement is not a failed switch", SlowTabSwitchStillSucceeds);
     }
 
@@ -165,8 +169,128 @@ internal static class ExplorerPreloadedFrameTests
 
             var selected = await watcher.SelectTabByHandle(frame.Handle, frame.Tab, timeoutMs: 2_500);
 
-            Check.That(selected, "A tab switch that Explorer acknowledges slowly must still be reported as successful.");
+            Check.That(selected, $"A slow switch must succeed; target={frame.Tab}, active={frame.ActiveTab}, commands={string.Join(',', frame.SwitchCommands)}, trace={frame.Trace}");
             Check.Equal(frame.Tab, frame.ActiveTab, "The requested tab must be active after the slow switch.");
         }, CancellationToken.None, TaskCreationOptions.None, scheduler).Unwrap();
     }
+
+    /// <summary>
+    /// Explorer is busy (not pumping messages) when the close is requested. The timed close request is
+    /// discarded by Windows, so nothing may close the window later; it is restored once Explorer answers.
+    /// </summary>
+    private static Task BusySourceCannotCloseAfterRecovery() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: true);
+        var browser = fixture.AddBrowser(out var info, frame.Tab, handle: frame.Handle);
+        fixture.EnableMerging();
+        fixture.Invoke("HideMergeSourceWindow", frame.Handle);
+        await frame.BlockMessagesAsync(2_200);
+        try
+        {
+            var closed = await fixture.CloseMergedSourceAsync(browser, info, recover: false);
+
+            Check.That(!closed, "A source that cannot process the close within the deadline must not count as closed.");
+            Check.That(!ReportedRestored(fixture), "A window that has not answered since the close request must not be reported as restored: " + Statuses(fixture));
+            fixture.RunMergeSafetyTimer();
+            Check.That(ExplorerWindowVisibility.Contains(frame.Handle), "The source stays concealed until Explorer answers again.");
+
+            await Task.Delay(1_500);
+            fixture.RunMergeSafetyTimer();
+            await Task.Delay(150);
+
+            Check.That(frame.IsAlive, "Recovering the source must not leave a close request that destroys it afterwards.");
+            Check.Equal(0, frame.CloseCommandCount, "The busy frame must never receive a stale close after it resumes.");
+            Check.That(!ExplorerWindowVisibility.Contains(frame.Handle), "The failed merge source must be restored once Explorer answers.");
+            Check.That(ReportedRestored(fixture), "The recovery must be reported once it has happened: " + Statuses(fixture));
+        }
+        finally
+        {
+            fixture.Invoke("RecoverHiddenExplorerWindows", "test-busy-cleanup");
+        }
+    }, tabCount: 1);
+
+    /// <summary>Explorer picks the close up at once but takes longer than the observation window to destroy the frame.</summary>
+    private static Task PendingCloseKeepsSourceConcealed() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: true) { CloseDelayMs = 1_500 };
+        var browser = fixture.AddBrowser(out var info, frame.Tab, handle: frame.Handle);
+        try
+        {
+            var closed = await fixture.CloseMergedSourceAsync(browser, info, recover: false);
+
+            Check.That(!closed, "An unfinished close must not be reported as merged; the window stays tracked until Explorer answers.");
+            Check.That(frame.IsAlive && ExplorerWindowVisibility.Contains(frame.Handle), "A source still handling its close stays concealed.");
+            fixture.RunMergeSafetyTimer();
+            Check.That(ExplorerWindowVisibility.Contains(frame.Handle), "The safety timer must not show a window that has not answered since its close request.");
+
+            await Task.Delay(700);
+            Check.That(!frame.IsAlive, "The frame must have finished closing by now.");
+            Check.That(!frame.RevealedWhileClosing, "A window that is still being destroyed must never be shown again.");
+            fixture.RunMergeSafetyTimer();
+
+            Check.Equal(0, fixture.MergeSourceCount, "A source that finished closing is forgotten.");
+            Check.That(!ExplorerWindowVisibility.Contains(frame.Handle), "A closed source leaves the concealed list.");
+            Check.Equal(1, frame.CloseCommandCount, "A close that is still being handled must not be repeated.");
+            Check.That(!ReportedRestored(fixture), "A source that closed must never be reported as restored: " + Statuses(fixture));
+        }
+        finally
+        {
+            fixture.Invoke("RecoverHiddenExplorerWindows", "test-pending-cleanup");
+        }
+    }, tabCount: 1);
+
+    /// <summary>Explorer picks the close up, stays silent for a while, then keeps the window open.</summary>
+    private static Task PendingCloseThatIsRefusedIsRestoredLater() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: true, explorerClass: true) { CloseDelayMs = 1_500, IgnoreClose = true };
+        var browser = fixture.AddBrowser(out var info, frame.Tab, handle: frame.Handle);
+        try
+        {
+            var closed = await fixture.CloseMergedSourceAsync(browser, info, recover: false);
+
+            Check.That(!closed && ExplorerWindowVisibility.Contains(frame.Handle), "A source still handling its close stays concealed and is not reported as closed.");
+            // Explorer shows the frame again while the close is pending: it is re-hidden, never closed a second time.
+            fixture.Invoke("TryHideIncomingExplorerWindow", frame.Handle);
+            Check.Equal(1, frame.CloseCommandCount, "A source shown again during a pending close must not receive another close request.");
+
+            await Task.Delay(600);
+            fixture.RunMergeSafetyTimer();
+            await Task.Delay(100);
+
+            Check.That(frame.IsAlive, "The window Explorer kept open must survive.");
+            Check.That(!ExplorerWindowVisibility.Contains(frame.Handle), "The window is restored once Explorer answers again.");
+            Check.That((WinApi.GetWindowLong(frame.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0, "The restored window must be visible again for the user.");
+            Check.Equal(1, frame.CloseCommandCount, "A window that answered after a pending close must not be closed again.");
+            Check.That(fixture.Statuses.Any(status => status.Contains("kept", StringComparison.OrdinalIgnoreCase)),
+                "The recovery must report that Explorer kept the window: " + Statuses(fixture));
+        }
+        finally
+        {
+            fixture.Invoke("RecoverHiddenExplorerWindows", "test-refused-cleanup");
+        }
+    }, tabCount: 1);
+
+    /// <summary>Stopping WinTab while a close is still being handled leaves no hidden window behind and sends no second close.</summary>
+    private static Task StoppingWithPendingCloseRestoresWithoutResending() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: true) { CloseDelayMs = 1_500, IgnoreClose = true };
+        var browser = fixture.AddBrowser(out var info, frame.Tab, handle: frame.Handle);
+
+        var closed = await fixture.CloseMergedSourceAsync(browser, info, recover: false);
+        Check.That(!closed && ExplorerWindowVisibility.Contains(frame.Handle), "The close must still be pending when WinTab stops.");
+        Check.That(!ReportedRestored(fixture), "A pending close must not be reported as restored before stopping: " + Statuses(fixture));
+
+        fixture.Invoke("RecoverHiddenExplorerWindows", "stop-hook");
+        await Task.Delay(150);
+
+        Check.That(frame.IsAlive, "The window Explorer kept open must survive the stop.");
+        Check.That(!ExplorerWindowVisibility.Contains(frame.Handle) && fixture.MergeSourceCount == 0, "Stopping must leave no concealed window behind.");
+        Check.That((WinApi.GetWindowLong(frame.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0, "The window must be visible again after stopping.");
+        Check.Equal(1, frame.CloseCommandCount, "Stopping must not send another close request.");
+    }, tabCount: 1);
+
+    private static bool ReportedRestored(Fixture fixture) =>
+        fixture.Statuses.Any(status => status.Contains("restored", StringComparison.OrdinalIgnoreCase));
+
+    private static string Statuses(Fixture fixture) => string.Join(" | ", fixture.Statuses);
 }

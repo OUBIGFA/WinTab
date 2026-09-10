@@ -242,7 +242,12 @@ public partial class ExplorerWatcher : IHook
     {
         EnsureCurrentMerge();
         // A slow acknowledgement is not a failed switch: the caller keeps observing the active tab.
-        WinApi.TrySendMessage(windowHandle, WinApi.WM_COMMAND, 0xA221, index + 1, ExplorerCommandTimeoutMs);
+        var startedAt = Environment.TickCount64;
+        if (!WinApi.TrySendMessage(windowHandle, WinApi.WM_COMMAND, 0xA221, index + 1, ExplorerCommandTimeoutMs))
+        {
+            var error = Marshal.GetLastWin32Error();
+            ExplorerDebugLog.Write($"Tab switch command not acknowledged hwnd={windowHandle} index={index} error={error} elapsed={Environment.TickCount64 - startedAt}");
+        }
     }
     private async Task RequestToOpenNewTab(nint windowHandle, bool bringToFront = false, bool lockToOpenWindows = true)
     {
@@ -307,7 +312,6 @@ public partial class ExplorerWatcher : IHook
         if (_closingMergeSourceHWnds.ContainsKey(hWnd))
         {
             HideMergeSourceWindow(hWnd);
-            RequestCloseMergedSourceWindow(hWnd);
             return true;
         }
 
@@ -384,6 +388,11 @@ public partial class ExplorerWatcher : IHook
         if (_currentMerge.Value is { } operation &&
             (operation.Identity != concealed.Identity || operation.Generation != concealed.Generation))
             return;
+        if (IsClosePending(concealed))
+        {
+            ExplorerDebugLog.Write($"Source restore deferred; Explorer has not answered since the close request hwnd={handle}");
+            return;
+        }
         var restored = await Helper.DoUntilConditionAsync(() => RestoreConcealedWindow(concealed),
             result => result, 1_000, 50);
         if (!restored)
@@ -829,27 +838,42 @@ public partial class ExplorerWatcher : IHook
             return false;
         _currentMerge.Value = completion;
         _closingMergeSourceHWnds[handle] = completion;
+        var closePending = false;
         try
         {
             for (var attempt = 0; attempt < 2; attempt++)
             {
                 EnsureCurrentMerge();
                 if (!RequestCloseMergedSourceWindow(handle))
-                    return !identity.IsCurrent;
-                var closed = await Helper.DoUntilConditionAsync(() => !identity.IsCurrent,
-                    isClosed => isClosed, attempt == 0 ? 700 : 300, 40, CurrentCancellation);
+                    break;
+                bool closed;
+                try
+                {
+                    closed = await Helper.DoUntilConditionAsync(() => !identity.IsCurrent,
+                        isClosed => isClosed, attempt == 0 ? 700 : 300, 40, CurrentCancellation);
+                }
+                catch (OperationCanceledException)
+                {
+                    closePending = identity.IsCurrent && !IsWindowAnswering(handle) && MarkClosePending(handle);
+                    throw;
+                }
                 if (closed)
                     return true;
+                // A window that answers again has finished with the request and kept itself open. A silent one
+                // may still be destroying itself, so it stays concealed until it answers or disappears.
+                if (!IsWindowAnswering(handle))
+                {
+                    closePending = MarkClosePending(handle);
+                    break;
+                }
             }
-            ReportStatus("Explorer did not close the source window; it has been restored.");
-            return false;
         }
         finally
         {
             _closingMergeSourceHWnds.TryRemove(new KeyValuePair<nint, MergeOperation>(handle, completion));
             try
             {
-                if (identity.IsCurrent)
+                if (!closePending && identity.IsCurrent)
                     await RestoreMergeSourceWindowAsync(handle);
             }
             finally
@@ -857,20 +881,28 @@ public partial class ExplorerWatcher : IHook
                 _currentMerge.Value = operation;
             }
         }
+
+        // Recovery may pump window messages; verify the final state before reporting a failed close.
+        if (!identity.IsCurrent)
+            return true;
+        ReportStatus(closePending
+            ? "Explorer has not finished closing the source window; it stays concealed until Explorer answers."
+            : "Explorer did not close the source window; it has been restored.");
+        return false;
     }
 
+    /// <summary>Asks Explorer to close the concealed source; true when a request was issued and must be observed.</summary>
     private bool RequestCloseMergedSourceWindow(nint handle)
     {
         if (!_isForcingTabs || !_closingMergeSourceHWnds.TryGetValue(handle, out var operation) || !operation.IsCurrent ||
             ExplorerWindowDiscovery.GetAllExplorerTabs(handle).Take(2).Count() > 1)
             return false;
-        // Explorer destroys the frame while handling WM_CLOSE, which takes longer than any acknowledgement
-        // wait and makes a synchronous send report a failure for a successful close. Post the request and
-        // let the caller observe whether the window went away.
-        var posted = WinApi.PostMessage(handle, WinApi.WM_CLOSE, 0, 0);
-        if (!posted)
-            ExplorerDebugLog.Write($"Source close command failed hwnd={handle}");
-        return posted;
+        // Windows discards a timed send that a busy window has not picked up, so nothing can execute once the
+        // window is restored; a posted WM_CLOSE would. Explorer destroys the frame while handling the request,
+        // which makes the send report a failure for a successful close, so the caller observes the window.
+        if (!WinApi.TrySendMessage(handle, WinApi.WM_CLOSE, 0, 0) && operation.Identity.IsCurrent)
+            ExplorerDebugLog.Write($"Source close not acknowledged hwnd={handle}; observing completion");
+        return true;
     }
     private Task<string> ResolveInitialLocation(InternetExplorer window)
     {

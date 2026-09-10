@@ -25,12 +25,13 @@ if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--user-
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--mixed-default-folder-stress"))
     return await ExplorerStressTest.RunMixedDefaultFolderAsync(args);
 
-return await UnitTestRunner.RunAll();
+return await UnitTestRunner.RunAll(args.Length == 2 && args[0] == "--filter" ? args[1] : null);
 
 internal static class UnitTestRunner
 {
-    public static async Task<int> RunAll()
+    public static async Task<int> RunAll(string? filter = null)
     {
+        var filters = filter?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var tests = Enumerable.Empty<(string Name, Func<Task> Body)>()
             .Concat(ExplorerLaunchLocationResolverTests.All())
             .Concat(LocationTests.All())
@@ -56,7 +57,14 @@ internal static class UnitTestRunner
             .Concat(UpdateReleaseParserTests.All())
             .Concat(UpdateManagerTests.All())
             .Concat(DualKeyDictionaryTests.All())
+            .Where(test => filters == null || filters.Any(part => test.Name.Contains(part, StringComparison.OrdinalIgnoreCase)))
             .ToList();
+
+        if (tests.Count == 0)
+        {
+            Console.Error.WriteLine($"No tests match: {filter}");
+            return 1;
+        }
 
         var failed = 0;
         foreach (var (name, body) in tests)

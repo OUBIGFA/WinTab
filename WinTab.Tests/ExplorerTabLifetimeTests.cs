@@ -680,7 +680,8 @@ internal static class ExplorerTabLifetimeTests
 
         public void RunMergeSafetyTimer() => Invoke("RecoverExpiredMergeSources", new object?[] { null });
 
-        public async Task<bool> CloseMergedSourceAsync(object browser, WindowInfo info)
+        /// <param name="recover">Restore every concealed window afterwards; false lets a test observe deferred recovery.</param>
+        public async Task<bool> CloseMergedSourceAsync(object browser, WindowInfo info, bool recover = true)
         {
             EnableMerging();
             var handle = info.Identity.Handle;
@@ -696,7 +697,8 @@ internal static class ExplorerTabLifetimeTests
             finally
             {
                 context.Value = null;
-                Invoke("RecoverHiddenExplorerWindows", "test-close-cleanup");
+                if (recover)
+                    Invoke("RecoverHiddenExplorerWindows", "test-close-cleanup");
             }
         }
 
