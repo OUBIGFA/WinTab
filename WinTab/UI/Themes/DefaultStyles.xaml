@@ -6,7 +6,6 @@
     <FontFamily x:Key="DefaultFontFamily">Segoe UI Variable, Microsoft YaHei UI, Aptos, Segoe UI, Arial</FontFamily>
     <FontWeight x:Key="DefaultFontWeight">Normal</FontWeight>
     <system:Double x:Key="DefaultFontSize">14.5</system:Double>
-    <Duration x:Key="MotionPressDuration">0:0:0.08</Duration>
 
     <!-- Default style for all controls -->
     <Style TargetType="{x:Type Control}">

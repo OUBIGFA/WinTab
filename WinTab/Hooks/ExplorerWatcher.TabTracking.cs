@@ -78,7 +78,9 @@ public partial class ExplorerWatcher
         {
             foreach (var handle in _getExplorerWindows())
             {
-                if (WinApi.GetWindowThreadProcessId(handle, out _) == 0)
+                // A frame Explorer has not shown yet (a preloaded frame) is not registered until it is
+                // used, so it must not keep full catalog scans running every second.
+                if (!WinApi.IsWindowVisible(handle))
                     continue;
 
                 foreach (var tab in ExplorerWindowDiscovery.GetAllExplorerTabs(handle))

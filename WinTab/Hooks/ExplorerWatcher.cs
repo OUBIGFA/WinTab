@@ -21,6 +21,12 @@ public partial class ExplorerWatcher : IHook
 {
     private const int NavigationCompleteWaitMs = 600;
     private const int NavigationVerificationWaitMs = 1_200;
+    /// <summary>
+    /// How long a synchronous Explorer command may take to be acknowledged. A busy Explorer often needs
+    /// more than a few hundred milliseconds to activate a tab; the outcome is always verified by
+    /// observing the window afterwards, never by the acknowledgement alone.
+    /// </summary>
+    private const int ExplorerCommandTimeoutMs = 1_000;
     private const int StartupLocationCacheLimit = 512;
     private const int ClosedWindowHistoryLimit = 100;
     private static bool _instanceRunning;
@@ -90,6 +96,7 @@ public partial class ExplorerWatcher : IHook
         _hookLifetime = new CancellationTokenSource();
         _isForcingTabs = true;
         ScheduleShellWindowRegistration();
+        ConcealPreloadedExplorerFrames();
         ExplorerDebugLog.Write("StartHook");
     }
 
@@ -228,14 +235,14 @@ public partial class ExplorerWatcher : IHook
     {
         var count = ExplorerWindowDiscovery.GetAllExplorerTabs(windowHandle).Count();
         if (count > 0)
-            WinApi.TrySendMessage(windowHandle, WinApi.WM_COMMAND, 0xA221, count);
+            WinApi.TrySendMessage(windowHandle, WinApi.WM_COMMAND, 0xA221, count, ExplorerCommandTimeoutMs);
     }
 
     private void SelectTabByIndex(nint windowHandle, int index)
     {
         EnsureCurrentMerge();
-        if (!WinApi.TrySendMessage(windowHandle, WinApi.WM_COMMAND, 0xA221, index + 1))
-            throw new TimeoutException("Explorer did not accept the tab-switch command.");
+        // A slow acknowledgement is not a failed switch: the caller keeps observing the active tab.
+        WinApi.TrySendMessage(windowHandle, WinApi.WM_COMMAND, 0xA221, index + 1, ExplorerCommandTimeoutMs);
     }
     private async Task RequestToOpenNewTab(nint windowHandle, bool bringToFront = false, bool lockToOpenWindows = true)
     {
@@ -339,6 +346,22 @@ public partial class ExplorerWatcher : IHook
 
         HideMergeSourceWindow(hWnd);
     }
+    /// <summary>
+    /// Windows 11 preloads a hidden Explorer frame and reuses it for the next folder the user opens.
+    /// Conceal such frames up front so that reuse never flashes on screen; their merge budget only
+    /// starts once Explorer actually shows them.
+    /// </summary>
+    private void ConcealPreloadedExplorerFrames()
+    {
+        if (!_isForcingTabs || !_preExistingExplorerWindowsProtected || _disposed)
+            return;
+
+        foreach (var handle in _getExplorerWindows())
+        {
+            if (!WinApi.IsWindowVisible(handle))
+                TryHideIncomingExplorerWindow(handle);
+        }
+    }
     private void HideMergeSourceWindow(nint handle)
     {
         if (!_isForcingTabs || !_preExistingExplorerWindowsProtected || _disposed || handle == 0 ||
@@ -348,7 +371,8 @@ public partial class ExplorerWatcher : IHook
         if (_mergeSourceHWnds.TryGetValue(handle, out var existing) && !existing.Identity.IsCurrent)
             _mergeSourceHWnds.TryRemove(new KeyValuePair<nint, ConcealedWindow>(handle, existing));
         var concealed = _mergeSourceHWnds.GetOrAdd(handle,
-            windowHandle => new ConcealedWindow(WindowIdentity.Capture(windowHandle), _hookGeneration, Environment.TickCount64));
+            windowHandle => new ConcealedWindow(WindowIdentity.Capture(windowHandle), _hookGeneration));
+        StartMergeBudgetIfShown(concealed);
         ConcealMergeSourceWindow(concealed);
         _mergeSafetyTimer.Change(250, 250);
     }
@@ -811,7 +835,7 @@ public partial class ExplorerWatcher : IHook
             {
                 EnsureCurrentMerge();
                 if (!RequestCloseMergedSourceWindow(handle))
-                    return false;
+                    return !identity.IsCurrent;
                 var closed = await Helper.DoUntilConditionAsync(() => !identity.IsCurrent,
                     isClosed => isClosed, attempt == 0 ? 700 : 300, 40, CurrentCancellation);
                 if (closed)
@@ -840,10 +864,13 @@ public partial class ExplorerWatcher : IHook
         if (!_isForcingTabs || !_closingMergeSourceHWnds.TryGetValue(handle, out var operation) || !operation.IsCurrent ||
             ExplorerWindowDiscovery.GetAllExplorerTabs(handle).Take(2).Count() > 1)
             return false;
-        var sent = WinApi.TrySendMessage(handle, WinApi.WM_CLOSE, 0, 0);
-        if (!sent)
+        // Explorer destroys the frame while handling WM_CLOSE, which takes longer than any acknowledgement
+        // wait and makes a synchronous send report a failure for a successful close. Post the request and
+        // let the caller observe whether the window went away.
+        var posted = WinApi.PostMessage(handle, WinApi.WM_CLOSE, 0, 0);
+        if (!posted)
             ExplorerDebugLog.Write($"Source close command failed hwnd={handle}");
-        return sent;
+        return posted;
     }
     private Task<string> ResolveInitialLocation(InternetExplorer window)
     {
@@ -1276,7 +1303,8 @@ public partial class ExplorerWatcher : IHook
                 if (!parent.IsCurrent || !tab.IsCurrent || WinApi.GetParent(tab.Handle) != parent.Handle)
                     return;
                 EnsureCurrentMerge();
-                if (!WinApi.TrySendMessage(tab.Handle, WinApi.WM_COMMAND, 0xA021, 1))
+                // Closing a tab destroys its window while the command is handled; post it and observe.
+                if (!WinApi.PostMessage(tab.Handle, WinApi.WM_COMMAND, 0xA021, 1) && tab.IsCurrent)
                 {
                     ReportStatus("Explorer did not accept cleanup of the newly created tab.");
                     return;
@@ -1510,7 +1538,7 @@ public partial class ExplorerWatcher : IHook
     {
         if (hWnd == 0 || hWnd == otherThan)
             return false;
-        if (!ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
+        if (!ExplorerWindowDiscovery.IsShownExplorerWindow(hWnd))
             return false;
         if (!HasHookedShellWindowForTopLevel(hWnd))
             return false;
@@ -1521,7 +1549,7 @@ public partial class ExplorerWatcher : IHook
     {
         if (hWnd == 0 || hWnd == otherThan)
             return false;
-        if (!ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
+        if (!ExplorerWindowDiscovery.IsShownExplorerWindow(hWnd))
             return false;
 
         return GetActiveTabHandle(hWnd) != 0;
@@ -1907,6 +1935,8 @@ public partial class ExplorerWatcher : IHook
         _shellLifetime.Token.ThrowIfCancellationRequested();
         _preExistingExplorerWindowsProtected = true;
         ScheduleShellWindowRegistration();
+        ConcealPreloadedExplorerFrames();
+        ObserveDesktopFolderOpen();
         if (_isForcingTabs)
             StartMergeSourceConcealPulse(500);
     }
@@ -1932,6 +1962,7 @@ public partial class ExplorerWatcher : IHook
     {
         _preExistingExplorerWindowsProtected = false;
         StopMergeSourceConcealPulse();
+        ReleaseDesktopFolderOpenObserver();
         RecoverHiddenExplorerWindows("dispose-shell");
         var hookThread = Interlocked.Exchange(ref _winEventHookThread, null);
         hookThread?.Dispose();

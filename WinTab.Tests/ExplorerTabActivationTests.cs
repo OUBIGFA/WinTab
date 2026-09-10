@@ -81,7 +81,14 @@ internal static class ExplorerTabActivationTests
         public nint ActiveTab => WinApi.FindWindowEx(Handle, 0, TabClassName, null);
         public int CommandsWhileMinimized { get; private set; }
 
+        /// <summary>Registers the isolated tab class so other test frames can host the same tab windows.</summary>
+        internal static void EnsureTabClassRegistered() =>
+            Check.That(TabClass != 0, "The isolated tab window class must be registered.");
+
         public void SetActive(int index) => WinApi.SetWindowPos(_tabs[index], 0, 0, 0, 0, 0, 0x0013);
+
+        /// <summary>Shows the off-screen frame the way Explorer shows a real window: visible, not activated.</summary>
+        public void Show() => WinApi.ShowWindow(Handle, WinApi.SW_SHOWNOACTIVATE);
 
         private nint CreateTab() => CreateWindowEx(0, TabClassName, string.Empty, 0x50000000,
             0, 0, 1, 1, Handle, 0, Module, 0);

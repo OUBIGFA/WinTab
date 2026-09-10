@@ -1,11 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.Windows;
-using System.Windows.Controls.Primitives;
-using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Navigation;
-using System.Windows.Media;
 using System.Windows.Threading;
 using WinTab.Helpers;
 using WinTab.Managers;
@@ -16,18 +13,18 @@ namespace WinTab.UI.Views;
 
 public partial class MainWindow : Window
 {
-    private const string LightThemeIconPathData = "M12 18C8.68629 18 6 15.3137 6 12C6 8.68629 8.68629 6 12 6C15.3137 6 18 8.68629 18 12C18 15.3137 15.3137 18 12 18ZM12 16C14.2091 16 16 14.2091 16 12C16 9.79086 14.2091 8 12 8C9.79086 8 8 9.79086 8 12C8 14.2091 9.79086 16 12 16ZM11 1H13V4H11V1ZM11 20H13V23H11V20ZM3.51472 4.92893L4.92893 3.51472L7.05025 5.63604L5.63604 7.05025L3.51472 4.92893ZM16.9497 18.364L18.364 16.9497L20.4853 19.0711L19.0711 20.4853L16.9497 18.364ZM19.0711 3.51472L20.4853 4.92893L18.364 7.05025L16.9497 5.63604L19.0711 3.51472ZM5.63604 16.9497L7.05025 18.364L4.92893 20.4853L3.51472 19.0711L5.63604 16.9497ZM23 11V13H20V11H23ZM4 11V13H1V11H4Z";
-    private const string DarkThemeIconPathData = "M10 7C10 10.866 13.134 14 17 14C18.9584 14 20.729 13.1957 21.9995 11.8995C22 11.933 22 11.9665 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C12.0335 2 12.067 2 12.1005 2.00049C10.8043 3.27098 10 5.04157 10 7ZM4 12C4 16.4183 7.58172 20 12 20C15.0583 20 17.7158 18.2839 19.062 15.7621C18.3945 15.9187 17.7035 16 17 16C12.0294 16 8 11.9706 8 7C8 6.29648 8.08133 5.60547 8.2379 4.938C5.71611 6.28423 4 8.9417 4 12Z";
+    // Segoe Fluent Icons / Segoe MDL2 Assets code points for the theme toggle.
+    private const string SunGlyph = "\uE706";
+    private const string MoonGlyph = "\uE708";
 
     private readonly HookManager _hookManager;
     private readonly SystemTrayIcon _trayIcon;
     private nint _handle;
     private bool _isExiting;
     private bool _isDisposed;
-    private bool _isCheckingForUpdates;
     private DispatcherTimer? _autoUpdateTimer;
-    private DispatcherTimer? _maintenanceFeedbackTimer;
-    private Func<string>? _maintenanceFeedback;
+    private DispatcherTimer? _updateFeedbackTimer;
+    private Func<string>? _updateFeedback;
     private readonly string _appVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
 
     public MainWindow()
@@ -58,10 +55,8 @@ public partial class MainWindow : Window
         _trayIcon.StartupChanged += (_, _) => SyncSettingsIntoUi();
         SettingsManager.StaticPropertyChanged += SettingsManager_StaticPropertyChanged;
 
-        TitleBar.MouseLeftButtonDown += TitleBar_MouseLeftButtonDown;
         MinimizeButton.Click += (_, _) => Hide();
         CloseButton.Click += (_, _) => Hide();
-        HideWindowButton.Click += (_, _) => Hide();
         CheckUpdatesButton.Click += CheckUpdatesButton_Click;
         LanguageToggleButton.Click += LanguageToggleButton_Click;
         ThemeToggleButton.Click += ThemeToggleButton_Click;
@@ -72,7 +67,6 @@ public partial class MainWindow : Window
         ShowTrayIconToggle.Click += (_, _) => SettingsManager.ShowTrayIcon = ShowTrayIconToggle.IsChecked == true;
         AutoUpdateToggle.Click += (_, _) => SettingsManager.AutoUpdate = AutoUpdateToggle.IsChecked == true;
         StartupToggle.Click += StartupToggle_Click;
-        CornerResizeThumb.DragDelta += CornerResizeThumb_DragDelta;
 
         SizeChanged += MainWindow_SizeChanged;
         Closing += MainWindow_Closing;
@@ -144,14 +138,11 @@ public partial class MainWindow : Window
 
     private void ApplyLanguage()
     {
-        HeroTitleText.Text = "WinTab";
         HeroDescriptionText.Text = UiStrings.HeroDescription;
-        StatusPillText.Text = UiStrings.StatusRunning;
-        StatusTrayText.Text = SettingsManager.ShowTrayIcon ? UiStrings.StatusTrayAvailable : UiStrings.StatusTrayHidden;
-        StatusBypassText.Text = UiStrings.StatusBypassHint;
-        OpenSourceLicenseText.Text = "MIT License";
-        OpenSourceVersionText.Text = UiStrings.Version(_appVersion);
-        OpenSourceLinkText.Text = "GitHub";
+        ExplorerSectionTitleText.Text = UiStrings.ExplorerSectionTitle;
+        SystemSectionTitleText.Text = UiStrings.SystemSectionTitle;
+        AboutSectionTitleText.Text = UiStrings.AboutSectionTitle;
+        BypassHintText.Text = UiStrings.BypassHint;
 
         WindowHookTitleText.Text = UiStrings.WindowHookTitle;
         WindowHookDescText.Text = UiStrings.WindowHookDescription;
@@ -162,14 +153,13 @@ public partial class MainWindow : Window
         StartupTitleText.Text = UiStrings.StartupTitle;
         StartupDescText.Text = UiStrings.StartupDescription;
         ShowTrayIconTitleText.Text = UiStrings.ShowTrayIconTitle;
-        ShowTrayIconDescText.Text = UiStrings.ShowTrayIconDescription;
+        ShowTrayIconDescText.Text = SettingsManager.ShowTrayIcon ? UiStrings.ShowTrayIconDescription : UiStrings.ShowTrayIconHiddenDescription;
         AutoUpdateTitleText.Text = UiStrings.AutoUpdateTitle;
         AutoUpdateDescText.Text = UiStrings.AutoUpdateDescription;
 
-        ActionsTitleText.Text = UiStrings.MaintenanceTitle;
-        ApplyMaintenanceDescription();
-        CheckUpdatesButton.Content = _isCheckingForUpdates ? UiStrings.CheckingButton : UiStrings.CheckButton;
-        HideWindowButton.Content = UiStrings.HideButton;
+        AboutVersionText.Text = $"WinTab v{_appVersion}";
+        CheckUpdatesButton.Content = UiStrings.CheckButton;
+        ApplyUpdateFeedback();
 
         LanguageToggleButton.ToolTip = UiStrings.LanguageToggleTooltip;
         ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(ThemeManager.IsDarkTheme);
@@ -178,86 +168,83 @@ public partial class MainWindow : Window
 
     private void ApplyTheme()
     {
-        ThemeToggleIconPath.Data = Geometry.Parse(ThemeManager.IsDarkTheme ? LightThemeIconPathData : DarkThemeIconPathData);
+        ThemeToggleGlyph.Text = ThemeManager.IsDarkTheme ? SunGlyph : MoonGlyph;
         ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(ThemeManager.IsDarkTheme);
     }
 
     private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_isCheckingForUpdates)
-            return;
-
-        _isCheckingForUpdates = true;
         CheckUpdatesButton.IsEnabled = false;
-        CheckUpdatesButton.Content = UiStrings.CheckingButton;
-        SetMaintenanceFeedback(() => UiStrings.UpdateChecking, autoReset: false);
+        SetUpdateFeedback(() => UiStrings.UpdateChecking, autoReset: false);
 
         try
         {
             var result = await UpdateManager.CheckForUpdatesWithResultAsync().ConfigureAwait(true);
             if (!result.Completed)
             {
-                SetMaintenanceFeedback(() => UiStrings.UpdateFailed);
+                SetUpdateFeedback(() => UiStrings.UpdateFailed);
                 return;
             }
 
             if (!result.UpdateAvailable)
             {
-                SetMaintenanceFeedback(() => UiStrings.UpdateUpToDate);
+                SetUpdateFeedback(() => UiStrings.UpdateUpToDate);
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(result.DownloadUrl))
             {
-                SetMaintenanceFeedback(() => UiStrings.UpdateNoMatchingInstaller);
+                SetUpdateFeedback(() => UiStrings.UpdateNoMatchingInstaller);
                 return;
             }
 
-            SetMaintenanceFeedback(() => UiStrings.UpdateOpening);
+            SetUpdateFeedback(() => UiStrings.UpdateOpening);
             UpdateManager.CheckForUpdates();
         }
         finally
         {
-            _isCheckingForUpdates = false;
             CheckUpdatesButton.IsEnabled = true;
-            CheckUpdatesButton.Content = UiStrings.CheckButton;
         }
     }
 
-    private void SetMaintenanceFeedback(Func<string> feedback, bool autoReset = true)
+    private void SetUpdateFeedback(Func<string> feedback, bool autoReset = true)
     {
-        _maintenanceFeedback = feedback;
-        ApplyMaintenanceDescription();
+        _updateFeedback = feedback;
+        ApplyUpdateFeedback();
 
-        _maintenanceFeedbackTimer?.Stop();
+        _updateFeedbackTimer?.Stop();
         if (!autoReset)
             return;
 
-        _maintenanceFeedbackTimer ??= new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        _updateFeedbackTimer ??= new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromSeconds(6)
         };
-        _maintenanceFeedbackTimer.Tick -= MaintenanceFeedbackTimer_Tick;
-        _maintenanceFeedbackTimer.Tick += MaintenanceFeedbackTimer_Tick;
-        _maintenanceFeedbackTimer.Start();
+        _updateFeedbackTimer.Tick -= UpdateFeedbackTimer_Tick;
+        _updateFeedbackTimer.Tick += UpdateFeedbackTimer_Tick;
+        _updateFeedbackTimer.Start();
     }
 
-    private void MaintenanceFeedbackTimer_Tick(object? sender, EventArgs e)
+    private void UpdateFeedbackTimer_Tick(object? sender, EventArgs e)
     {
-        _maintenanceFeedbackTimer?.Stop();
-        _maintenanceFeedback = null;
-        ApplyMaintenanceDescription();
+        _updateFeedbackTimer?.Stop();
+        _updateFeedback = null;
+        ApplyUpdateFeedback();
     }
 
-    private void ApplyMaintenanceDescription()
+    /// <summary>The About row shows the license line until an update check has something to say.</summary>
+    private void ApplyUpdateFeedback()
     {
-        if (_maintenanceFeedback != null)
+        if (_updateFeedback is { } feedback)
         {
-            ActionsDescText.Text = _maintenanceFeedback();
+            UpdateFeedbackText.Text = feedback();
+            UpdateFeedbackText.Visibility = Visibility.Visible;
+            AboutLinksText.Visibility = Visibility.Collapsed;
             return;
         }
 
-        ActionsDescText.Text = SettingsManager.ShowTrayIcon ? UiStrings.MaintenanceTrayVisible : UiStrings.MaintenanceTrayHidden;
+        UpdateFeedbackText.Visibility = Visibility.Collapsed;
+        AboutLinksText.Visibility = Visibility.Visible;
     }
 
     private void OpenSourceLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
@@ -298,7 +285,7 @@ public partial class MainWindow : Window
 
         _isDisposed = true;
         StopAutomaticUpdateCheck();
-        _maintenanceFeedbackTimer?.Stop();
+        _updateFeedbackTimer?.Stop();
         Application.Current.Exit -= OnApplicationExit;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
         var settingsSaveTask = SettingsManager.FlushSettingsAsync(TimeSpan.FromSeconds(1));
@@ -321,26 +308,6 @@ public partial class MainWindow : Window
 
         e.Cancel = true;
         Hide();
-    }
-
-    private void CornerResizeThumb_DragDelta(object sender, DragDeltaEventArgs e)
-    {
-        if (WindowState != WindowState.Normal)
-            return;
-
-        Width = Math.Max(MinWidth, Width + e.HorizontalChange);
-        Height = Math.Max(MinHeight, Height + e.VerticalChange);
-    }
-
-    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount == 2)
-        {
-            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-            return;
-        }
-
-        DragMove();
     }
 
     protected override void OnSourceInitialized(EventArgs e)

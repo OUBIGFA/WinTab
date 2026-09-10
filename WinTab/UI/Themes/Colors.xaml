@@ -17,8 +17,6 @@
     <Color x:Key="CheckBoxCheckedBackgroundColor">#2A2A2A</Color>
     <Color x:Key="CheckBoxCheckedBorderColor">#2A2A2A</Color>
     <Color x:Key="CheckBoxCheckedGlyphColor">#EEEEEE</Color>
-    <Color x:Key="StatusPillBackgroundColor">#E8E8E8</Color>
-    <Color x:Key="StatusPillBorderColor">#CCCCCC</Color>
     <Color x:Key="FocusRingColor">#444444</Color>
 
     <!-- Brushes -->
@@ -36,8 +34,6 @@
     <SolidColorBrush x:Key="CheckBoxCheckedBackgroundBrush" Color="{DynamicResource CheckBoxCheckedBackgroundColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckedBorderBrush" Color="{DynamicResource CheckBoxCheckedBorderColor}" />
     <SolidColorBrush x:Key="CheckBoxCheckedGlyphBrush" Color="{DynamicResource CheckBoxCheckedGlyphColor}" />
-    <SolidColorBrush x:Key="StatusPillBackgroundBrush" Color="{DynamicResource StatusPillBackgroundColor}" />
-    <SolidColorBrush x:Key="StatusPillBorderBrush" Color="{DynamicResource StatusPillBorderColor}" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="{DynamicResource FocusRingColor}" />
 
     <!-- Solid surface brushes. -->
@@ -45,7 +41,5 @@
     <SolidColorBrush x:Key="WindowTitleBarBrush" Color="#F3F3F3" />
     <SolidColorBrush x:Key="WindowBorderBrush" Color="#C7C7C7" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="#F8F8F8" />
-    <SolidColorBrush x:Key="SurfaceMutedBrush" Color="#E9E9E9" />
-    <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#F6F6F6" />
 
 </ResourceDictionary>

@@ -11,5 +11,5 @@ internal sealed record AppSettings
     public bool ShowTrayIcon { get; init; } = true;
     public string Language { get; init; } = "zh-CN";
     public string Theme { get; init; } = "Light";
-    public Size FormSize { get; init; } = new(1020, 720);
+    public Size FormSize { get; init; } = new(960, 760);
 }

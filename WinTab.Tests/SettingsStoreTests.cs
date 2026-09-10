@@ -157,8 +157,9 @@ internal static class SettingsStoreTests
             File.WriteAllText(path, """{"FormSize":{"Width":-1,"Height":720}}""", Encoding.UTF8);
             File.WriteAllText(path + ".bak", """{"FormSize":{"Width":1020,"Height":-1}}""", Encoding.UTF8);
             using var recovered = new SettingsStore(path);
-            Check.Equal(1020d, recovered.Snapshot.FormSize.Width, "An invalid backup must not replace the valid default width.");
-            Check.Equal(720d, recovered.Snapshot.FormSize.Height, "An invalid backup must not replace the valid default height.");
+            var defaults = new AppSettings().FormSize;
+            Check.Equal(defaults.Width, recovered.Snapshot.FormSize.Width, "An invalid backup must not replace the valid default width.");
+            Check.Equal(defaults.Height, recovered.Snapshot.FormSize.Height, "An invalid backup must not replace the valid default height.");
             Check.That(recovered.LastError is JsonException, "Using defaults must not hide the damaged-settings error.");
         }
         finally { RecycleDirectory(path); }

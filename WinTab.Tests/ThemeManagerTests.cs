@@ -26,15 +26,11 @@ internal static class ThemeManagerTests
         "CheckBoxCheckedBackgroundBrush",
         "CheckBoxCheckedBorderBrush",
         "CheckBoxCheckedGlyphBrush",
-        "StatusPillBackgroundBrush",
-        "StatusPillBorderBrush",
         "FocusRingBrush",
         "WindowBackgroundBrush",
         "WindowTitleBarBrush",
         "WindowBorderBrush",
-        "SurfaceBrush",
-        "SurfaceMutedBrush",
-        "SurfaceRaisedBrush"
+        "SurfaceBrush"
     };
 
     public static IEnumerable<(string Name, Func<Task> Body)> All()
@@ -51,20 +47,18 @@ internal static class ThemeManagerTests
 
             ThemeManager.ApplyTheme(dark: false);
             AssertPaletteIsNeutral();
-            AssertNeutralGray(GetColor("WindowBackgroundBrush"), "Light window background");
-            AssertNeutralGray(GetColor("SurfaceMutedBrush"), "Light muted surface");
-            Check.That(GetGrayLevel("WindowBackgroundBrush") - GetGrayLevel("SurfaceMutedBrush") >= 8,
-                "Light surfaces need a visible tonal separation.");
+            AssertSurfaceLift("Light");
             AssertContrast(GetColor("TextPrimaryBrush"), GetColor("WindowBackgroundBrush"), 7.0,
                 "Light primary text");
-            AssertContrast(GetColor("TextSecondaryBrush"), GetColor("SurfaceRaisedBrush"), 4.5,
+            AssertContrast(GetColor("TextSecondaryBrush"), GetColor("SurfaceBrush"), 4.5,
                 "Light secondary text");
 
             ThemeManager.ApplyTheme(dark: true);
             AssertPaletteIsNeutral();
+            AssertSurfaceLift("Dark");
             AssertContrast(GetColor("TextPrimaryBrush"), GetColor("WindowBackgroundBrush"), 7.0,
                 "Dark primary text");
-            AssertContrast(GetColor("TextSecondaryBrush"), GetColor("SurfaceRaisedBrush"), 4.5,
+            AssertContrast(GetColor("TextSecondaryBrush"), GetColor("SurfaceBrush"), 4.5,
                 "Dark secondary text");
         }, CancellationToken.None, TaskCreationOptions.None, scheduler);
     }
@@ -81,6 +75,15 @@ internal static class ThemeManagerTests
     }
 
     private static byte GetGrayLevel(string key) => GetColor(key).R;
+
+    /// <summary>Settings groups sit on the window background as slightly lighter cards in both themes.</summary>
+    private static void AssertSurfaceLift(string theme)
+    {
+        Check.That(GetGrayLevel("SurfaceBrush") - GetGrayLevel("WindowBackgroundBrush") >= 4,
+            $"{theme} surface needs a visible lift from the window background.");
+        AssertContrast(GetColor("DividerBrush"), GetColor("SurfaceBrush"), 1.15,
+            $"{theme} group outline");
+    }
 
     private static void AssertPaletteIsNeutral()
     {

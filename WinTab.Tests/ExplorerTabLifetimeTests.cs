@@ -314,6 +314,7 @@ internal static class ExplorerTabLifetimeTests
 
     private static Task MissedFirstWindowIsDiscovered() => WithFixture(async fixture =>
     {
+        fixture.Window.Show();
         fixture.SetCatalog();
         await (Task)fixture.Invoke("ProcessRegisteredShellWindowsAsync")!;
         var browser = fixture.AddBrowser(out _, track: false);
@@ -328,6 +329,7 @@ internal static class ExplorerTabLifetimeTests
 
     private static Task MissedTabIsDiscovered() => WithFixture(async fixture =>
     {
+        fixture.Window.Show();
         fixture.AddBrowser(out var firstInfo, fixture.Window.FirstTab);
         firstInfo.EventsHooked = true;
 
@@ -342,6 +344,7 @@ internal static class ExplorerTabLifetimeTests
             fixture.AddBrowser(out var previous, fixture.Window.FirstTab);
             previous.EventsHooked = true;
             fixture.ReopenWindow();
+            fixture.Window.Show();
             fixture.SetCatalog();
             fixture.Invoke("AdoptNewShellWindows");
             Check.Equal(0, fixture.Count, "The old window must be fully retired before testing rediscovery.");
@@ -510,7 +513,7 @@ internal static class ExplorerTabLifetimeTests
             "A live background read must trigger reconnection without waiting for another double-click.");
     });
 
-    private static async Task WithFixture(Func<Fixture, Task> test, int tabCount = 2)
+    internal static async Task WithFixture(Func<Fixture, Task> test, int tabCount = 2)
     {
         using var scheduler = new StaTaskScheduler();
         await Task.Factory.StartNew(async () =>
@@ -520,10 +523,12 @@ internal static class ExplorerTabLifetimeTests
         }, CancellationToken.None, TaskCreationOptions.None, scheduler).Unwrap();
     }
 
-    private sealed class Fixture : IDisposable
+    internal sealed class Fixture : IDisposable
     {
         public const string Location = @"C:\WinTab-lifetime";
         private readonly CancellationTokenSource _lifetime = new();
+        private readonly ConcurrentDictionary<nint, int> _hookedTopLevels = new();
+        private readonly object _mergeSources;
         private readonly SemaphoreSlim _openLock = new(1);
         private readonly TabStripHitTester _tabStrip = new();
         private readonly MergeSourceConcealPulse _concealPulse = new();
@@ -537,11 +542,18 @@ internal static class ExplorerTabLifetimeTests
         public Action? OnCatalogRead { get; set; }
         public bool ShellConnected => (int)typeof(ExplorerWatcher).GetField("_mainExplorerProcessId", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_watcher)! != 0;
         public bool ShellCancellationRequested => _lifetime.IsCancellationRequested;
+        public List<string> Statuses { get; } = new();
+        public int MergeSourceCount => ((System.Collections.ICollection)_mergeSources).Count;
+        public static int MergeTimeoutMs => (int)typeof(ExplorerWatcher)
+            .GetField("MergeTimeoutMs", BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
 
         public Fixture(StaTaskScheduler scheduler, int tabCount)
         {
             Window = new ExplorerTabActivationTests.ActivationWindow(tabCount);
             _watcher = ExplorerTabActivationTests.CreateSelectionWatcher(_lifetime);
+            _watcher.StatusChanged += Statuses.Add;
+            _mergeSources = Activator.CreateInstance(typeof(ExplorerWatcher)
+                .GetField("_mergeSourceHWnds", BindingFlags.Instance | BindingFlags.NonPublic)!.FieldType)!;
             _dictionaryType = typeof(ExplorerWatcher).GetField("_windowEntryDict", BindingFlags.Instance | BindingFlags.NonPublic)!.FieldType;
             _dictionary = Activator.CreateInstance(_dictionaryType)!;
             SetField("_windowEntryDict", _dictionary);
@@ -559,18 +571,18 @@ internal static class ExplorerTabLifetimeTests
             SetField("_toOpenWindowsLock", _openLock);
             SetField("_reuseTabs", true);
             SetField("_processedHWnds", new ConcurrentDictionary<nint, WindowIdentity>());
-            SetField("_hookedTopLevelUseCounts", new ConcurrentDictionary<nint, int>());
+            SetField("_hookedTopLevelUseCounts", _hookedTopLevels);
             SetField("_closingMergeSourceHWnds", new ConcurrentDictionary<nint, MergeOperation>());
-            SetField("_mergeSourceHWnds", Activator.CreateInstance(typeof(ExplorerWatcher).GetField("_mergeSourceHWnds", BindingFlags.Instance | BindingFlags.NonPublic)!.FieldType)!);
+            SetField("_mergeSourceHWnds", _mergeSources);
             SetField("_mergeSourceConcealPulse", _concealPulse);
             SetField("<TabStrip>k__BackingField", _tabStrip);
         }
 
         public object AddBrowser(out WindowInfo info, nint? tab = null, bool unavailableLocation = false,
             bool failDetach = false, bool unreadableHandle = false, bool track = true, Action? readLocation = null,
-            Exception? documentFailure = null)
+            Exception? documentFailure = null, nint? handle = null)
         {
-            var parentHandle = Window.Handle;
+            var parentHandle = handle ?? Window.Handle;
             var browser = ShellDispatchStub.Create(_dictionaryType.GetGenericArguments()[0], (method, arguments) =>
             {
                 if (failDetach && method.StartsWith("remove_", StringComparison.Ordinal))
@@ -593,8 +605,8 @@ internal static class ExplorerTabLifetimeTests
             });
             info = new WindowInfo
             {
-                Identity = WindowIdentity.Capture(Window.Handle),
-                HookedTopLevelHWnd = Window.Handle,
+                Identity = WindowIdentity.Capture(parentHandle),
+                HookedTopLevelHWnd = parentHandle,
                 Location = Location
             };
             if (track)
@@ -657,6 +669,35 @@ internal static class ExplorerTabLifetimeTests
         {
             SetField("_isForcingTabs", true);
             SetField("_preExistingExplorerWindowsProtected", true);
+        }
+
+        public void SetExplorerWindows(params nint[] handles) =>
+            SetField("_getExplorerWindows", (Func<IEnumerable<nint>>)(() => handles));
+
+        public void MarkHooked(nint handle) => _hookedTopLevels[handle] = 1;
+
+        public int RemainingMergeTime(nint handle) => (int)Invoke("RemainingMergeTime", handle)!;
+
+        public void RunMergeSafetyTimer() => Invoke("RecoverExpiredMergeSources", new object?[] { null });
+
+        public async Task<bool> CloseMergedSourceAsync(object browser, WindowInfo info)
+        {
+            EnableMerging();
+            var handle = info.Identity.Handle;
+            Invoke("HideMergeSourceWindow", handle);
+            using var work = new MergeOperation(info.Identity, 0, _lifetime.Token, () => true, 5_000);
+            var context = (AsyncLocal<MergeOperation?>)typeof(ExplorerWatcher)
+                .GetField("_currentMerge", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_watcher)!;
+            context.Value = work;
+            try
+            {
+                return await (Task<bool>)Invoke("CloseMergedSourceWindowAsync", browser, handle)!;
+            }
+            finally
+            {
+                context.Value = null;
+                Invoke("RecoverHiddenExplorerWindows", "test-close-cleanup");
+            }
         }
 
         public Task RegisterThroughWorkerAsync(object browser, WindowInfo info)

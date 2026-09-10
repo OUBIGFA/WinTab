@@ -13,13 +13,12 @@ internal static class UiStrings
 
     public static string Pick(string zh, string en) => IsChinese ? zh : en;
 
-    // Hero / status
+    // Header / sections
     public static string HeroDescription => Pick("让资源管理器窗口回到同一组标签", "Keep File Explorer windows in one tab set");
-    public static string StatusRunning => Pick("运行中", "Running");
-    public static string StatusTrayAvailable => Pick("可从托盘打开", "Available from the tray");
-    public static string StatusTrayHidden => Pick("托盘图标已隐藏", "Tray icon is hidden");
-    public static string StatusBypassHint => Pick("按住 Ctrl + Shift 可打开独立窗口", "Hold Ctrl + Shift to open a separate window");
-    public static string Version(string version) => Pick($"版本：v{version}", $"Version: v{version}");
+    public static string ExplorerSectionTitle => Pick("资源管理器", "File Explorer");
+    public static string SystemSectionTitle => Pick("系统", "System");
+    public static string AboutSectionTitle => Pick("关于", "About");
+    public static string BypassHint => Pick("按住 Ctrl + Shift 打开文件夹时会跳过合并，直接使用独立窗口", "Hold Ctrl + Shift while opening a folder to skip merging and use a separate window");
 
     // Settings toggles
     public static string WindowHookTitle => Pick("合并新窗口", "Merge new windows");
@@ -32,16 +31,12 @@ internal static class UiStrings
     public static string StartupDescription => Pick("登录后静默运行", "Run quietly after sign-in");
     public static string ShowTrayIconTitle => Pick("显示托盘图标", "Show tray icon");
     public static string ShowTrayIconDescription => Pick("关闭窗口后可从通知区打开", "Keep WinTab available from the notification area");
-    public static string AutoUpdateTitle => Pick("检查更新", "Check for updates");
-    public static string AutoUpdateDescription => Pick("有 GitHub Release 时提示", "Notify when a GitHub release is available");
+    public static string ShowTrayIconHiddenDescription => Pick("关闭窗口后在后台运行，再次启动 WinTab 可重新打开此窗口", "Runs in the background after the window closes; launch WinTab again to reopen it");
+    public static string AutoUpdateTitle => Pick("自动检查更新", "Check for updates automatically");
+    public static string AutoUpdateDescription => Pick("发现新版本时提示", "Notify when a new release is available");
 
-    // Maintenance area
-    public static string MaintenanceTitle => Pick("维护", "Maintenance");
-    public static string MaintenanceTrayVisible => Pick("关闭此窗口后，WinTab 继续留在托盘", "The app stays in the tray when this window closes");
-    public static string MaintenanceTrayHidden => Pick("托盘图标隐藏时，WinTab 会直接在后台运行", "When the tray icon is hidden, WinTab keeps running in the background");
-    public static string CheckButton => Pick("检查", "Check");
-    public static string CheckingButton => Pick("检查中", "Checking");
-    public static string HideButton => Pick("隐藏", "Hide");
+    // About row
+    public static string CheckButton => Pick("检查更新", "Check for updates");
     public static string UpdateChecking => Pick("正在联网检查最新版本", "Checking the latest release online");
     public static string UpdateFailed => Pick("检查失败，稍后再试", "Update check failed, try again later");
     public static string UpdateUpToDate => Pick("当前已是最新版本", "You're on the latest version");

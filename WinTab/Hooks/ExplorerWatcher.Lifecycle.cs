@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using SHDocVw;
 using WinTab.Helpers;
 using WinTab.Models;
+using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
@@ -14,6 +15,12 @@ public partial class ExplorerWatcher
 {
     private const int MergeTimeoutMs = 5_000;
     private const int MergeCompletionTimeoutMs = 1_500;
+    /// <summary>
+    /// Windows 11 preloads a hidden Explorer frame long before the user opens a folder and reuses it for
+    /// that folder later. A concealed frame therefore only starts spending its merge budget once Explorer
+    /// has actually shown it; until then the budget is "not started".
+    /// </summary>
+    private const long MergeBudgetNotStarted = long.MaxValue;
     private readonly Timer _mergeSafetyTimer;
     private readonly Timer _selectionTimer;
     private CancellationTokenSource _shellLifetime = new();
@@ -25,9 +32,9 @@ public partial class ExplorerWatcher
     private int _recoveringMergeSources;
     private volatile bool _disposed;
 
-    private sealed record ConcealedWindow(WindowIdentity Identity, int Generation, long StartedAt)
+    private sealed record ConcealedWindow(WindowIdentity Identity, int Generation)
     {
-        public long ExpiresAt = StartedAt + MergeTimeoutMs;
+        public long ExpiresAt = MergeBudgetNotStarted;
         public int RestoreAttempts;
         public bool Recovering;
     }
@@ -57,9 +64,25 @@ public partial class ExplorerWatcher
     private bool IsCurrentWindow(InternetExplorer window, WindowInfo info) =>
         !_disposed && !info.Closed && info.Identity.IsCurrent && IsRegisteredWindow(window, info);
 
-    private int RemainingMergeTime(nint handle) => _mergeSourceHWnds.TryGetValue(handle, out var concealed)
-        ? (int)Math.Max(1, Interlocked.Read(ref concealed.ExpiresAt) - Environment.TickCount64)
-        : MergeTimeoutMs;
+    private int RemainingMergeTime(nint handle)
+    {
+        if (!_mergeSourceHWnds.TryGetValue(handle, out var concealed))
+            return MergeTimeoutMs;
+        var expiresAt = Interlocked.Read(ref concealed.ExpiresAt);
+        return expiresAt == MergeBudgetNotStarted
+            ? MergeTimeoutMs
+            : (int)Math.Clamp(expiresAt - Environment.TickCount64, 1, MergeTimeoutMs);
+    }
+
+    /// <summary>Starts the merge budget the first time Explorer is seen showing the concealed frame.</summary>
+    private static void StartMergeBudgetIfShown(ConcealedWindow concealed)
+    {
+        if (Interlocked.Read(ref concealed.ExpiresAt) == MergeBudgetNotStarted &&
+            WinApi.IsWindowVisible(concealed.Identity.Handle))
+        {
+            Interlocked.CompareExchange(ref concealed.ExpiresAt, Environment.TickCount64 + MergeTimeoutMs, MergeBudgetNotStarted);
+        }
+    }
 
     private void EnsureCurrentMerge()
     {
@@ -138,15 +161,22 @@ public partial class ExplorerWatcher
                 string? status = null;
                 lock (concealed)
                 {
-                    if (!concealed.Recovering && _isForcingTabs && concealed.Generation == _hookGeneration &&
-                        Environment.TickCount64 < concealed.ExpiresAt)
+                    // A frame the shell has shown (even if the show event was missed) starts its budget here.
+                    StartMergeBudgetIfShown(concealed);
+                    var open = concealed.Identity.IsCurrent;
+                    if (open && !concealed.Recovering && _isForcingTabs && concealed.Generation == _hookGeneration &&
+                        Environment.TickCount64 < Interlocked.Read(ref concealed.ExpiresAt))
                         continue;
                     if (concealed.RestoreAttempts >= 8)
                         continue;
 
                     concealed.RestoreAttempts++;
                     if (RestoreConcealedWindow(concealed))
-                        status = "A merge exceeded its time limit; the source window was restored.";
+                    {
+                        // A frame that no longer exists (Explorer discarded it) is simply forgotten.
+                        if (open)
+                            status = "A merge exceeded its time limit; the source window was restored.";
+                    }
                     else if (concealed.RestoreAttempts == 8)
                         status = "Explorer did not accept window recovery; stop WinTab and check the source window.";
                 }

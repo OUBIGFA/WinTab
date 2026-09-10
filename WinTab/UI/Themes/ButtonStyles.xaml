@@ -1,154 +1,106 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- IconButton Styles -->
+    <!-- Segoe Fluent Icons ships with Windows 11; Segoe MDL2 Assets carries the same code points on Windows 10. -->
+    <FontFamily x:Key="IconFontFamily">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+    <Style x:Key="GlyphIconStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource IconFontFamily}" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="CaptionGlyphStyle" TargetType="TextBlock" BasedOn="{StaticResource GlyphIconStyle}">
+        <Setter Property="FontSize" Value="10" />
+    </Style>
+
+    <!-- Keyboard-only focus ring that sits just outside a rounded button. -->
+    <Style x:Key="RoundedFocusVisualStyle">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Border Margin="-3"
+                            CornerRadius="9"
+                            BorderThickness="2"
+                            BorderBrush="{DynamicResource FocusRingBrush}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Borderless tool button used in the caption strip. -->
     <Style x:Key="IconButtonStyle" TargetType="ButtonBase">
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="Transparent" />
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Width" Value="28" />
-        <Setter Property="Height" Value="28" />
-        <Setter Property="Padding" Value="6" />
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="30" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource RoundedFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ButtonBase">
-                    <Border x:Name="Root"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="6"
-                            RenderTransformOrigin="0.5,0.5">
-                        <Border.RenderTransform>
-                            <ScaleTransform ScaleX="1" ScaleY="1" />
-                        </Border.RenderTransform>
+                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Root"
-                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                         To="0.96"
-                                                         Duration="{StaticResource MotionPressDuration}" />
-                                        <DoubleAnimation Storyboard.TargetName="Root"
-                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                         To="0.96"
-                                                         Duration="{StaticResource MotionPressDuration}" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Root"
-                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                         To="1"
-                                                         Duration="{StaticResource MotionPressDuration}" />
-                                        <DoubleAnimation Storyboard.TargetName="Root"
-                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                         To="1"
-                                                         Duration="{StaticResource MotionPressDuration}" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.ExitActions>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
         <Style.Triggers>
-            <Trigger Property="IsEnabled" Value="False">
-                <Setter Property="Opacity" Value="0.7" />
-            </Trigger>
-            <Trigger Property="IsPressed" Value="True">
-                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-            </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                 <Setter Property="Background" Value="{DynamicResource ControlHoverBrush}" />
             </Trigger>
-            <Trigger Property="IsFocused" Value="True">
-                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.5" />
             </Trigger>
         </Style.Triggers>
     </Style>
 
-    <!-- FlatButton Style -->
+    <Style x:Key="CaptionButtonStyle" TargetType="ButtonBase" BasedOn="{StaticResource IconButtonStyle}">
+        <Setter Property="Width" Value="40" />
+    </Style>
+
+    <!-- Standard bordered button. -->
     <Style x:Key="FlatButtonStyle" TargetType="ButtonBase">
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="Padding" Value="14,0" />
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource RoundedFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ButtonBase">
-                    <Border x:Name="Root"
-                            Background="{TemplateBinding Background}"
+                    <Border Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
-                            Padding="12,6"
-                            CornerRadius="7"
-                            RenderTransformOrigin="0.5,0.5">
-                        <Border.RenderTransform>
-                            <ScaleTransform ScaleX="1" ScaleY="1" />
-                        </Border.RenderTransform>
-                        <ContentPresenter HorizontalAlignment="Center"
-                                          VerticalAlignment="Center" />
+                            Padding="{TemplateBinding Padding}"
+                            CornerRadius="6">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlHoverBrush}" />
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-                        </Trigger>
-                        <Trigger Property="IsPressed" Value="True">
-                            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-                            <Trigger.EnterActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Root"
-                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                         To="0.985"
-                                                         Duration="{StaticResource MotionPressDuration}" />
-                                        <DoubleAnimation Storyboard.TargetName="Root"
-                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                         To="0.985"
-                                                         Duration="{StaticResource MotionPressDuration}" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.EnterActions>
-                            <Trigger.ExitActions>
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <DoubleAnimation Storyboard.TargetName="Root"
-                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                         To="1"
-                                                         Duration="{StaticResource MotionPressDuration}" />
-                                        <DoubleAnimation Storyboard.TargetName="Root"
-                                                         Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                         To="1"
-                                                         Duration="{StaticResource MotionPressDuration}" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </Trigger.ExitActions>
-                        </Trigger>
-                        <Trigger Property="IsFocused" Value="True">
-                            <Setter Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+                <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
 </ResourceDictionary>

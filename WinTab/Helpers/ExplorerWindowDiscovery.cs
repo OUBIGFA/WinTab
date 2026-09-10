@@ -15,6 +15,15 @@ public static class ExplorerWindowDiscovery
         return window != 0 && WinApi.IsWindowHasClassName(window, "CabinetWClass");
     }
 
+    /// <summary>
+    /// An Explorer window the shell has actually shown. Windows 11 preloads hidden frames for later
+    /// folder opens; those are not user windows and must never receive merged tabs.
+    /// </summary>
+    public static bool IsShownExplorerWindow(nint window)
+    {
+        return IsFileExplorerWindow(window) && WinApi.IsWindowVisible(window);
+    }
+
     public static bool IsFileExplorerForeground(out nint foregroundWindow)
     {
         foregroundWindow = WinApi.GetForegroundWindow();

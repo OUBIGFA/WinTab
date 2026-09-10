@@ -36,16 +36,12 @@ public static class ThemeManager
         SetColor("CheckBoxCheckedBackgroundColor", dark ? "#E5E5E5" : "#2A2A2A");
         SetColor("CheckBoxCheckedBorderColor", dark ? "#E5E5E5" : "#2A2A2A");
         SetColor("CheckBoxCheckedGlyphColor", dark ? "#242424" : "#EEEEEE");
-        SetColor("StatusPillBackgroundColor", dark ? "#303030" : "#E8E8E8");
-        SetColor("StatusPillBorderColor", dark ? "#444444" : "#CCCCCC");
         SetColor("FocusRingColor", dark ? "#C5C5C5" : "#444444");
 
         SetBrush("WindowBackgroundBrush", dark ? "#151515" : "#F3F3F3");
         SetBrush("WindowTitleBarBrush", dark ? "#191919" : "#F3F3F3");
         SetBrush("WindowBorderBrush", dark ? "#373737" : "#C7C7C7");
         SetBrush("SurfaceBrush", dark ? "#1D1D1D" : "#F8F8F8");
-        SetBrush("SurfaceMutedBrush", dark ? "#252525" : "#E9E9E9");
-        SetBrush("SurfaceRaisedBrush", dark ? "#202020" : "#F6F6F6");
     }
 
     private static void SetColor(string key, string hex)

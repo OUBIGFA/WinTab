@@ -7,7 +7,7 @@ internal static class ExplorerDesktopFlowTests
 {
     public static IEnumerable<(string Name, System.Func<Task> Body)> All()
     {
-        yield return ("desktop folders use the v1.0.1 window-registration flow", UsesWindowRegistrationFlow);
+        yield return ("desktop folders keep the v1.0.1 native open and window-registration flow", UsesWindowRegistrationFlow);
     }
 
     private static Task UsesWindowRegistrationFlow()
@@ -21,6 +21,8 @@ internal static class ExplorerDesktopFlowTests
             "Desktop folder opening must not defer the native request through a separate queue.");
         Check.That(watcherType.GetMethod("HookDesktopFolderOpen", BindingFlags.Instance | BindingFlags.NonPublic) == null,
             "ExplorerWatcher must let the existing window-registration path own desktop folder merges.");
+        Check.That(watcherType.GetMethod("OpenDesktopFolderNormally", BindingFlags.Static | BindingFlags.NonPublic) == null,
+            "WinTab must never re-issue a desktop open on Explorer's behalf.");
 
         return Task.CompletedTask;
     }
