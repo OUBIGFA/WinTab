@@ -11,6 +11,16 @@
 # 本地工具生成的评分历史，不属于源码
 .brooks-lint-history.json
 
+# 仓库文档范围见 AGENTS.md 第 3 节：AI 生成的评审/排查/分析类工作笔记不属于项目文档
+/review-*.md
+/*-review.md
+/*-root-cause.md
+/*-optimization.md
+/*-analysis.md
+
+# 临时工作目录：只放本地中间产物，不参与提交与发布
+/_temp/
+
 # User-specific files
 *.rsuser
 *.suo
