@@ -64,6 +64,7 @@ public partial class MainWindow : Window
         WindowHookToggle.Click += (_, _) => _hookManager.SetWindowHook(WindowHookToggle.IsChecked == true);
         ReuseTabsToggle.Click += (_, _) => _hookManager.SetReuseTabs(ReuseTabsToggle.IsChecked == true);
         DoubleClickCloseToggle.Click += (_, _) => _hookManager.SetDoubleClickClose(DoubleClickCloseToggle.IsChecked == true);
+        MiddleClickForegroundToggle.Click += (_, _) => _hookManager.SetMiddleClickForeground(MiddleClickForegroundToggle.IsChecked == true);
         ShowTrayIconToggle.Click += (_, _) => SettingsManager.ShowTrayIcon = ShowTrayIconToggle.IsChecked == true;
         AutoUpdateToggle.Click += (_, _) => SettingsManager.AutoUpdate = AutoUpdateToggle.IsChecked == true;
         StartupToggle.Click += StartupToggle_Click;
@@ -102,6 +103,7 @@ public partial class MainWindow : Window
         WindowHookToggle.IsChecked = SettingsManager.IsWindowHookActive;
         ReuseTabsToggle.IsChecked = SettingsManager.ReuseTabs;
         DoubleClickCloseToggle.IsChecked = SettingsManager.DoubleClickCloseTab;
+        MiddleClickForegroundToggle.IsChecked = SettingsManager.MiddleClickForegroundTab;
         ShowTrayIconToggle.IsChecked = SettingsManager.ShowTrayIcon;
         AutoUpdateToggle.IsChecked = SettingsManager.AutoUpdate;
         StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
@@ -150,6 +152,8 @@ public partial class MainWindow : Window
         ReuseTabsDescText.Text = UiStrings.ReuseTabsDescription;
         DoubleClickTitleText.Text = UiStrings.DoubleClickTitle;
         DoubleClickDescText.Text = UiStrings.DoubleClickDescription;
+        MiddleClickTitleText.Text = UiStrings.MiddleClickTitle;
+        MiddleClickDescText.Text = UiStrings.MiddleClickDescription;
         StartupTitleText.Text = UiStrings.StartupTitle;
         StartupDescText.Text = UiStrings.StartupDescription;
         ShowTrayIconTitleText.Text = UiStrings.ShowTrayIconTitle;

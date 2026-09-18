@@ -46,7 +46,7 @@ internal static class ExplorerReuseSelectionTests
             var browserType = dictionaryField.FieldType.GetGenericArguments()[0];
             var browser = ShellDispatchStub.Create(browserType, (method, arguments) => method switch
             {
-                "get_HWND" => (int)fixture.Handle,
+                "get_HWND" => (long)fixture.Handle,
                 "get_LocationURL" => "file:///C:/WinTab-reuse",
                 "get_Document" => view,
                 _ => throw new InvalidOperationException("Unexpected browser call: " + method)
@@ -128,6 +128,15 @@ public class ShellDispatchStub : DispatchProxy
         return proxy;
     }
 
-    protected override object? Invoke(MethodInfo? targetMethod, object?[]? arguments) =>
-        _invoke(targetMethod!.Name, arguments ?? []);
+    protected override object? Invoke(MethodInfo? targetMethod, object?[]? arguments)
+    {
+        var result = _invoke(targetMethod!.Name, arguments ?? []);
+        if (result != null && targetMethod != null && targetMethod.ReturnType != typeof(void) && !targetMethod.ReturnType.IsInstanceOfType(result))
+        {
+            if (targetMethod.ReturnType == typeof(long) && result is int intVal)
+                return (long)intVal;
+            return Convert.ChangeType(result, targetMethod.ReturnType);
+        }
+        return result;
+    }
 }

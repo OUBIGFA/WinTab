@@ -133,7 +133,7 @@
                     <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="WinTab" FontSize="20" FontWeight="Medium" LineHeight="26" />
                         <TextBlock x:Name="HeroDescriptionText"
-                                   Text="Keep File Explorer windows in one tab set"
+                                   Text="Auto-merge folders into tabs"
                                    Margin="0,3,0,0"
                                    FontSize="13"
                                    LineHeight="18"
@@ -150,7 +150,7 @@
                                 <CheckBox x:Name="WindowHookToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
                                     <TextBlock x:Name="WindowHookTitleText" Text="Merge new windows" Style="{StaticResource SettingTitleStyle}" />
-                                    <TextBlock x:Name="WindowHookDescText" Text="Send new folders back to the active Explorer tab group" Style="{StaticResource SettingDescriptionStyle}" />
+                                    <TextBlock x:Name="WindowHookDescText" Text="Open new folders as tabs in active window" Style="{StaticResource SettingDescriptionStyle}" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -158,8 +158,17 @@
                             <DockPanel>
                                 <CheckBox x:Name="ReuseTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
-                                    <TextBlock x:Name="ReuseTabsTitleText" Text="Reuse existing tabs" Style="{StaticResource SettingTitleStyle}" />
-                                    <TextBlock x:Name="ReuseTabsDescText" Text="Open a matching path by focusing its current tab" Style="{StaticResource SettingDescriptionStyle}" />
+                                    <TextBlock x:Name="ReuseTabsTitleText" Text="Reuse opened tabs" Style="{StaticResource SettingTitleStyle}" />
+                                    <TextBlock x:Name="ReuseTabsDescText" Text="Switch to existing tab instead of opening duplicate" Style="{StaticResource SettingDescriptionStyle}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingRowStyle}">
+                            <DockPanel>
+                                <CheckBox x:Name="MiddleClickForegroundToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
+                                <StackPanel>
+                                    <TextBlock x:Name="MiddleClickTitleText" Text="Open middle-clicked tabs in foreground" Style="{StaticResource SettingTitleStyle}" />
+                                    <TextBlock x:Name="MiddleClickDescText" Text="Open navigation pane tabs in foreground instead of background" Style="{StaticResource SettingDescriptionStyle}" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -167,15 +176,15 @@
                             <DockPanel>
                                 <CheckBox x:Name="DoubleClickCloseToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
-                                    <TextBlock x:Name="DoubleClickTitleText" Text="Double-click closes tab" Style="{StaticResource SettingTitleStyle}" />
-                                    <TextBlock x:Name="DoubleClickDescText" Text="Close the current Explorer tab from its title area" Style="{StaticResource SettingDescriptionStyle}" />
+                                    <TextBlock x:Name="DoubleClickTitleText" Text="Double-click to close tabs" Style="{StaticResource SettingTitleStyle}" />
+                                    <TextBlock x:Name="DoubleClickDescText" Text="Double-click any tab title to close it" Style="{StaticResource SettingDescriptionStyle}" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
                     </StackPanel>
                 </Border>
                 <TextBlock x:Name="BypassHintText"
-                           Text="Hold Ctrl + Shift while opening a folder to skip merging and use a separate window"
+                           Text="Hold Ctrl + Shift while opening folders to keep a separate window"
                            Style="{StaticResource FootnoteStyle}" />
 
                 <TextBlock x:Name="SystemSectionTitleText" Text="System" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,8" />
@@ -186,7 +195,7 @@
                                 <CheckBox x:Name="StartupToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
                                     <TextBlock x:Name="StartupTitleText" Text="Start with Windows" Style="{StaticResource SettingTitleStyle}" />
-                                    <TextBlock x:Name="StartupDescText" Text="Run quietly after sign-in" Style="{StaticResource SettingDescriptionStyle}" />
+                                    <TextBlock x:Name="StartupDescText" Text="Run quietly in the background on startup" Style="{StaticResource SettingDescriptionStyle}" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -195,7 +204,7 @@
                                 <CheckBox x:Name="ShowTrayIconToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
                                     <TextBlock x:Name="ShowTrayIconTitleText" Text="Show tray icon" Style="{StaticResource SettingTitleStyle}" />
-                                    <TextBlock x:Name="ShowTrayIconDescText" Text="Keep WinTab available from the notification area" Style="{StaticResource SettingDescriptionStyle}" />
+                                    <TextBlock x:Name="ShowTrayIconDescText" Text="Access from the system tray when closed" Style="{StaticResource SettingDescriptionStyle}" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>
@@ -204,7 +213,7 @@
                                 <CheckBox x:Name="AutoUpdateToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
                                     <TextBlock x:Name="AutoUpdateTitleText" Text="Check for updates automatically" Style="{StaticResource SettingTitleStyle}" />
-                                    <TextBlock x:Name="AutoUpdateDescText" Text="Notify when a new release is available" Style="{StaticResource SettingDescriptionStyle}" />
+                                    <TextBlock x:Name="AutoUpdateDescText" Text="Notify when updates are available" Style="{StaticResource SettingDescriptionStyle}" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>

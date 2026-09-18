@@ -593,7 +593,7 @@ internal static class ExplorerTabLifetimeTests
                 {
                     "get_HWND" => unreadableHandle
                         ? throw new COMException("The Explorer window is no longer available.")
-                        : (int)parentHandle,
+                        : (long)parentHandle,
                     "get_LocationURL" => unavailableLocation
                         ? throw new COMException("Explorer is temporarily unavailable.")
                         : "file:///C:/WinTab-lifetime",

@@ -41,6 +41,12 @@ public static class SettingsManager
         set => SetProperty(settings => settings with { DoubleClickCloseTab = value });
     }
 
+    public static bool MiddleClickForegroundTab
+    {
+        get => Store.Snapshot.MiddleClickForegroundTab;
+        set => SetProperty(settings => settings with { MiddleClickForegroundTab = value });
+    }
+
     public static bool AutoUpdate
     {
         get => Store.Snapshot.AutoUpdate;

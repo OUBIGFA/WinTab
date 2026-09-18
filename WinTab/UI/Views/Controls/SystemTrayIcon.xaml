@@ -10,12 +10,13 @@
             <ContextMenu>
                 <MenuItem x:Name="OpenSettingsMenu" Header="Open WinTab" />
                 <Separator />
-                <MenuItem x:Name="WindowHookMenu" Header="Auto-merge Explorer windows" IsCheckable="True" StaysOpenOnClick="True" />
-                <MenuItem x:Name="ReuseTabsMenu" Header="Reuse tabs" IsCheckable="True" StaysOpenOnClick="True" />
-                <MenuItem x:Name="DoubleClickCloseMenu" Header="Double-click to close tab" IsCheckable="True" StaysOpenOnClick="True" />
+                <MenuItem x:Name="WindowHookMenu" Header="Merge new windows" IsCheckable="True" StaysOpenOnClick="True" />
+                <MenuItem x:Name="ReuseTabsMenu" Header="Reuse opened tabs" IsCheckable="True" StaysOpenOnClick="True" />
+                <MenuItem x:Name="MiddleClickForegroundMenu" Header="Open middle-clicked tabs in foreground" IsCheckable="True" StaysOpenOnClick="True" />
+                <MenuItem x:Name="DoubleClickCloseMenu" Header="Double-click to close tabs" IsCheckable="True" StaysOpenOnClick="True" />
                 <Separator />
                 <MenuItem x:Name="StartupMenu" Header="Start with Windows" IsCheckable="True" StaysOpenOnClick="True" />
-                <MenuItem x:Name="AutoUpdateMenu" Header="Automatic updates" IsCheckable="True" StaysOpenOnClick="True" />
+                <MenuItem x:Name="AutoUpdateMenu" Header="Check for updates automatically" IsCheckable="True" StaysOpenOnClick="True" />
                 <MenuItem x:Name="ShowTrayIconMenu" Header="Show tray icon" IsCheckable="True" StaysOpenOnClick="True" />
                 <Separator />
                 <MenuItem x:Name="CheckUpdatesMenu" Header="Check for updates" />

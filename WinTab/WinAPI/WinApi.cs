@@ -21,7 +21,33 @@ public static class WinApi
     public const uint WM_QUIT = 0x0012;
     public const uint WM_CLOSE = 0x0010;
     public const int WM_COMMAND = 0x111; // Send a command
+    public const uint WM_KEYDOWN = 0x0100;
+    public const uint WM_SYSKEYDOWN = 0x0104;
+    public const uint WM_MOUSEMOVE = 0x0200;
+    public const uint WM_LBUTTONDOWN = 0x0201;
+    public const uint WM_RBUTTONDOWN = 0x0204;
+    public const uint WM_MBUTTONDOWN = 0x0207;
+    public const uint WM_MBUTTONUP = 0x0208;
+    public const uint WM_MOUSEWHEEL = 0x020A;
+    public const uint WM_XBUTTONDOWN = 0x020B;
+    public const uint WM_MOUSEHWHEEL = 0x020E;
     public const uint PM_NOREMOVE = 0x0000;
+
+    public const int WH_KEYBOARD_LL = 13;
+    public const int WH_MOUSE_LL = 14;
+
+    public const uint LLMHF_INJECTED = 0x0001;
+    public const uint LLKHF_INJECTED = 0x0010;
+
+    public const int SM_CXSMICON = 49;
+    public const int SM_CXDRAG = 68;
+    public const int SM_CYDRAG = 69;
+
+    public const int VK_SHIFT = 0x10;
+    public const int VK_CONTROL = 0x11;
+    public const int VK_MENU = 0x12;
+    public const int VK_LWIN = 0x5B;
+    public const int VK_RWIN = 0x5C;
 
     public const int SW_SHOWNOACTIVATE = 4; // Show window but not activated
     public const int SW_HIDE = 0;

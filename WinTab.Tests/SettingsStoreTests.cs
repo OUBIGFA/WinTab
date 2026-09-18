@@ -12,6 +12,8 @@ internal static class SettingsStoreTests
 {
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("settings enable navigation middle-click for existing configurations independently", MiddleClickDefaults);
+        yield return ("settings persist disabling navigation middle-click independently", MiddleClickPersists);
         yield return ("settings reads and changes do not wait for a blocked disk write", BlockedWriteDoesNotBlockSettings);
         yield return ("settings writes coalesce changes without concurrent file access", WritesLatestSnapshot);
         yield return ("settings save failure is reported without losing in-memory state", ReportsWriteFailure);
@@ -25,6 +27,40 @@ internal static class SettingsStoreTests
     }
 
     private static string NewPath() => Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"), "settings.json");
+
+    private static Task MiddleClickDefaults()
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, """{"WindowHook":false,"ReuseTabs":false,"DoubleClickCloseTab":false}""");
+            using var store = new SettingsStore(path);
+            Check.That(store.Snapshot.MiddleClickForegroundTab, "An existing configuration should enable the new setting by default.");
+            Check.That(!store.Snapshot.WindowHook && !store.Snapshot.ReuseTabs && !store.Snapshot.DoubleClickCloseTab,
+                "The new feature must not turn on merging, reuse, or double-click closing.");
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
+    }
+
+    private static async Task MiddleClickPersists()
+    {
+        var path = NewPath();
+        try
+        {
+            using (var store = new SettingsStore(path))
+            {
+                store.Update(settings => settings with { MiddleClickForegroundTab = false });
+                Check.That(await store.FlushAsync(), "Disabling middle-click activation must save successfully.");
+            }
+            using var reloaded = new SettingsStore(path);
+            Check.That(!reloaded.Snapshot.MiddleClickForegroundTab, "The disabled setting must survive restarting.");
+            Check.That(reloaded.Snapshot.WindowHook && reloaded.Snapshot.ReuseTabs && reloaded.Snapshot.DoubleClickCloseTab,
+                "Disabling middle-click activation must leave the other features unchanged.");
+        }
+        finally { RecycleDirectory(path); }
+    }
 
     private static async Task BlockedWriteDoesNotBlockSettings()
     {

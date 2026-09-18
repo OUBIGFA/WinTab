@@ -13,6 +13,7 @@ public sealed class HookManager : IDisposable
     private readonly SynchronizationContext _syncContext;
     private readonly ExplorerWatcher _explorerWatcher;
     private readonly ExplorerTabDoubleClickHook _doubleClickHook;
+    private readonly ExplorerNavigationMiddleClickHook _middleClickHook;
     private readonly System.Windows.SessionEndingCancelEventHandler _sessionEndingHandler;
     private bool _disposed;
 
@@ -26,9 +27,11 @@ public sealed class HookManager : IDisposable
 
         _explorerWatcher = new ExplorerWatcher(RegistryManager.GetDefaultExplorerLaunchId);
         _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab);
+        _middleClickHook = new ExplorerNavigationMiddleClickHook();
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
         _doubleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
+        _middleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
 
         _sessionEndingHandler = (_, _) => Dispose();
         System.Windows.Application.Current.SessionEnding += _sessionEndingHandler;
@@ -43,6 +46,7 @@ public sealed class HookManager : IDisposable
         SetWindowHook(SettingsManager.IsWindowHookActive);
         SetReuseTabs(SettingsManager.ReuseTabs);
         SetDoubleClickClose(SettingsManager.DoubleClickCloseTab);
+        SetMiddleClickForeground(SettingsManager.MiddleClickForegroundTab);
     }
 
     /// <summary>Turning window merging off also turns tab reuse off; reuse needs the merge hook.</summary>
@@ -82,6 +86,13 @@ public sealed class HookManager : IDisposable
         RaiseStateChanged();
     }
 
+    public void SetMiddleClickForeground(bool enabled)
+    {
+        SettingsManager.MiddleClickForegroundTab = enabled;
+        ChangeHookStatus(_middleClickHook, enabled);
+        RaiseStateChanged();
+    }
+
     private static void ChangeHookStatus(IHook hook, bool isActive)
     {
         if (hook.IsHookActive == isActive)
@@ -105,6 +116,7 @@ public sealed class HookManager : IDisposable
 
         _disposed = true;
         System.Windows.Application.Current.SessionEnding -= _sessionEndingHandler;
+        _middleClickHook.Dispose();
         _doubleClickHook.Dispose();
         _explorerWatcher.Dispose();
         GC.SuppressFinalize(this);
