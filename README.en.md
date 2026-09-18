@@ -40,10 +40,8 @@ Pick the installer that matches your CPU architecture ([Releases](https://github
 - Windows 11 22H2 or newer
 - .NET 9 Desktop Runtime (the installer downloads it on first run if missing)
 
-## Acknowledgements
+## License & Acknowledgements
 
-- [ExplorerTabUtility](https://github.com/w4po/ExplorerTabUtility)
+Released under the MIT License.
 
-## License
-
-MIT License
+Portions of the source code are derived from [ExplorerTabUtility](https://github.com/w4po/ExplorerTabUtility) (Copyright (c) w4po, MIT License). See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for attribution and the full license text.

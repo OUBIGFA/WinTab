@@ -92,6 +92,7 @@ Name: "startupicon"; Description: "{cm:StartWithWindows}"; GroupDescription: "{c
 
 [Files]
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 #ifdef Arch
 Source: "{#PublishRoot}\{#Arch}\*"; DestDir: "{app}\{#MyAppName}"; Flags: ignoreversion recursesubdirs createallsubdirs
 #else

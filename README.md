@@ -40,10 +40,8 @@ WinTab 是一款 Windows 11 工具，自动将新打开的资源管理器窗口�
 - Windows 11 22H2 或更高版本
 - .NET 9 Desktop Runtime（首次运行安装器会自动下载安装）
 
-## 致谢
+## 许可与致谢
 
-- [ExplorerTabUtility](https://github.com/w4po/ExplorerTabUtility)
+本项目以 MIT License 发布。
 
-## 许可
-
-MIT License
+部分源代码派生自 [ExplorerTabUtility](https://github.com/w4po/ExplorerTabUtility)（Copyright (c) w4po，MIT License）。相关归属与许可全文见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
