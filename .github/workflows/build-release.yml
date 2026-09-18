@@ -99,7 +99,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -111,37 +110,21 @@ jobs:
           merge-multiple: true
           path: release-artifacts
 
-      - name: Generate changelog
-        id: generate_changelog
-        uses: mikepenz/release-changelog-builder-action@v5
-        with:
-          mode: COMMIT
-          configurationJson: |
+      - name: Prepare release body
+        shell: bash
+        run: |
+          notes="release-notes/${RELEASE_TAG}.md"
+          if [ -f "$notes" ]; then
+            cp "$notes" release-body.md
+          else
             {
-              "template": "#{{CHANGELOG}}",
-              "categories": [
-                {
-                  "title": "## Feature",
-                  "labels": ["feat", "feature"]
-                },
-                {
-                  "title": "## Fix",
-                  "labels": ["fix", "bug"]
-                },
-                {
-                  "title": "## Other",
-                  "labels": []
-                }
-              ],
-              "label_extractor": [
-                {
-                  "pattern": "^(build|chore|ci|docs|feat|fix|bug|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ]+)([\\s\\S]*)",
-                  "target": "$1"
-                }
-              ]
-            }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              echo "### 更新内容"
+              echo ""
+              echo "⚠️ 本版本未提供中文更新说明：仓库中缺少 \`release-notes/${RELEASE_TAG}.md\`。"
+            } > release-body.md
+          fi
+          echo "----- release-body.md -----"
+          cat release-body.md
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -149,15 +132,6 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.PROJECT_NAME }} ${{ env.RELEASE_TAG }}
           draft: false
-          body: |
-            ${{ steps.generate_changelog.outputs.changelog }}
-
-            ## Downloads
-
-            Pick the installer that matches your CPU architecture:
-
-            - `${{ env.PROJECT_NAME }}_${{ env.RELEASE_TAG }}_x64_Setup.exe` — 64-bit Intel/AMD (most users)
-            - `${{ env.PROJECT_NAME }}_${{ env.RELEASE_TAG }}_arm64_Setup.exe` — ARM64 Windows (Surface Pro X, Snapdragon laptops)
-            - `${{ env.PROJECT_NAME }}_${{ env.RELEASE_TAG }}_x86_Setup.exe` — 32-bit Windows
+          body_path: release-body.md
           files: |
             release-artifacts/*.exe
