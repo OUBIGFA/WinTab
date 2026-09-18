@@ -7,17 +7,42 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version string to use (e.g., v1.0.0)"
+        description: "要重跑发布的【已存在】tag（如 v2.0.5）。⚠️ 只能填已发布过的 tag：新版本号会创建新 Release 并劫持 /releases/latest"
         required: true
         type: string
-        default: "v1.0.0-test"
 
 env:
   PROJECT_NAME: WinTab
   RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
 
 jobs:
+  # 安全闸门：只允许对【已存在】的 tag 发布。
+  # 本工作流建的 Release 是 draft:false 且非 prerelease，会直接成为 /releases/latest；
+  # 而 WinTab 的更新检查读的就是 /releases/latest，所以用新版本号误触发会劫持所有已安装用户的更新。
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify tag exists
+        shell: bash
+        run: |
+          git fetch --tags --force
+          if ! git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            echo "::error::tag ${RELEASE_TAG} 不存在。本工作流只允许对【已存在】的 tag 重跑发布。用新版本号触发会创建新 Release 并劫持 /releases/latest，导致所有已安装用户的更新检查失效。"
+            exit 1
+          fi
+          if [ -z "$(git tag -l --format='%(contents)' "${RELEASE_TAG}")" ]; then
+            echo "::warning::tag ${RELEASE_TAG} 的附注为空，Release 正文将写入占位提示。"
+          fi
+          echo "tag ${RELEASE_TAG} 校验通过 -> $(git rev-parse "${RELEASE_TAG}^{commit}")"
+
   build:
+    needs: guard
     runs-on: windows-latest
     strategy:
       fail-fast: true
