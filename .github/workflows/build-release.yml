@@ -102,6 +102,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # 更新说明由 tag 附注承载，必须拿到附注对象
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Download all installers
         uses: actions/download-artifact@v4
@@ -113,14 +117,17 @@ jobs:
       - name: Prepare release body
         shell: bash
         run: |
-          notes="release-notes/${RELEASE_TAG}.md"
-          if [ -f "$notes" ]; then
-            cp "$notes" release-body.md
+          git fetch --tags --force
+          notes=$(git tag -l --format='%(contents)' "${RELEASE_TAG}")
+          if [ -n "$notes" ]; then
+            printf '%s\n' "$notes" > release-body.md
           else
             {
               echo "### 更新内容"
               echo ""
-              echo "⚠️ 本版本未提供中文更新说明：仓库中缺少 \`release-notes/${RELEASE_TAG}.md\`。"
+              echo "⚠️ 本版本未提供中文更新说明：tag \`${RELEASE_TAG}\` 的附注为空。"
+              echo ""
+              echo "请用 \`git tag -a ${RELEASE_TAG} -F <说明文件>\` 重新打附注标签后重跑发布。"
             } > release-body.md
           fi
           echo "----- release-body.md -----"

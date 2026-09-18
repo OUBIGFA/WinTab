@@ -21,6 +21,9 @@
 # 临时工作目录：只放本地中间产物，不参与提交与发布
 /_temp/
 
+# 更新说明草稿：只保留在本地，不进仓库（Release 正文由 tag 附注承载，见 AGENTS.md 第 2 节）
+/release-notes/
+
 # User-specific files
 *.rsuser
 *.suo
