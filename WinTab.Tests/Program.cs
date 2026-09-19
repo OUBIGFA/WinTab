@@ -55,6 +55,7 @@ internal static class UnitTestRunner
             .Concat(ExplorerDesktopFlowTests.All())
             .Concat(ExplorerDesktopOpenTests.All())
             .Concat(ExplorerPreloadedFrameTests.All())
+            .Concat(ExplorerTabTearOffTests.All())
             .Concat(UpdateReleaseParserTests.All())
             .Concat(UpdateManagerTests.All())
             .Concat(DualKeyDictionaryTests.All())

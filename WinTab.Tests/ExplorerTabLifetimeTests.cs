@@ -538,6 +538,9 @@ internal static class ExplorerTabLifetimeTests
         private readonly object _dictionary;
         private readonly Type _dictionaryType;
         public ExplorerTabActivationTests.ActivationWindow Window { get; private set; }
+        /// <summary>The screen as the tab tear-off tracker sees it; empty unless a test describes windows.</summary>
+        public FakeTabTearOffEnvironment TearOffScreen { get; } = new();
+        public ExplorerTabTearOffTracker TearOffTracker { get; }
         public int Count => (int)_dictionaryType.GetProperty("Count")!.GetValue(_dictionary)!;
         public Action? OnCatalogRead { get; set; }
         public bool ShellConnected => (int)typeof(ExplorerWatcher).GetField("_mainExplorerProcessId", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_watcher)! != 0;
@@ -576,6 +579,9 @@ internal static class ExplorerTabLifetimeTests
             SetField("_mergeSourceHWnds", _mergeSources);
             SetField("_mergeSourceConcealPulse", _concealPulse);
             SetField("<TabStrip>k__BackingField", _tabStrip);
+            TearOffTracker = new ExplorerTabTearOffTracker(TearOffScreen);
+            SetField("_tabTearOff", TearOffTracker);
+            SetField("_tornOffTabReleaseWatches", new ConcurrentDictionary<nint, bool>());
         }
 
         public object AddBrowser(out WindowInfo info, nint? tab = null, bool unavailableLocation = false,

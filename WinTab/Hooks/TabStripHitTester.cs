@@ -16,26 +16,53 @@ internal sealed class TabStripHitTester : IDisposable
     private const int RectMatchSlop = 2;
     private readonly BackgroundRefreshCache<nint, TabStripBounds> _boundsCache = new(ComputeBounds);
 
-    private sealed record TabStripBounds(DrawingRectangle[] TabRects, RECT WindowRect, long RefreshedAt, WindowIdentity Identity);
+    /// <param name="TabRow">The band of the window that holds the tab titles, including the space beside them.</param>
+    private sealed record TabStripBounds(DrawingRectangle[] TabRects, DrawingRectangle TabRow, RECT WindowRect, long RefreshedAt, WindowIdentity Identity);
 
+    /// <summary>Whether the point is on one of the window's tab titles.</summary>
     public bool IsPointOnTabStrip(DrawingPoint screenPoint, nint explorerWindow)
     {
-        if (!ExplorerWindowDiscovery.IsFileExplorerWindow(explorerWindow) ||
-            !WinApi.GetWindowRect(explorerWindow, out var windowRect))
+        if (!TryGetWindowRect(explorerWindow, out var windowRect))
             return false;
 
         if (screenPoint.X < windowRect.Left || screenPoint.X >= windowRect.Right || screenPoint.Y < windowRect.Top)
             return false;
 
-        if (_boundsCache.TryGet(explorerWindow, out var bounds) && bounds!.Identity.IsCurrent &&
-            RectsApproxEqual(bounds.WindowRect, windowRect))
+        return TryGetBounds(explorerWindow, windowRect, out var bounds) &&
+               bounds.TabRects.Any(rectangle => rectangle.Contains(screenPoint));
+    }
+
+    /// <summary>The band of the window that holds its tab titles, including the space beside them; false while it is not known yet.</summary>
+    public bool TryGetTabRow(nint explorerWindow, out DrawingRectangle tabRow)
+    {
+        tabRow = DrawingRectangle.Empty;
+        if (!TryGetWindowRect(explorerWindow, out var windowRect) || !TryGetBounds(explorerWindow, windowRect, out var bounds))
+            return false;
+
+        tabRow = bounds.TabRow;
+        return true;
+    }
+
+    private static bool TryGetWindowRect(nint explorerWindow, out RECT windowRect)
+    {
+        windowRect = default;
+        return ExplorerWindowDiscovery.IsFileExplorerWindow(explorerWindow) &&
+               WinApi.GetWindowRect(explorerWindow, out windowRect);
+    }
+
+    private bool TryGetBounds(nint explorerWindow, RECT windowRect, out TabStripBounds bounds)
+    {
+        if (_boundsCache.TryGet(explorerWindow, out var cached) && cached!.Identity.IsCurrent &&
+            RectsApproxEqual(cached.WindowRect, windowRect))
         {
-            if (Environment.TickCount64 - bounds.RefreshedAt > StaleBoundsMs)
+            if (Environment.TickCount64 - cached.RefreshedAt > StaleBoundsMs)
                 ScheduleRefresh(explorerWindow);
-            return bounds.TabRects.Any(rectangle => rectangle.Contains(screenPoint));
+            bounds = cached;
+            return true;
         }
 
         _boundsCache.Invalidate(explorerWindow);
+        bounds = null!;
         return false;
     }
 
@@ -75,6 +102,8 @@ internal sealed class TabStripHitTester : IDisposable
             !WinApi.GetWindowRect(explorerWindow, out var finalRect) || !RectsApproxEqual(initialRect, finalRect))
             return null;
 
-        return new TabStripBounds(tabRects.ToArray(), finalRect, Environment.TickCount64, identity);
+        var tabRow = DrawingRectangle.FromLTRB(finalRect.Left, tabRects.Min(rectangle => rectangle.Top),
+            finalRect.Right, tabRects.Max(rectangle => rectangle.Bottom));
+        return new TabStripBounds(tabRects.ToArray(), tabRow, finalRect, Environment.TickCount64, identity);
     }
 }

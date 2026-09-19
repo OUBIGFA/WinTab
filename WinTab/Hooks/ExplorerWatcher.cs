@@ -64,6 +64,9 @@ public partial class ExplorerWatcher : IHook
     private readonly MergeSourceConcealPulse _mergeSourceConcealPulse = new();
     private readonly ConcurrentDictionary<nint, ConcealedWindow> _mergeSourceHWnds = new();
     private readonly ConcurrentDictionary<nint, MergeOperation> _closingMergeSourceHWnds = new();
+    private readonly ExplorerTabTearOffTracker _tabTearOff;
+    private readonly ExplorerTabTearOffHook _tabTearOffHook;
+    private readonly ConcurrentDictionary<nint, bool> _tornOffTabReleaseWatches = new();
 
     internal TabStripHitTester TabStrip { get; } = new();
     public bool IsHookActive => _isForcingTabs;
@@ -82,6 +85,8 @@ public partial class ExplorerWatcher : IHook
         _mergeSafetyTimer = new Timer(RecoverExpiredMergeSources, null, Timeout.Infinite, Timeout.Infinite);
         _selectionTimer = new Timer(state => _selectionWork.Request(), null, Timeout.Infinite, Timeout.Infinite);
         _getDefaultExplorerLaunchId = getDefaultExplorerLaunchId ?? (static () => 1);
+        _tabTearOff = new ExplorerTabTearOffTracker(new ExplorerTabTearOffEnvironment(TabStrip, () => _isForcingTabs));
+        _tabTearOffHook = new ExplorerTabTearOffHook(_tabTearOff);
         _processWatcher = new ProcessWatcher("explorer");
         _processWatcher.ProcessTerminated += OnExplorerProcessTerminated;
         StartExplorerProcessCheck();
@@ -95,6 +100,7 @@ public partial class ExplorerWatcher : IHook
         _hookLifetime.Dispose();
         _hookLifetime = new CancellationTokenSource();
         _isForcingTabs = true;
+        StartTabTearOffHook();
         ScheduleShellWindowRegistration();
         ConcealPreloadedExplorerFrames();
         ExplorerDebugLog.Write("StartHook");
@@ -105,8 +111,22 @@ public partial class ExplorerWatcher : IHook
         _isForcingTabs = false;
         Interlocked.Increment(ref _hookGeneration);
         _hookLifetime.Cancel();
+        _tabTearOffHook.StopHook();
         StopMergeSourceConcealPulse();
         RecoverHiddenExplorerWindows("stop-hook");
+    }
+
+    /// <summary>Merging keeps working without the drag observer; only dragged-off tabs would then be merged back.</summary>
+    private void StartTabTearOffHook()
+    {
+        try
+        {
+            _tabTearOffHook.StartHook();
+        }
+        catch (Exception exception)
+        {
+            ReportStatus($"Tab drag detection is unavailable ({exception.GetType().Name}); tabs dragged out of a window may be merged back.");
+        }
     }
     public void SetReuseTabs(bool reuseTabs) => _reuseTabs = reuseTabs;
 
@@ -320,8 +340,80 @@ public partial class ExplorerWatcher : IHook
         if (_hookedTopLevelUseCounts.ContainsKey(hWnd)) return false;
         if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle) return false;
         if (ExplorerWindowDiscovery.GetAllExplorerTabs(hWnd).Take(2).Count() > 1) return false;
+        if (ReleaseTornOffTabWindow(hWnd)) return false;
 
         HideMergeSourceWindow(hWnd);
+        if (_tabTearOff.IsPending(Environment.TickCount64))
+            _ = ReleaseTornOffTabWindowWhenReadyAsync(hWnd);
+        return true;
+    }
+    /// <summary>
+    /// The window Explorer opens for a tab the user dragged off the tab row is what the user asked for, so it
+    /// is never merged back: it is shown again if it was concealed while Explorer still had it hidden, and it
+    /// is protected like a window opened with Ctrl + Shift.
+    /// </summary>
+    private bool ReleaseTornOffTabWindow(nint hWnd)
+    {
+        if (!_tabTearOff.TryClaim(hWnd, Environment.TickCount64))
+            return false;
+
+        if (_mergeSourceHWnds.TryGetValue(hWnd, out var concealed))
+        {
+            if (RestoreConcealedWindow(concealed))
+                ExplorerDebugLog.Write($"Torn-off tab window shown again hwnd={hWnd}");
+        }
+        else if (!IsWindowProtected(hWnd))
+        {
+            PreventWindowHiding(hWnd);
+            ExplorerDebugLog.Write($"Torn-off tab window released hwnd={hWnd}");
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Explorer may show the window for a torn-off tab a moment before it takes the tab out of the source
+    /// window. Such a window is concealed like any other new window and shown again as soon as the drop can
+    /// be confirmed, without waiting for its registration to catch up.
+    /// </summary>
+    private async Task ReleaseTornOffTabWindowWhenReadyAsync(nint hWnd)
+    {
+        if (!_tornOffTabReleaseWatches.TryAdd(hWnd, true))
+            return;
+        try
+        {
+            while (_isForcingTabs && !_disposed && _tabTearOff.IsPending(Environment.TickCount64) &&
+                   _mergeSourceHWnds.TryGetValue(hWnd, out var concealed) && concealed.Identity.IsCurrent)
+            {
+                if (ReleaseTornOffTabWindow(hWnd))
+                    return;
+                await Task.Delay(25);
+            }
+        }
+        catch (Exception exception)
+        {
+            ExplorerDebugLog.Write($"Torn-off tab window release failed hwnd={hWnd} error={exception.GetType().Name}");
+        }
+        finally
+        {
+            _tornOffTabReleaseWatches.TryRemove(hWnd, out _);
+        }
+    }
+
+    /// <summary>
+    /// While a drop may still produce its window, a new window cannot be told apart from the one Explorer
+    /// opens for the dragged tab until Explorer has moved the tab. Its merge therefore waits until the drop
+    /// is confirmed for this window, or until the drop can no longer produce a window.
+    /// </summary>
+    private async Task<bool> WaitForTornOffTabWindowAsync(nint hWnd)
+    {
+        while (!ReleaseTornOffTabWindow(hWnd))
+        {
+            if (!_tabTearOff.IsPending(Environment.TickCount64))
+                return false;
+            await Task.Delay(25, CurrentCancellation);
+            EnsureCurrentMerge();
+        }
+
         return true;
     }
     private static nint GetExplorerTopLevelWindow(nint hWnd)
@@ -347,6 +439,7 @@ public partial class ExplorerWatcher : IHook
 
         var targetWindow = GetMainWindowHWnd(hWnd);
         if (targetWindow == 0 || hWnd == targetWindow) return;
+        if (ReleaseTornOffTabWindow(hWnd)) return;
 
         HideMergeSourceWindow(hWnd);
     }
@@ -538,7 +631,8 @@ public partial class ExplorerWatcher : IHook
                         !IsWindowProtected(hWnd) &&
                         _isForcingTabs &&
                         !Helper.IsCtrlShiftDown() &&
-                        _mainWindowHandle != hWnd)
+                        _mainWindowHandle != hWnd &&
+                        !ReleaseTornOffTabWindow(hWnd))
                     {
                         HideMergeSourceWindow(hWnd);
                     }
@@ -664,6 +758,13 @@ public partial class ExplorerWatcher : IHook
                 return;
             }
 
+            // The window is shown again and registered as an independent window on the way out.
+            if (ReleaseTornOffTabWindow(hWnd))
+            {
+                ExplorerDebugLog.Write($"Registered release torn-off-tab hwnd={hWnd}");
+                return;
+            }
+
             if (HasOtherTrackedShellWindowForTopLevel(window, hWnd))
             {
                 ExplorerDebugLog.Write($"Registered sibling hwnd={hWnd}");
@@ -726,6 +827,12 @@ public partial class ExplorerWatcher : IHook
                 ExplorerDebugLog.Write($"Registered release no-target hwnd={hWnd} location={location}");
                 await RestoreMergeSourceWindowAsync(hWnd);
                 await RegisterIndependentWindowAsync(window, windowInfo, hWnd);
+                return;
+            }
+
+            if (await WaitForTornOffTabWindowAsync(hWnd))
+            {
+                ExplorerDebugLog.Write($"Registered release torn-off-tab-shown hwnd={hWnd} location={location}");
                 return;
             }
 
@@ -2083,6 +2190,7 @@ public partial class ExplorerWatcher : IHook
         _mergeSafetyTimer.Dispose();
         _selectionTimer.Dispose();
         StopMergeSourceConcealPulse();
+        _tabTearOffHook.Dispose();
         Interlocked.Exchange(ref _winEventHookThread, null)?.Dispose();
         RecoverHiddenExplorerWindows("dispose");
         TabStrip.Dispose();
