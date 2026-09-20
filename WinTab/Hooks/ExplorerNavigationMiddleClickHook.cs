@@ -1,30 +1,26 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
-using System.Threading;
 using System.Threading.Tasks;
 using WinTab.Helpers;
 using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
-/// <summary>Leaves Explorer's middle-click untouched and selects only a uniquely correlated new tab.</summary>
+/// <summary>
+/// Leaves Explorer's middle click untouched and brings the tab it opens to the front. Nothing is prepared
+/// ahead of a click: the button-down records the window's tabs, and the tab that appears afterwards is
+/// selected with Explorer's native appended-tab command. There is no cache that can go stale between clicks.
+/// </summary>
 public sealed class ExplorerNavigationMiddleClickHook : IHook
 {
-    private readonly BackgroundRefreshCache<nint, ExplorerNavigationSnapshot> _snapshots = new(CaptureSnapshot);
     private readonly NavigationClickGate _clicks = new();
-    private readonly Timer _warmTimer;
     private NavigationInputObserver? _input;
     private volatile bool _active;
     private bool _disposed;
-    private nint _pendingWindow;
-    private long _lastHoverWarm;
 
     public event Action<string>? StatusChanged;
     public bool IsHookActive => _active;
-
-    public ExplorerNavigationMiddleClickHook() =>
-        _warmTimer = new Timer(_ => WarmForeground(), null, Timeout.Infinite, Timeout.Infinite);
 
     public void StartHook()
     {
@@ -34,7 +30,6 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         try
         {
             _input = new NavigationInputObserver(ProcessPointer, CancelForKeyboard, OnForeground);
-            _warmTimer.Change(0, 200);
         }
         catch
         {
@@ -46,41 +41,9 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
     public void StopHook()
     {
         _active = false;
-        _warmTimer.Change(Timeout.Infinite, Timeout.Infinite);
         _clicks.Cancel();
         _input?.Dispose();
         _input = null;
-        _snapshots.Clear();
-    }
-
-    private static ExplorerNavigationSnapshot? CaptureSnapshot(nint window)
-    {
-        try { return ExplorerNavigationAccess.Capture(window); }
-        catch (Exception exception)
-        {
-            ExplorerDebugLog.Write($"Navigation snapshot unavailable hwnd={window} error={exception.GetType().Name}:{exception.Message}");
-            return null;
-        }
-    }
-
-    internal bool IsPrepared(nint window) =>
-        _snapshots.TryGet(window, out var snapshot) && snapshot!.Matches(window,
-            ExplorerNavigationAccess.NavigationTree(ExplorerNavigationAccess.ActiveTab(window)), ExplorerNavigationAccess.Tabs(window));
-
-    private void WarmForeground()
-    {
-        if (_active) Warm(WinApi.GetForegroundWindow());
-    }
-
-    private void Warm(nint window)
-    {
-        if (!_active || !ExplorerWindowDiscovery.IsShownExplorerWindow(window)) return;
-        var tree = ExplorerNavigationAccess.NavigationTree(ExplorerNavigationAccess.ActiveTab(window));
-        if (tree == 0) return;
-        if (!_snapshots.TryGet(window, out var snapshot) ||
-            Environment.TickCount64 - snapshot!.CreatedAt > 1_000 ||
-            !snapshot.Matches(window, tree, ExplorerNavigationAccess.Tabs(window)))
-            _snapshots.Request(window);
     }
 
     private static nint WindowAt(Point point)
@@ -96,36 +59,21 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         // That is still the same Explorer frame, not the user switching to another application.
         var root = WinApi.GetAncestor(window, WinApi.GA_ROOT);
         if (root != 0) window = root;
-        if (window != _pendingWindow)
-        {
-            if (_pendingWindow != 0) ExplorerDebugLog.Write($"Navigation cancelled by foreground={window}");
-            _clicks.Cancel();
-        }
-        if (_active && ExplorerWindowDiscovery.IsFileExplorerWindow(window)) _snapshots.Request(window);
+        if (_clicks.CancelIfForegroundChanged(window))
+            ExplorerDebugLog.Write($"Navigation cancelled by foreground={window}");
     }
 
     private void CancelForKeyboard()
     {
-        if (_pendingWindow != 0) ExplorerDebugLog.Write("Navigation cancelled by keyboard input.");
-        _clicks.Cancel();
-        var window = WinApi.GetForegroundWindow();
-        if (_active && ExplorerWindowDiscovery.IsFileExplorerWindow(window)) _snapshots.Invalidate(window);
+        if (_clicks.Cancel()) ExplorerDebugLog.Write("Navigation cancelled by keyboard input.");
     }
 
     internal void ProcessPointer(NavigationPointerInput input)
     {
-        if (!_active || input.Injected) return;
+        if (!_active || input.FromWinTab) return;
         if (input.Kind == NavigationPointerKind.Move)
         {
             _clicks.Move(input.Point, WinApi.GetSystemMetrics(WinApi.SM_CXDRAG), WinApi.GetSystemMetrics(WinApi.SM_CYDRAG));
-            var now = Environment.TickCount64;
-            if (now - Interlocked.Read(ref _lastHoverWarm) >= 100)
-            {
-                Interlocked.Exchange(ref _lastHoverWarm, now);
-                // Only enqueue here; accessibility is never queried by a hook callback.
-                var hovered = WindowAt(input.Point);
-                if (hovered != 0 && !_snapshots.TryGet(hovered, out _)) _snapshots.Request(hovered);
-            }
             return;
         }
         if (input.Kind == NavigationPointerKind.MiddleUp)
@@ -136,63 +84,76 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         }
         if (input.Kind is NavigationPointerKind.OtherDown or NavigationPointerKind.Wheel)
         {
-            if (_pendingWindow != 0) ExplorerDebugLog.Write($"Navigation cancelled by pointer={input.Kind}");
-            _clicks.Cancel();
-            var changedWindow = WindowAt(input.Point);
-            if (changedWindow != 0) _snapshots.Invalidate(changedWindow);
+            if (_clicks.Cancel()) ExplorerDebugLog.Write($"Navigation cancelled by pointer={input.Kind}");
             return;
         }
         if (input.Kind != NavigationPointerKind.MiddleDown) return;
         if (HasModifiers()) { _clicks.Cancel(); return; }
 
+        // Only window handles are read here; nothing on the native input path waits for Explorer's UI thread.
         var startedAt = Stopwatch.GetTimestamp();
         var window = WindowAt(input.Point);
         var tree = WinApi.WindowFromPoint(input.Point);
-        var tabs = window == 0 ? [] : ExplorerNavigationAccess.Tabs(window);
-        if (window == 0 || tabs.Length is 0 or > ExplorerNavigationAccess.MaxTabs ||
-            !WinApi.IsWindowHasClassName(tree, "SysTreeView32") ||
-            !_snapshots.TryGet(window, out var snapshot) || !snapshot!.Matches(window, tree, tabs))
-        {
-            _clicks.Cancel();
-            if (window != 0) _snapshots.Request(window);
-            ExplorerDebugLog.Write("Navigation middle-click left native: no matching prepared snapshot.");
-            return;
-        }
-        var item = Array.Find(snapshot.Items, row => row.HitBounds.Contains(input.Point));
-        // Cap synchronous work. Nothing on the native input path waits for another process's UI thread.
-        if (item == null || Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds > 12)
+        if (window == 0 || !ExplorerNavigationAccess.IsNavigationTree(tree, window))
         {
             _clicks.Cancel();
             return;
         }
-        var lease = _clicks.Begin(input.Point, Environment.TickCount64);
+        var tabs = ExplorerNavigationAccess.Tabs(window);
+        var sourceTab = ExplorerNavigationAccess.ActiveTab(window);
+        if (tabs.Length is 0 or > ExplorerNavigationAccess.MaxTabs || sourceTab == 0)
+        {
+            _clicks.Cancel();
+            ExplorerDebugLog.Write($"Navigation middle-click left native: tabs={tabs.Length} hwnd={window}");
+            return;
+        }
+        var lease = _clicks.Begin(window, input.Point, Environment.TickCount64);
         if (lease == null) return;
-        _pendingWindow = window;
-        ExplorerDebugLog.Write($"Navigation click captured hwnd={window} tab={snapshot.SourceTab.Handle} item={item.Id} hookMs={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F1}");
-        _ = Task.Run(() => ActivateAsync(snapshot, item, lease));
+        var click = new NavigationClick(WindowIdentity.Capture(window), WindowIdentity.Capture(sourceTab),
+            WindowIdentity.Capture(tree), tabs, input.Point);
+        ExplorerDebugLog.Write($"Navigation click captured hwnd={window} tab={sourceTab} tabs={tabs.Length} hookMs={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F1}");
+        _ = Task.Run(() => ActivateAsync(click, lease));
     }
 
-    private async Task ActivateAsync(ExplorerNavigationSnapshot snapshot, NavigationItem item, NavigationClickLease lease)
+    private async Task ActivateAsync(NavigationClick click, NavigationClickLease lease)
     {
         var result = NavigationActivationResult.Cancelled;
+        var forgotten = false;
+        var startedAt = Stopwatch.GetTimestamp();
+        string Elapsed() => $"{Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0}ms";
         bool Current()
         {
-            var current = _active && _clicks.IsCurrent(lease, Environment.TickCount64) &&
-                snapshot.Window.IsCurrent && snapshot.SourceTab.IsCurrent && snapshot.Tree.IsCurrent &&
-                WinApi.GetParent(snapshot.SourceTab.Handle) == snapshot.Window.Handle &&
-                WinApi.GetForegroundWindow() == snapshot.Window.Handle && snapshot.HasSameBounds();
+            var current = _active && _clicks.IsCurrent(lease, Environment.TickCount64) && click.IsCurrent();
             if (!current)
-                ExplorerDebugLog.Write($"Navigation request retired active={_active} lease={_clicks.IsCurrent(lease, Environment.TickCount64)} window={snapshot.Window.IsCurrent} source={snapshot.SourceTab.IsCurrent} tree={snapshot.Tree.IsCurrent} parent={WinApi.GetParent(snapshot.SourceTab.Handle)} foreground={WinApi.GetForegroundWindow()} sameBounds={snapshot.HasSameBounds()}");
+                ExplorerDebugLog.Write($"Navigation request retired active={_active} lease={_clicks.IsCurrent(lease, Environment.TickCount64)} window={click.Window.IsCurrent} source={click.SourceTab.IsCurrent} tree={click.Tree.IsCurrent} foreground={WinApi.GetForegroundWindow()}");
             return current;
         }
         try
         {
-            await lease.Released.Task.WaitAsync(lease.Token).ConfigureAwait(false);
-            if (Current() && ExplorerNavigationAccess.HitStillMatches(snapshot, item, lease.Point))
+            // A click beside the folder items opens nothing, so it is forgotten at once and does not hold up the next click.
+            var onFolder = await Task.Run(() => ExplorerNavigationAccess.IsFolderItemAt(click.Tree.Handle, click.Point))
+                .WaitAsync(lease.Token).ConfigureAwait(false);
+            if (!onFolder)
             {
-                result = await NavigationTabActivation.RunAsync(snapshot.Tabs, snapshot.SourceTab.Handle,
-                    Current, () => ExplorerNavigationAccess.Observe(snapshot.Window.Handle, snapshot.Tabs),
-                    id => ExplorerNavigationAccess.Select(snapshot, item, lease.Point, id, Current), lease.Token,
+                forgotten = true;
+                _clicks.Discard(lease);
+                ExplorerDebugLog.Write($"Navigation middle-click left native: not on a folder item hwnd={click.Window.Handle}");
+                return;
+            }
+            ExplorerDebugLog.Write($"Navigation folder item confirmed at {Elapsed()}");
+            await lease.Released.Task.WaitAsync(lease.Token).ConfigureAwait(false);
+            ExplorerDebugLog.Write($"Navigation button released at {Elapsed()}");
+            if (Current())
+            {
+                result = await NavigationTabActivation.RunAsync(click.TabsBefore, click.SourceTab.Handle,
+                    Current, () => ExplorerNavigationAccess.Observe(click.Window.Handle),
+                    newTab =>
+                    {
+                        ExplorerDebugLog.Write($"Navigation new tab={newTab} seen at {Elapsed()}");
+                        var outcome = ExplorerNavigationAccess.SelectNewTab(click, newTab, Current);
+                        ExplorerDebugLog.Write($"Navigation select outcome={outcome} at {Elapsed()}");
+                        return outcome;
+                    }, lease.Token,
                     Math.Max(1, (int)(lease.Deadline - Environment.TickCount64))).ConfigureAwait(false);
             }
         }
@@ -204,10 +165,9 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         }
         finally
         {
-            ExplorerDebugLog.Write($"Navigation activation result={result} hwnd={snapshot.Window.Handle}");
-            _pendingWindow = 0;
+            if (!forgotten)
+                ExplorerDebugLog.Write($"Navigation activation result={result} hwnd={click.Window.Handle} at {Elapsed()}");
             _clicks.Complete(lease, result is NavigationActivationResult.Activated or NavigationActivationResult.AlreadyActive);
-            if (_active) _snapshots.Invalidate(snapshot.Window.Handle);
         }
         if (result == NavigationActivationResult.Activated)
             StatusChanged?.Invoke("Activated Explorer tab opened by navigation-pane middle-click.");
@@ -226,8 +186,6 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         StopHook();
         _disposed = true;
         _clicks.Dispose();
-        _warmTimer.Dispose();
-        _snapshots.Dispose();
         GC.SuppressFinalize(this);
     }
 }

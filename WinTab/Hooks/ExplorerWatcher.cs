@@ -215,10 +215,14 @@ public partial class ExplorerWatcher : IHook
                 Marshal.FreeCoTaskMem(targetPidl);
         }
     }
+    private int _tabSelectionsInProgress;
+    private int _ignoreNativeFocusThrough = Environment.TickCount;
+
     public async Task<bool> SelectTabByHandle(nint windowHandle, nint tabHandle, int timeoutMs = 2_500)
     {
         if (windowHandle == 0 || tabHandle == 0)
             return false;
+        Interlocked.Increment(ref _tabSelectionsInProgress);
         try
         {
             var parentIdentity = WindowIdentity.Capture(windowHandle);
@@ -248,6 +252,13 @@ public partial class ExplorerWatcher : IHook
         catch (OperationCanceledException)
         {
             return false;
+        }
+        finally
+        {
+            // Switching by index can focus intermediate tabs. Delayed WinEvents from those commands are
+            // not new native file-location requests, even if delivered after this method has returned.
+            Volatile.Write(ref _ignoreNativeFocusThrough, Environment.TickCount);
+            Interlocked.Decrement(ref _tabSelectionsInProgress);
         }
     }
 
@@ -309,6 +320,22 @@ public partial class ExplorerWatcher : IHook
     private void OnWindowShown(nint hWinEventHook, uint eventType, nint hWnd, int idObject, int idChild, uint dwEventThread, uint dWmsEventTime)
     {
         if (!_isForcingTabs || !_preExistingExplorerWindowsProtected || _disposed || hWnd == 0) return;
+
+        if (eventType == WinApi.EVENT_OBJECT_FOCUS)
+        {
+            // Only the file-view client focus, not every accessible item or navigation-tree selection.
+            if (idObject == -4 && idChild == 0 &&
+                Volatile.Read(ref _tabSelectionsInProgress) == 0 &&
+                unchecked((int)dWmsEventTime - Volatile.Read(ref _ignoreNativeFocusThrough)) > 0)
+            {
+                try { _ = TryActivateNativeFocusedTabAsync(hWnd); }
+                catch (Exception exception) when (exception is ObjectDisposedException or InvalidOperationException or TaskSchedulerException)
+                {
+                    ExplorerDebugLog.Write($"Native file-location focus could not be scheduled: {exception.Message}");
+                }
+            }
+            return;
+        }
 
         // OBJID_WINDOW = 0 and CHILDID_SELF = 0. The system-wide WinEvent hook range fires for every
         // accessibility sub-element on the desktop (caret, focus, menu items, scrollbars, list items,

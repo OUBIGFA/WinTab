@@ -39,11 +39,12 @@ internal static class ExplorerLaunchLocationResolverTests
 
     private static async Task WaitsForDelayedExternalShellFolderAfterDefault()
     {
-        var start = Environment.TickCount64;
         var releasedStartupLocation = false;
 
         var resolved = await CreateFastResolver().ResolveAsync(
-            () => Environment.TickCount64 - start < 95 ? ThisPc : TargetFolder,
+            // Keep the simulated source on This PC until the release is observed. A 15ms wall-clock
+            // gap between release and navigation can be skipped entirely by a busy build machine.
+            () => releasedStartupLocation ? TargetFolder : ThisPc,
             IsDefaultLocation,
             onStartupLocationRetained: _ =>
             {

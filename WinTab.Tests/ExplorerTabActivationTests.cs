@@ -78,6 +78,27 @@ internal static class ExplorerTabActivationTests
 
         public nint Handle => _host.Handle;
         public nint FirstTab => _tabs[0];
+        public nint TabAt(int index) => _tabs[index];
+
+        public nint CreateFolderView(int index)
+        {
+            foreach (var name in new[] { "SHELLDLL_DefView", "DirectUIHWND", "CtrlNotifySink", "DUIViewWndClassName" })
+            {
+                var windowClass = new NativeWindowClass { Procedure = TabProcedure, Instance = Module, ClassName = name };
+                RegisterClass(ref windowClass);
+            }
+            var host = CreateWindowEx(0, "DUIViewWndClassName", string.Empty, 0x50000000,
+                0, 0, 1, 1, _tabs[index], 0, Module, 0);
+            var bridge = CreateWindowEx(0, "DirectUIHWND", string.Empty, 0x50000000,
+                0, 0, 1, 1, host, 0, Module, 0);
+            var sink = CreateWindowEx(0, "CtrlNotifySink", string.Empty, 0x50000000,
+                0, 0, 1, 1, bridge, 0, Module, 0);
+            var shellView = CreateWindowEx(0, "SHELLDLL_DefView", string.Empty, 0x50000000,
+                0, 0, 1, 1, sink, 0, Module, 0);
+            return CreateWindowEx(0, "DirectUIHWND", string.Empty, 0x50000000,
+                0, 0, 1, 1, shellView, 0, Module, 0);
+        }
+
         public nint ActiveTab => WinApi.FindWindowEx(Handle, 0, TabClassName, null);
         public int CommandsWhileMinimized { get; private set; }
 

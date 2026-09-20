@@ -3,16 +3,18 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Threading;
+using WinTab.Helpers;
 using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
 internal enum NavigationPointerKind { Move, MiddleDown, MiddleUp, OtherDown, Wheel }
-internal readonly record struct NavigationPointerInput(NavigationPointerKind Kind, Point Point, bool Injected);
+/// <param name="FromWinTab">The input was synthesized by WinTab itself (a double-click close), not by the user or another tool.</param>
+internal readonly record struct NavigationPointerInput(NavigationPointerKind Kind, Point Point, bool FromWinTab);
 
 /// <summary>
-/// Observation only: always calls the next hook. Unlike H.Hooks' public events, this exposes injected
-/// input and guarantees the before-click snapshot is taken before Explorer receives the button-down.
+/// Observation only: always calls the next hook. Unlike H.Hooks' public events, this tells WinTab's own
+/// synthesized clicks apart and guarantees the window's tabs are read before Explorer receives the button-down.
 /// </summary>
 internal sealed class NavigationInputObserver : IDisposable
 {
@@ -110,7 +112,8 @@ internal sealed class NavigationInputObserver : IDisposable
             if (kind.HasValue)
             {
                 var input = Marshal.PtrToStructure<MouseInput>(data);
-                try { _pointer(new NavigationPointerInput(kind.Value, input.Point, (input.Flags & WinApi.LLMHF_INJECTED) != 0)); }
+                var fromWinTab = (input.Flags & WinApi.LLMHF_INJECTED) != 0 && input.ExtraInfo == MouseSimulator.InjectionSignature;
+                try { _pointer(new NavigationPointerInput(kind.Value, input.Point, fromWinTab)); }
                 catch (Exception exception) { ExplorerDebugLog.Write($"Navigation pointer observation failed: {exception.Message}"); }
             }
         }

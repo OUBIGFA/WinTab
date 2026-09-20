@@ -13,6 +13,7 @@ public static class WinApi
 {
     public const int EVENT_SYSTEM_FOREGROUND = 0x0003;
     public const int EVENT_OBJECT_CREATE = 0x8000;
+    public const int EVENT_OBJECT_FOCUS = 0x8005;
     public const int EVENT_OBJECT_SHOW = 0x8002;
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
@@ -185,6 +186,18 @@ public static class WinApi
 
     [DllImport("user32.dll")]
     public static extern uint RealGetWindowClass(nint hwnd, StringBuilder pszType, uint cchType);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetWindowText(nint hWnd, StringBuilder lpString, int nMaxCount);
+
+    /// <summary>The window's title as last set by its owner; for another process's window nothing is sent to it.</summary>
+    public static string GetWindowText(nint hWnd, int maxLength = 512)
+    {
+        if (hWnd == 0) return string.Empty;
+        var text = new StringBuilder(maxLength + 1);
+        var length = GetWindowText(hWnd, text, text.Capacity);
+        return length > 0 ? text.ToString(0, length) : string.Empty;
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern nint SendMessage(nint hWnd, uint Msg, nint wParam, nint lParam);

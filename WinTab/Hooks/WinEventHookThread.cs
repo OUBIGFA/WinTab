@@ -18,6 +18,7 @@ internal sealed class WinEventHookThread : IDisposable
     private uint _threadId;
     private nint _foregroundHookId;
     private nint _showHookId;
+    private nint _focusHookId;
     private bool _disposed;
 
     public WinEventHookThread(WinEventDelegate showCallback)
@@ -49,7 +50,8 @@ internal sealed class WinEventHookThread : IDisposable
             const uint hookFlags = WinApi.WINEVENT_OUTOFCONTEXT | WinApi.WINEVENT_SKIPOWNPROCESS;
             _foregroundHookId = WinApi.SetWinEventHook(WinApi.EVENT_SYSTEM_FOREGROUND, WinApi.EVENT_SYSTEM_FOREGROUND, 0, _showCallback, 0, 0, hookFlags);
             _showHookId = WinApi.SetWinEventHook(WinApi.EVENT_OBJECT_CREATE, WinApi.EVENT_OBJECT_SHOW, 0, _showCallback, 0, 0, hookFlags);
-            ExplorerDebugLog.Write($"WinEvent hook thread started id={_threadId} foregroundHook={_foregroundHookId} showHook={_showHookId}");
+            _focusHookId = WinApi.SetWinEventHook(WinApi.EVENT_OBJECT_FOCUS, WinApi.EVENT_OBJECT_FOCUS, 0, _showCallback, 0, 0, hookFlags);
+            ExplorerDebugLog.Write($"WinEvent hook thread started id={_threadId} foregroundHook={_foregroundHookId} showHook={_showHookId} focusHook={_focusHookId}");
             _started.Set();
 
             while (WinApi.GetMessage(out var message, 0, 0, 0) > 0)
@@ -65,6 +67,9 @@ internal sealed class WinEventHookThread : IDisposable
 
             if (_showHookId != 0)
                 WinApi.UnhookWinEvent(_showHookId);
+
+            if (_focusHookId != 0)
+                WinApi.UnhookWinEvent(_focusHookId);
 
             ExplorerDebugLog.Write("WinEvent hook thread stopped");
             _stopped.Set();

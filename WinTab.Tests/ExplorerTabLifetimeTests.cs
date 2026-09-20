@@ -537,6 +537,8 @@ internal static class ExplorerTabLifetimeTests
         private readonly ExplorerWatcher _watcher;
         private readonly object _dictionary;
         private readonly Type _dictionaryType;
+        public ExplorerWatcher Watcher => _watcher;
+        public SemaphoreSlim OpenLock => _openLock;
         public ExplorerTabActivationTests.ActivationWindow Window { get; private set; }
         /// <summary>The screen as the tab tear-off tracker sees it; empty unless a test describes windows.</summary>
         public FakeTabTearOffEnvironment TearOffScreen { get; } = new();

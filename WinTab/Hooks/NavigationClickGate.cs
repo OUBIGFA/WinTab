@@ -14,12 +14,19 @@ internal sealed class NavigationClickGate : IDisposable
     private long _blockedUntil;
     private bool _disposed;
 
-    public NavigationClickLease? Begin(Point point, long now)
+    public NavigationClickLease? Begin(nint window, Point point, long now)
     {
         lock (_gate)
         {
             if (_disposed)
                 return null;
+            if (_pending is { } expired && now >= expired.Deadline)
+            {
+                // A blocked accessibility call must not keep owning the input gate after its deadline.
+                _pending = null;
+                expired.Cancel();
+                expired.Dispose();
+            }
             if (_pending != null)
             {
                 CancelCore();
@@ -27,7 +34,7 @@ internal sealed class NavigationClickGate : IDisposable
             }
             if (now < _blockedUntil)
                 return null;
-            return _pending = new NavigationClickLease(point, now + RequestLifetimeMs);
+            return _pending = new NavigationClickLease(window, point, now + RequestLifetimeMs);
         }
     }
 
@@ -57,18 +64,42 @@ internal sealed class NavigationClickGate : IDisposable
         }
     }
 
-    public void Cancel()
+    public bool Cancel()
     {
         lock (_gate)
-            CancelCore();
+            return CancelCore();
     }
 
-    private void CancelCore()
+    /// <summary>The pending lease owns its window; retiring an older click cannot change that ownership.</summary>
+    public bool CancelIfForegroundChanged(nint window)
+    {
+        lock (_gate)
+            return _pending is { } pending && pending.Window != window && CancelCore();
+    }
+
+    /// <summary>
+    /// Forgets a click that cannot produce a tab. Unlike a cancellation, nothing can arrive late from it, so the
+    /// next click is not held back.
+    /// </summary>
+    public void Discard(NavigationClickLease lease)
+    {
+        lock (_gate)
+        {
+            if (!ReferenceEquals(_pending, lease))
+                return;
+            _pending = null;
+            lease.Cancel();
+            lease.Dispose();
+        }
+    }
+
+    private bool CancelCore()
     {
         if (_pending is not { } pending)
-            return;
+            return false;
         _blockedUntil = Math.Max(_blockedUntil, pending.Deadline);
         pending.Cancel();
+        return true;
     }
 
     public bool IsCurrent(NavigationClickLease lease, long now)
@@ -103,13 +134,15 @@ internal sealed class NavigationClickGate : IDisposable
 internal sealed class NavigationClickLease : IDisposable
 {
     private readonly CancellationTokenSource _lifetime = new();
+    public nint Window { get; }
     public Point Point { get; }
     public long Deadline { get; }
     public CancellationToken Token { get; }
     public TaskCompletionSource<bool> Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public NavigationClickLease(Point point, long deadline)
+    public NavigationClickLease(nint window, Point point, long deadline)
     {
+        Window = window;
         Point = point;
         Deadline = deadline;
         Token = _lifetime.Token;

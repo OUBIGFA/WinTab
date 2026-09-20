@@ -7,6 +7,12 @@ namespace WinTab.Helpers;
 
 public static class MouseSimulator
 {
+    /// <summary>
+    /// Marks the input WinTab synthesizes so its own hooks can tell it from the user's, and from input other
+    /// tools inject on the user's behalf. Delivered to low-level hooks as the extra information of the event.
+    /// </summary>
+    public static readonly nuint InjectionSignature = 0x57696E54; // "WinT"
+
     private const uint MOUSEEVENTF_MOVE        = 0x0001;
     private const uint MOUSEEVENTF_LEFTDOWN    = 0x0002;
     private const uint MOUSEEVENTF_LEFTUP      = 0x0004;
@@ -67,7 +73,7 @@ public static class MouseSimulator
                     mouseData = 0,
                     dwFlags = flags,
                     time = 0,
-                    dwExtraInfo = 0,
+                    dwExtraInfo = unchecked((nint)InjectionSignature),
                 }
             }
         };

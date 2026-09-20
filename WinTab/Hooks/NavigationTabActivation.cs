@@ -6,11 +6,19 @@ using System.Threading.Tasks;
 
 namespace WinTab.Hooks;
 
-internal sealed record NavigationTabSet(nint[] Handles, string[] AutomationIds);
-internal sealed record NavigationTabObservation(NavigationTabSet Tabs, nint ActiveTab);
+/// <summary>The tabs of a window and its active tab, as seen at one moment.</summary>
+internal sealed record NavigationTabObservation(nint[] Handles, nint ActiveTab);
+
 internal enum NavigationActivationResult { Activated, AlreadyActive, Cancelled, Ambiguous, TimedOut, SelectionRejected }
 
-/// <summary>Correlates both native and UIA identities. Never guesses an index or a tab title.</summary>
+/// <summary>What selecting the new tab came to: done, not possible yet, or not possible at all.</summary>
+internal enum NavigationSelectOutcome { Selected, NotReady, Rejected }
+
+/// <summary>
+/// Brings the tab Explorer opened for a middle click to the front. The click's outcome is the one tab
+/// that appears in the window and was not there when the button went down; nothing is guessed from an
+/// index or a title alone.
+/// </summary>
 internal static class NavigationTabActivation
 {
     internal static bool TryGetOnlyAddition<T>(T[] before, T[] after, out T added) where T : notnull
@@ -26,14 +34,13 @@ internal static class NavigationTabActivation
     }
 
     public static async Task<NavigationActivationResult> RunAsync(
-        NavigationTabSet before, nint sourceTab,
+        nint[] before, nint sourceTab,
         Func<bool> isCurrent, Func<NavigationTabObservation> observe,
-        Func<string, bool> select, CancellationToken cancellationToken,
+        Func<nint, NavigationSelectOutcome> select, CancellationToken cancellationToken,
         int timeoutMs = 1_500, int pollMs = 20)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
         nint candidate = 0;
-        string? candidateId = null;
         var confirmedAt = 0L;
         var selected = false;
         try
@@ -46,47 +53,45 @@ internal static class NavigationTabActivation
                 if (cancellationToken.IsCancellationRequested || !isCurrent())
                     return NavigationActivationResult.Cancelled;
 
-                // Lost/extra tabs mean another operation is competing with this click.
-                if (!before.Handles.All(current.Tabs.Handles.Contains) ||
-                    current.Tabs.Handles.Length > before.Handles.Length + 1)
+                // Lost or extra tabs mean another operation is competing with this click.
+                if (!before.All(current.Handles.Contains) || current.Handles.Length > before.Length + 1)
                     return NavigationActivationResult.Ambiguous;
 
-                if (TryGetOnlyAddition(before.Handles, current.Tabs.Handles, out var newHandle) &&
-                    TryGetOnlyAddition(before.AutomationIds, current.Tabs.AutomationIds, out var newId))
+                if (TryGetOnlyAddition(before, current.Handles, out var newTab))
                 {
-                    if (candidate != 0 && (candidate != newHandle || candidateId != newId))
+                    if (candidate != 0 && candidate != newTab)
                         return NavigationActivationResult.Ambiguous;
-                    if (current.ActiveTab == newHandle)
+                    if (current.ActiveTab == newTab)
                         return selected ? NavigationActivationResult.Activated : NavigationActivationResult.AlreadyActive;
                     if (current.ActiveTab != sourceTab)
                     {
-                        ExplorerDebugLog.Write($"Navigation active tab changed source={sourceTab} target={newHandle} active={current.ActiveTab}");
+                        ExplorerDebugLog.Write($"Navigation active tab changed source={sourceTab} target={newTab} active={current.ActiveTab}");
                         return NavigationActivationResult.Cancelled;
                     }
 
                     if (candidate == 0)
                     {
-                        candidate = newHandle;
-                        candidateId = newId;
+                        candidate = newTab;
                         confirmedAt = Environment.TickCount64;
                     }
-                    // Require a second coherent observation; late competing creations must not be guessed.
+                    // Require a second coherent observation; a late competing creation must not be guessed.
                     else if (!selected && Environment.TickCount64 - confirmedAt >= 40)
                     {
                         if (cancellationToken.IsCancellationRequested || !isCurrent())
                             return NavigationActivationResult.Cancelled;
-                        if (!select(newId))
-                            return NavigationActivationResult.SelectionRejected;
-                        selected = true;
+                        switch (select(newTab))
+                        {
+                            case NavigationSelectOutcome.Selected:
+                                selected = true;
+                                break;
+                            case NavigationSelectOutcome.Rejected:
+                                return NavigationActivationResult.SelectionRejected;
+                        }
                     }
                 }
-                else
+                else if (selected || candidate != 0 || current.ActiveTab != sourceTab)
                 {
-                    if (selected || candidate != 0 || current.ActiveTab != sourceTab)
-                        return NavigationActivationResult.Ambiguous;
-                    // Native HWNDs can precede UIA publication. Wait, but never select a partial match.
-                    if (current.Tabs.AutomationIds.Length > before.AutomationIds.Length + 1)
-                        return NavigationActivationResult.Ambiguous;
+                    return NavigationActivationResult.Ambiguous;
                 }
                 await Task.Delay(pollMs, cancellationToken).ConfigureAwait(false);
             }
