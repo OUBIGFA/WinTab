@@ -11,6 +11,8 @@ public static class ExplorerWindowVisibility
     private sealed record VisibilityState(WindowIdentity Identity, WindowVisibilitySnapshot Snapshot)
     {
         public bool Recovering;
+        /// <summary>The taskbar button was removed for this concealment; it is not requested again on every re-hide.</summary>
+        public bool ButtonRemoved;
     }
 
     private static readonly ConcurrentDictionary<nint, VisibilityState> HiddenWindows = new();
@@ -18,6 +20,14 @@ public static class ExplorerWindowVisibility
     public static IEnumerable<nint> HiddenWindowHandles => HiddenWindows.Keys;
 
     public static bool Contains(nint hWnd) => HiddenWindows.TryGetValue(hWnd, out var state) && state.Identity.IsCurrent;
+
+    // Retiring a Shell registration does not close its native window. A pending recovery still
+    // needs the shared identity, including when restoring the taskbar button has failed.
+    internal static void ReleaseIdentityIfUntracked(WindowIdentity identity)
+    {
+        if (!HiddenWindows.TryGetValue(identity.Handle, out var state) || state.Identity != identity)
+            identity.Release();
+    }
 
     public static bool Forget(nint hWnd) =>
         HiddenWindows.TryGetValue(hWnd, out var state) && Forget(state.Identity);
@@ -39,7 +49,9 @@ public static class ExplorerWindowVisibility
         Hide(WindowIdentity.Capture(hWnd));
     }
 
-    internal static void Hide(WindowIdentity identity)
+    internal static void Hide(WindowIdentity identity) => Hide(identity, TaskbarButton.Remove);
+
+    internal static void Hide(WindowIdentity identity, System.Func<nint, bool> removeButton)
     {
         if (!identity.IsCurrent)
             return;
@@ -64,6 +76,12 @@ public static class ExplorerWindowVisibility
             }
             UpdateLayeredStyle(hWnd, remove: false);
             WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
+            // A concealed frame is still a shown window to the taskbar, which would count it as a second
+            // Explorer window until it is closed. Without a button the merge leaves no trace on the taskbar.
+            if (!state.ButtonRemoved)
+            {
+                state.ButtonRemoved = removeButton(hWnd);
+            }
         }
     }
 
@@ -93,7 +111,10 @@ public static class ExplorerWindowVisibility
         return Restore(identity, removeCache);
     }
 
-    internal static bool Restore(WindowIdentity identity, bool removeCache = true)
+    internal static bool Restore(WindowIdentity identity, bool removeCache = true) =>
+        Restore(identity, removeCache, TaskbarButton.Add);
+
+    internal static bool Restore(WindowIdentity identity, bool removeCache, System.Func<nint, bool> addButton)
     {
         if (!identity.IsCurrent)
         {
@@ -120,8 +141,14 @@ public static class ExplorerWindowVisibility
                 UpdateLayeredStyle(identity.Handle, remove: true);
                 restored = (WinApi.GetWindowLong(identity.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0;
             }
-            if (restored && removeCache)
-                Forget(identity);
+            if (restored)
+            {
+                // The button is put back whether this process removed it or an earlier one did; the taskbar
+                // only shows it once the window is visible.
+                restored = addButton(identity.Handle);
+                if (restored && removeCache)
+                    Forget(identity);
+            }
             return restored;
         }
     }

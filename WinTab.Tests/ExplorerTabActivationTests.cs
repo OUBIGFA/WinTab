@@ -80,6 +80,14 @@ internal static class ExplorerTabActivationTests
         public nint FirstTab => _tabs[0];
         public nint TabAt(int index) => _tabs[index];
 
+        /// <summary>Appends a tab the way Explorer does for a new-tab request; it is not reachable by index.</summary>
+        public nint AddTab()
+        {
+            var tab = CreateTab();
+            Check.That(tab != 0, "The appended isolated tab must exist.");
+            return tab;
+        }
+
         public nint CreateFolderView(int index)
         {
             foreach (var name in new[] { "SHELLDLL_DefView", "DirectUIHWND", "CtrlNotifySink", "DUIViewWndClassName" })
@@ -101,6 +109,7 @@ internal static class ExplorerTabActivationTests
 
         public nint ActiveTab => WinApi.FindWindowEx(Handle, 0, TabClassName, null);
         public int CommandsWhileMinimized { get; private set; }
+        public int SwitchDelayMs { get; set; }
 
         /// <summary>Registers the isolated tab class so other test frames can host the same tab windows.</summary>
         internal static void EnsureTabClassRegistered() =>
@@ -124,6 +133,8 @@ internal static class ExplorerTabActivationTests
                 CommandsWhileMinimized++;
                 return 0;
             }
+            if (SwitchDelayMs > 0)
+                Thread.Sleep(SwitchDelayMs);
             var index = (int)argument - 1;
             if (index >= 0 && index < _tabs.Length)
                 SetActive(index);

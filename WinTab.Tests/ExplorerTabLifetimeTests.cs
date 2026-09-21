@@ -57,6 +57,8 @@ internal static class ExplorerTabLifetimeTests
         yield return ("retrying an existing window registration never conceals it", RetryingRegistrationLeavesExistingWindowVisible);
         yield return ("a closing tab with an unavailable selection still unregisters normally", ClosingTabDoesNotRequireItsDisconnectedSelection);
         yield return ("a live selection disconnect triggers recovery before the next folder open", LiveSelectionDisconnectRetiresConnection);
+        yield return ("a concealed merge source is not offered for tab reuse", ConcealedSourceIsNotReused);
+        yield return ("a merge source being closed is not offered for tab reuse", ClosingSourceIsNotReused);
     }
 
     private static Task ReopenedFirstTabsReplaceRetiredOwners() => WithFixture(fixture =>
@@ -162,6 +164,49 @@ internal static class ExplorerTabLifetimeTests
         fixture.AddBrowser(out var info, fixture.Window.FirstTab);
         info.Identity.Release();
         Check.That(fixture.Search() == null, "A closed window must not match even if its cached folder still matches.");
+        return Task.CompletedTask;
+    });
+
+    /// <summary>
+    /// Two windows opened at the same folder are both merge sources. While one is concealed for its merge,
+    /// the other must not adopt it as the reuse target: the concealed window is about to close, and both
+    /// sources reusing each other would leave the folder in neither window.
+    /// </summary>
+    private static Task ConcealedSourceIsNotReused() => WithFixture(fixture =>
+    {
+        var browser = fixture.AddBrowser(out _, fixture.Window.FirstTab);
+        Check.That(ReferenceEquals(browser, fixture.Search()), "The live tab is reusable before any merge starts.");
+        fixture.EnableMerging();
+        fixture.Invoke("HideMergeSourceWindow", fixture.Window.Handle);
+        try
+        {
+            Check.That(fixture.Search() == null, "A concealed merge source must not be offered as a reuse target.");
+        }
+        finally
+        {
+            fixture.Invoke("RecoverHiddenExplorerWindows", "test-concealed-reuse-cleanup");
+        }
+        Check.Equal(0, fixture.MergeSourceCount, "The concealed source must be recovered after the test.");
+        Check.That(ReferenceEquals(browser, fixture.Search()), "A restored window is reusable again.");
+        return Task.CompletedTask;
+    });
+
+    private static Task ClosingSourceIsNotReused() => WithFixture(fixture =>
+    {
+        var browser = fixture.AddBrowser(out var info, fixture.Window.FirstTab);
+        var closing = (ConcurrentDictionary<nint, MergeOperation>)typeof(ExplorerWatcher)
+            .GetField("_closingMergeSourceHWnds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Watcher)!;
+        using var close = new MergeOperation(info.Identity, 0, CancellationToken.None, () => true, 5_000);
+        closing[fixture.Window.Handle] = close;
+        try
+        {
+            Check.That(fixture.Search() == null, "A source whose close has been requested must not be offered as a reuse target.");
+        }
+        finally
+        {
+            closing.TryRemove(fixture.Window.Handle, out _);
+        }
+        Check.That(ReferenceEquals(browser, fixture.Search()), "Once the close record is gone the window is reusable again.");
         return Task.CompletedTask;
     });
 
@@ -538,6 +583,8 @@ internal static class ExplorerTabLifetimeTests
         private readonly object _dictionary;
         private readonly Type _dictionaryType;
         public ExplorerWatcher Watcher => _watcher;
+        /// <summary>The token source the fixture installed as the watcher's hook lifetime.</summary>
+        public CancellationTokenSource HookLifetime => _lifetime;
         public SemaphoreSlim OpenLock => _openLock;
         public ExplorerTabActivationTests.ActivationWindow Window { get; private set; }
         /// <summary>The screen as the tab tear-off tracker sees it; empty unless a test describes windows.</summary>
@@ -681,6 +728,21 @@ internal static class ExplorerTabLifetimeTests
 
         public void SetExplorerWindows(params nint[] handles) =>
             SetField("_getExplorerWindows", (Func<IEnumerable<nint>>)(() => handles));
+
+        /// <summary>The Explorer windows on screen, read again on every scan so a test can add one mid-way.</summary>
+        public void SetExplorerWindowSource(Func<nint[]> source) =>
+            SetField("_getExplorerWindows", (Func<IEnumerable<nint>>)(() => source()));
+
+        /// <summary>Whether direct tab creation has been retired for the watcher's lifetime.</summary>
+        public bool DirectTabUnsupported
+        {
+            get => (bool)typeof(ExplorerWatcher).GetField("_directTabUnsupported", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_watcher)!;
+            set => SetField("_directTabUnsupported", value);
+        }
+
+        /// <summary>An untracked browser whose every call is answered by <paramref name="invoke"/>.</summary>
+        public object CreateBrowser(Func<string, object?[], object?> invoke) =>
+            ShellDispatchStub.Create(_dictionaryType.GetGenericArguments()[0], invoke);
 
         public void MarkHooked(nint handle) => _hookedTopLevels[handle] = 1;
 

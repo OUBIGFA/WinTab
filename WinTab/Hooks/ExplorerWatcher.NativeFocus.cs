@@ -51,8 +51,10 @@ public partial class ExplorerWatcher
             bool IsOwnerCurrent() => CanReuseDesktopFolder && generation == _hookGeneration &&
                 WinApi.GetAncestor(WinApi.GetForegroundWindow(), WinApi.GA_ROOT) == parent &&
                 IsCurrentWindow(window, info) && IsCurrentTab(info, tab);
+            // The request must still be fresh when it acquires the lock, but a valid request needs the
+            // full 2.5-second selection budget. A one-second operation can stop on an intermediate tab.
             using var operation = new MergeOperation(parentIdentity, generation, _shellLifetime.Token,
-                IsOwnerCurrent, 1_000, _hookLifetime.Token);
+                IsOwnerCurrent, 3_500, _hookLifetime.Token);
             var locked = false;
             var previousOperation = _currentMerge.Value;
             try

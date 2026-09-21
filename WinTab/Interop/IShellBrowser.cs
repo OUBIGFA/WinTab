@@ -9,4 +9,12 @@ public interface IShellBrowser
 {
     [PreserveSig]
     int GetWindow(out nint handle);
+
+    // Skip ContextSensitiveHelp, InsertMenusSB, SetMenuSB, RemoveMenusSB, SetStatusTextSB, EnableModelessSB
+    // and TranslateAcceleratorSB (7 methods).
+    void _VtblGap1_7();
+
+    /// <summary>Browses to the item in this window, or in a new browser depending on the SBSP flags.</summary>
+    [PreserveSig]
+    int BrowseObject(nint pidl, uint flags);
 }

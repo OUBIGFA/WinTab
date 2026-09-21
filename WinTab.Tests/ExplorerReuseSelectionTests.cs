@@ -38,6 +38,9 @@ internal static class ExplorerReuseSelectionTests
             SetField(watcher, "_reuseTabs", true);
             SetField(watcher, "_isForcingTabs", true);
             SetField(watcher, "_hookLifetime", lifetime);
+            SetField(watcher, "_mergeSourceHWnds", Activator.CreateInstance(typeof(ExplorerWatcher)
+                .GetField("_mergeSourceHWnds", BindingFlags.Instance | BindingFlags.NonPublic)!.FieldType)!);
+            SetField(watcher, "_closingMergeSourceHWnds", new System.Collections.Concurrent.ConcurrentDictionary<nint, MergeOperation>());
 
             var selected = new List<string> { "previous.txt" };
             var view = viewAvailable ? CreateFolderView(selected) : null;

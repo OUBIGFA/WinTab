@@ -58,6 +58,8 @@ internal static class UnitTestRunner
             .Concat(ExplorerDesktopOpenTests.All())
             .Concat(ExplorerPreloadedFrameTests.All())
             .Concat(ExplorerTabTearOffTests.All())
+            .Concat(ExplorerDirectTabTests.All())
+            .Concat(TaskbarButtonTests.All())
             .Concat(UpdateReleaseParserTests.All())
             .Concat(UpdateManagerTests.All())
             .Concat(DualKeyDictionaryTests.All())
@@ -81,7 +83,12 @@ internal static class UnitTestRunner
             catch (Exception ex)
             {
                 failed++;
+                // Reflection wraps the real failure; its message is what tells the reader what went wrong.
+                while (ex is System.Reflection.TargetInvocationException { InnerException: { } inner })
+                    ex = inner;
                 Console.Error.WriteLine($"FAIL {name}: {ex.Message}");
+                if (Environment.GetEnvironmentVariable("WINTAB_TEST_TRACE") == "1")
+                    Console.Error.WriteLine(ex);
             }
         }
 

@@ -13,6 +13,9 @@ internal static class ExplorerNativeFocusTests
     {
         yield return ("native file-location focus activates a later existing tab without registration", () => ReusesFocusedTab(1));
         yield return ("native file-location focus repeatedly activates the third existing tab", () => ReusesFocusedTab(2));
+        yield return ("native file-location item focus activates an existing tab without a client-focus event", () => ReusesItemFocus(0));
+        yield return ("native file-location accessible child focus activates its existing tab", () => ReusesItemFocus(7));
+        yield return ("native file-location reuse allows a busy Explorer to finish switching later tabs", SlowNativeReuse);
         yield return ("native file-location focus leaves active tabs unchanged", ActiveTabIsUnchanged);
         yield return ("native file-location focus cannot act after keyboard focus moves", () => RejectsStaleFocus(false));
         yield return ("disabled reuse does not activate native file-location focus", () => RejectsStaleFocus(true));
@@ -35,9 +38,49 @@ internal static class ExplorerNativeFocusTests
             fixture.Window.SetActive(0);
             SetFocus(view);
             await (Task)fixture.Invoke("TryActivateNativeFocusedTabAsync", view)!;
-            Check.Equal(target, fixture.Window.ActiveTab, "Native focus in an inactive file view must activate its exact tab, even without a new window or navigation.");
+            Check.Equal(target, fixture.Window.ActiveTab, $"Native focus in an inactive file view must activate its exact tab, even without a new window or navigation. attempt={attempt} parent={fixture.Window.Handle} foreground={WinApi.GetForegroundWindow()} liveFocus={fixture.Invoke("HasNativeViewFocus", view, fixture.Window.Handle)}");
             Check.Equal(3, ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Window.Handle).Count(), "Native reuse must not create or close tabs.");
         }
+    }, tabCount: 3);
+
+    private static Task ReusesItemFocus(int child) => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        var target = fixture.Window.TabAt(2);
+        var browser = fixture.AddBrowser(out _, target);
+        fixture.SetCatalog(browser);
+        fixture.MarkShellConnected();
+        fixture.EnableMerging();
+        var view = fixture.Window.CreateFolderView(2);
+        fixture.Window.Show();
+        fixture.Window.SetActive(0);
+        Helper.RestoreWindowToForeground(fixture.Window.Handle);
+        SetFocus(view);
+        // If Explorer already holds keyboard focus on this hidden view, selecting the file can report
+        // only the accessible item, without a second OBJID_CLIENT / CHILDID_SELF notification.
+        fixture.Invoke("OnWindowShown", (nint)0, (uint)WinApi.EVENT_OBJECT_FOCUS, view, 8301, child, 0u,
+            unchecked((uint)Environment.TickCount));
+        var active = await Helper.DoUntilConditionAsync(() => fixture.Window.ActiveTab,
+            handle => handle == target, 1_500, 20);
+        Check.Equal(target, active, "A native file selection must activate its hidden tab even without a client-focus notification.");
+        Check.Equal(3, ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Window.Handle).Count(), "Native reuse must not create duplicate tabs.");
+    }, tabCount: 3);
+
+    private static Task SlowNativeReuse() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        var target = fixture.Window.TabAt(2);
+        var browser = fixture.AddBrowser(out _, target);
+        fixture.SetCatalog(browser);
+        fixture.MarkShellConnected();
+        fixture.EnableMerging();
+        var view = fixture.Window.CreateFolderView(2);
+        fixture.Window.Show();
+        fixture.Window.SetActive(0);
+        Helper.RestoreWindowToForeground(fixture.Window.Handle);
+        SetFocus(view);
+        fixture.Window.SwitchDelayMs = 400;
+        await (Task)fixture.Invoke("TryActivateNativeFocusedTabAsync", view)!;
+        Check.Equal(target, fixture.Window.ActiveTab,
+            $"A fresh native reuse request needs the normal tab-switch budget, not a one-second partial switch. parent={fixture.Window.Handle} foreground={WinApi.GetForegroundWindow()} liveFocus={fixture.Invoke("HasNativeViewFocus", view, fixture.Window.Handle)}");
     }, tabCount: 3);
 
     private static Task ActiveTabIsUnchanged() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
