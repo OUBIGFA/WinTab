@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using WinTab.Managers;
 
 namespace WinTab.UI.Localization;
@@ -14,7 +14,7 @@ internal static class UiStrings
     public static string Pick(string zh, string en) => IsChinese ? zh : en;
 
     // Header / sections
-    public static string HeroDescription => Pick("自动将文件夹合并为标签页", "Auto-merge folders into tabs");
+    public static string HeroDescription => Pick("一窗多标签：新窗口自动合并为当前窗口标签页", "One window, multiple tabs: auto-merge new windows into active tabs");
     public static string ExplorerSectionTitle => Pick("资源管理器", "File Explorer");
     public static string SystemSectionTitle => Pick("系统", "System");
     public static string AboutSectionTitle => Pick("关于", "About");

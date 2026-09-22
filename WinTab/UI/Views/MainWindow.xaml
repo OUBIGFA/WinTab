@@ -133,7 +133,7 @@
                     <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="WinTab" FontSize="20" FontWeight="Medium" LineHeight="26" />
                         <TextBlock x:Name="HeroDescriptionText"
-                                   Text="Auto-merge folders into tabs"
+                                   Text="One window, multiple tabs: auto-merge new windows into active tabs"
                                    Margin="0,3,0,0"
                                    FontSize="13"
                                    LineHeight="18"
