@@ -13,6 +13,29 @@ internal static class NavigationNativeSelectionTests
         yield return ("navigation native selection activates the appended tab before its title is published", () => SelectsUntitledTab(3));
         yield return ("navigation native selection works beyond the ninth tab", () => SelectsUntitledTab(12));
         yield return ("navigation expired accessibility work cannot block later clicks", ExpiredWorkCannotBlock);
+        yield return ("navigation middle-click accepts any control inside the active tab and nothing outside it", AcceptsWholeActiveTab);
+    }
+
+    private static async Task AcceptsWholeActiveTab()
+    {
+        using var scheduler = new StaTaskScheduler();
+        await Task.Factory.StartNew(() =>
+        {
+            using var window = new ExplorerTabActivationTests.ActivationWindow(2);
+            window.SetActive(0);
+            var activeView = window.CreateFolderView(0);
+            var backgroundView = window.CreateFolderView(1);
+            Check.That(ExplorerNavigationAccess.IsInsideActiveTab(activeView, window.Handle),
+                "A folder view nested deep inside the active tab is a valid middle-click target, not only the navigation tree.");
+            Check.That(ExplorerNavigationAccess.IsInsideActiveTab(window.FirstTab, window.Handle),
+                "The active tab window itself counts as inside the active tab.");
+            Check.That(!ExplorerNavigationAccess.IsInsideActiveTab(backgroundView, window.Handle),
+                "A control of a background tab cannot be under the pointer of the active tab.");
+            Check.That(!ExplorerNavigationAccess.IsInsideActiveTab(window.Handle, window.Handle),
+                "The frame (tab strip, title bar) belongs to no tab, so a tab-closing middle click is ignored.");
+            Check.That(!ExplorerNavigationAccess.IsInsideActiveTab(0, window.Handle) && !ExplorerNavigationAccess.IsInsideActiveTab(activeView, 0),
+                "Missing handles are never inside a tab.");
+        }, CancellationToken.None, TaskCreationOptions.None, scheduler);
     }
 
     private static async Task SelectsUntitledTab(int tabCount)

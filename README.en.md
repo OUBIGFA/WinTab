@@ -22,7 +22,7 @@ WinTab is a Windows 11 utility that automatically merges newly opened File Explo
 
 - Merge new File Explorer windows into tabs
 - Reuse opened tabs instead of opening duplicates
-- Open middle-clicked navigation pane tabs in the foreground
+- Open middle-clicked folders in the foreground, whether clicked in the navigation pane, the file list or Home
 - Double-click tab titles to close tabs
 - Hold `Ctrl + Shift` while opening folders to keep a separate window
 - System tray background runtime

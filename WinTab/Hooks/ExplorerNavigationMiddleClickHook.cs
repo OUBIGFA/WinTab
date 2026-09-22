@@ -8,9 +8,10 @@ using WinTab.WinAPI;
 namespace WinTab.Hooks;
 
 /// <summary>
-/// Leaves Explorer's middle click untouched and brings the tab it opens to the front. Nothing is prepared
-/// ahead of a click: the button-down records the window's tabs, and the tab that appears afterwards is
-/// selected with Explorer's native appended-tab command. There is no cache that can go stale between clicks.
+/// Leaves Explorer's middle click untouched and brings the tab it opens to the front, wherever inside the
+/// active tab the folder was clicked: navigation pane, file list, Home page or address bar. Nothing is
+/// prepared ahead of a click: the button-down records the window's tabs, and the tab that appears afterwards
+/// is selected with Explorer's native appended-tab command. There is no cache that can go stale between clicks.
 /// </summary>
 public sealed class ExplorerNavigationMiddleClickHook : IHook
 {
@@ -93,12 +94,13 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         // Only window handles are read here; nothing on the native input path waits for Explorer's UI thread.
         var startedAt = Stopwatch.GetTimestamp();
         var window = WindowAt(input.Point);
-        var tree = WinApi.WindowFromPoint(input.Point);
-        if (window == 0 || !ExplorerNavigationAccess.IsNavigationTree(tree, window))
+        var target = WinApi.WindowFromPoint(input.Point);
+        if (window == 0 || !ExplorerNavigationAccess.IsInsideActiveTab(target, window))
         {
             _clicks.Cancel();
             return;
         }
+        var onTree = ExplorerNavigationAccess.IsNavigationTree(target, window);
         var tabs = ExplorerNavigationAccess.Tabs(window);
         var sourceTab = ExplorerNavigationAccess.ActiveTab(window);
         if (tabs.Length is 0 or > ExplorerNavigationAccess.MaxTabs || sourceTab == 0)
@@ -110,8 +112,8 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         var lease = _clicks.Begin(window, input.Point, Environment.TickCount64);
         if (lease == null) return;
         var click = new NavigationClick(WindowIdentity.Capture(window), WindowIdentity.Capture(sourceTab),
-            WindowIdentity.Capture(tree), tabs, input.Point);
-        ExplorerDebugLog.Write($"Navigation click captured hwnd={window} tab={sourceTab} tabs={tabs.Length} hookMs={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F1}");
+            WindowIdentity.Capture(target), tabs, input.Point, onTree);
+        ExplorerDebugLog.Write($"Navigation click captured hwnd={window} tab={sourceTab} target={target} tree={onTree} tabs={tabs.Length} hookMs={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F1}");
         _ = Task.Run(() => ActivateAsync(click, lease));
     }
 
@@ -125,22 +127,27 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         {
             var current = _active && _clicks.IsCurrent(lease, Environment.TickCount64) && click.IsCurrent();
             if (!current)
-                ExplorerDebugLog.Write($"Navigation request retired active={_active} lease={_clicks.IsCurrent(lease, Environment.TickCount64)} window={click.Window.IsCurrent} source={click.SourceTab.IsCurrent} tree={click.Tree.IsCurrent} foreground={WinApi.GetForegroundWindow()}");
+                ExplorerDebugLog.Write($"Navigation request retired active={_active} lease={_clicks.IsCurrent(lease, Environment.TickCount64)} window={click.Window.IsCurrent} source={click.SourceTab.IsCurrent} target={click.Target.IsCurrent} foreground={WinApi.GetForegroundWindow()}");
             return current;
         }
         try
         {
-            // A click beside the folder items opens nothing, so it is forgotten at once and does not hold up the next click.
-            var onFolder = await Task.Run(() => ExplorerNavigationAccess.IsFolderItemAt(click.Tree.Handle, click.Point))
-                .WaitAsync(lease.Token).ConfigureAwait(false);
-            if (!onFolder)
+            // On the navigation tree a click beside the folder items is known to open nothing, so it is forgotten
+            // at once and does not hold up the next click. Elsewhere (file list, Home page, address bar) the only
+            // evidence is the tab Explorer does or does not open, so the click waits for it.
+            if (click.OnNavigationTree)
             {
-                forgotten = true;
-                _clicks.Discard(lease);
-                ExplorerDebugLog.Write($"Navigation middle-click left native: not on a folder item hwnd={click.Window.Handle}");
-                return;
+                var onFolder = await Task.Run(() => ExplorerNavigationAccess.IsFolderItemAt(click.Target.Handle, click.Point))
+                    .WaitAsync(lease.Token).ConfigureAwait(false);
+                if (!onFolder)
+                {
+                    forgotten = true;
+                    _clicks.Discard(lease);
+                    ExplorerDebugLog.Write($"Navigation middle-click left native: not on a folder item hwnd={click.Window.Handle}");
+                    return;
+                }
+                ExplorerDebugLog.Write($"Navigation folder item confirmed at {Elapsed()}");
             }
-            ExplorerDebugLog.Write($"Navigation folder item confirmed at {Elapsed()}");
             await lease.Released.Task.WaitAsync(lease.Token).ConfigureAwait(false);
             ExplorerDebugLog.Write($"Navigation button released at {Elapsed()}");
             if (Current())
@@ -170,7 +177,7 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
             _clicks.Complete(lease, result is NavigationActivationResult.Activated or NavigationActivationResult.AlreadyActive);
         }
         if (result == NavigationActivationResult.Activated)
-            StatusChanged?.Invoke("Activated Explorer tab opened by navigation-pane middle-click.");
+            StatusChanged?.Invoke("Activated Explorer tab opened by middle-click.");
     }
 
     private static bool HasModifiers() =>

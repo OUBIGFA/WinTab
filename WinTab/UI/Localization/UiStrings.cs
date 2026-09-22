@@ -28,7 +28,7 @@ internal static class UiStrings
     public static string DoubleClickTitle => Pick("双击关闭标签页", "Double-click to close tabs");
     public static string DoubleClickDescription => Pick("双击标签页标题直接关闭", "Double-click any tab title to close it");
     public static string MiddleClickTitle => Pick("中键前台打开标签页", "Open middle-clicked tabs in foreground");
-    public static string MiddleClickDescription => Pick("中键点击侧边栏时，新标签直接在前台打开", "Open navigation pane tabs in foreground instead of background");
+    public static string MiddleClickDescription => Pick("中键点击侧边栏、文件列表或主页中的文件夹时，新标签一律在前台打开", "Open folders middle-clicked in the navigation pane, file list or Home in the foreground instead of the background");
     public static string StartupTitle => Pick("开机启动", "Start with Windows");
     public static string StartupDescription => Pick("开机后在后台静默运行", "Run quietly in the background on startup");
     public static string ShowTrayIconTitle => Pick("显示托盘图标", "Show tray icon");

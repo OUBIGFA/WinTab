@@ -9,12 +9,17 @@ using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
-/// <summary>What was true at the moment the middle button went down on the navigation pane.</summary>
-internal sealed record NavigationClick(WindowIdentity Window, WindowIdentity SourceTab, WindowIdentity Tree, nint[] TabsBefore, Point Point)
+/// <summary>
+/// What was true at the moment the middle button went down inside a tab. <paramref name="Target"/> is the
+/// control under the pointer; <paramref name="OnNavigationTree"/> tells whether it is the navigation pane's
+/// tree, the one place where a click beside the folder items can be recognised before Explorer reacts.
+/// </summary>
+internal sealed record NavigationClick(WindowIdentity Window, WindowIdentity SourceTab, WindowIdentity Target, nint[] TabsBefore, Point Point,
+    bool OnNavigationTree = false)
 {
-    /// <summary>The click can still be acted on: the same window, tab and tree exist and the window is in front.</summary>
+    /// <summary>The click can still be acted on: the same window, tab and target exist and the window is in front.</summary>
     public bool IsCurrent() =>
-        Window.IsCurrent && SourceTab.IsCurrent && Tree.IsCurrent &&
+        Window.IsCurrent && SourceTab.IsCurrent && Target.IsCurrent &&
         WinApi.GetParent(SourceTab.Handle) == Window.Handle &&
         ExplorerNavigationAccess.ForegroundFrame() == Window.Handle;
 }
@@ -46,6 +51,28 @@ internal static class ExplorerNavigationAccess
         WinApi.IsWindowHasClassName(tree, "SysTreeView32") &&
         WinApi.IsWindowHasClassName(WinApi.GetParent(tree), "NamespaceTreeControl") &&
         WinApi.GetAncestor(tree, WinApi.GA_ROOT) == window;
+
+    /// <summary>
+    /// Whether <paramref name="hit"/> lies inside the active tab of <paramref name="window"/>: the navigation
+    /// pane, the file list, the address bar or the Home page. The tab strip and the frame belong to no tab,
+    /// so a middle click that closes a tab is never mistaken for one that opens a folder.
+    /// </summary>
+    public static bool IsInsideActiveTab(nint hit, nint window)
+    {
+        if (hit == 0 || window == 0)
+            return false;
+        var activeTab = ActiveTab(window);
+        if (activeTab == 0 || WinApi.GetParent(activeTab) != window)
+            return false;
+        var current = hit;
+        for (var depth = 0; current != 0 && current != window && depth < 64; depth++)
+        {
+            if (current == activeTab)
+                return true;
+            current = WinApi.GetParent(current);
+        }
+        return false;
+    }
 
     public static NavigationTabObservation Observe(nint window) => new(Tabs(window), ActiveTab(window));
 
