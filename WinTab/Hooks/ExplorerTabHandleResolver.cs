@@ -15,7 +15,7 @@ internal static class ExplorerTabHandleResolver
             {
                 return await getHandle();
             }
-            catch (COMException exception)
+            catch (COMException exception) when (!ExplorerWatcher.IsDisconnectedShell(exception))
             {
                 ExplorerDebugLog.Write($"Tab handle query not ready error={exception.GetType().Name}:{exception.Message}");
                 return 0;

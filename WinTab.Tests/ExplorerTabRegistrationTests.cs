@@ -13,6 +13,14 @@ internal static class ExplorerTabRegistrationTests
         yield return ("tab registration retries a transient synchronous COM failure", TransientSynchronousFailureIsRetried);
         yield return ("tab registration retries a transient asynchronous COM failure", TransientAsynchronousFailureIsRetried);
         yield return ("tab registration does not swallow cancellation", CancellationIsNotSwallowed);
+        foreach (var errorCode in new[] { unchecked((int)0x80010108), unchecked((int)0x800401FD),
+                     unchecked((int)0x800706BA), unchecked((int)0x800706BE),
+                     unchecked((int)0x80010007), unchecked((int)0x80010012) })
+        {
+            yield return ($"tab registration propagates synchronous disconnect {errorCode:X8}", () => DisconnectIsNotRetried(errorCode, false));
+            yield return ($"tab registration propagates asynchronous disconnect {errorCode:X8}", () => DisconnectIsNotRetried(errorCode, true));
+        }
+        yield return ("a disconnected tab handle query retires the shell connection", DisconnectRetiresConnection);
     }
 
     private static async Task TransientSynchronousFailureIsRetried()
@@ -40,6 +48,38 @@ internal static class ExplorerTabRegistrationTests
         Check.Equal((nint)456, handle, "A faulted COM query must be retried within the registration deadline.");
         Check.Equal(2, attempts, "An asynchronous transient failure must not terminate registration.");
     }
+
+    private static async Task DisconnectIsNotRetried(int errorCode, bool asynchronous)
+    {
+        var failure = new COMException("The shell connection has ended.", errorCode);
+        var attempts = 0;
+        Exception? observed = null;
+        try
+        {
+            await ExplorerTabHandleResolver.WaitAsync(() =>
+            {
+                attempts++;
+                return asynchronous ? Task.FromException<nint>(failure) : throw failure;
+            }, 200, 1);
+        }
+        catch (COMException exception)
+        {
+            observed = exception;
+        }
+        Check.That(ReferenceEquals(failure, observed), "A permanent disconnect must reach the connection owner unchanged.");
+        Check.Equal(1, attempts, "A dead connection must not be retried as a tab that is still registering.");
+    }
+
+    private static Task DisconnectRetiresConnection() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        fixture.SetCatalog();
+        fixture.MarkShellConnected();
+        await (Task)fixture.Invoke("RunShellWorkAsync", (Func<Task>)(() =>
+            ExplorerTabHandleResolver.WaitAsync(() => Task.FromException<nint>(
+                new COMException("Disconnected", unchecked((int)0x80010108))), 200, 1)))!;
+        Check.That(!fixture.ShellConnected && fixture.ShellCancellationRequested,
+            "The failed handle query must trigger connection recovery, not just registration retries.");
+    });
 
     private static async Task CancellationIsNotSwallowed()
     {

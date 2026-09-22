@@ -41,11 +41,17 @@ public static class ExplorerWindowDiscovery
 
     public static Task<nint> ListenForNewExplorerTabAsync(nint window, IReadOnlyCollection<nint> currentTabs, int searchTimeMs = 1000, CancellationToken cancellationToken = default)
     {
-        var knownTabs = CreateKnownHandleSet(currentTabs);
-        return Helper.DoUntilNotDefaultAsync(() =>
-                GetAllExplorerTabs(window)
-                    .FirstOrDefault(tab => IsUnknownHandle(tab, knownTabs)),
+        var knownTabs = new HashSet<nint>(currentTabs);
+        return Helper.DoUntilNotDefaultAsync(() => GetUniqueNewExplorerTab(window, knownTabs),
             searchTimeMs, cancellationToken: cancellationToken);
+    }
+
+    internal static nint GetUniqueNewExplorerTab(nint window, HashSet<nint> knownTabs)
+    {
+        var tabs = GetAllExplorerTabs(window).ToArray();
+        if (!knownTabs.IsSubsetOf(tabs) || tabs.Length > knownTabs.Count + 1)
+            throw new InvalidOperationException("Explorer tabs changed concurrently; no new tab can be safely claimed.");
+        return tabs.FirstOrDefault(tab => !knownTabs.Contains(tab));
     }
 
     public static IEnumerable<nint> GetAllExplorerTabs(nint window)

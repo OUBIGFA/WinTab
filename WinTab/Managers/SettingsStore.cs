@@ -22,6 +22,9 @@ internal sealed class SettingsStore : IDisposable
     private long _writtenRevision = -1;
     private bool _saving;
     private bool _preserveBackup;
+    // An unreadable file may contain valid settings. Only a fresh successful load can authorize
+    // replacing it; persisting this instance's fallback would silently lose those unknown values.
+    private bool _saveBlockedByReadFailure;
     private bool _disposed;
 
     public SettingsStore(string path, Action<AppSettings>? write = null)
@@ -60,6 +63,8 @@ internal sealed class SettingsStore : IDisposable
                 return Task.FromResult(_writtenRevision == _revision && LastError == null);
 
             _timer.Change(Timeout.Infinite, Timeout.Infinite);
+            if (_saveBlockedByReadFailure)
+                return Task.FromResult(false);
             _requestedRevision = _revision;
             if (_saving)
                 return _completion!.Task;
@@ -121,8 +126,7 @@ internal sealed class SettingsStore : IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
-            if (exception is not FileNotFoundException and not DirectoryNotFoundException)
-                _lastError = exception;
+            RecordLoadFailure(exception);
         }
 
         try
@@ -134,10 +138,18 @@ internal sealed class SettingsStore : IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
         {
-            if (exception is not FileNotFoundException and not DirectoryNotFoundException)
-                _lastError ??= exception;
+            RecordLoadFailure(exception);
             return new AppSettings();
         }
+    }
+
+    private void RecordLoadFailure(Exception exception)
+    {
+        if (exception is FileNotFoundException or DirectoryNotFoundException)
+            return;
+        _lastError ??= exception;
+        if (exception is not JsonException)
+            _saveBlockedByReadFailure = true;
     }
 
     private static AppSettings Read(string path)

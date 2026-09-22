@@ -315,7 +315,7 @@ public partial class ExplorerWatcher
         }
     }
 
-    private static bool IsDisconnectedShell(Exception exception) =>
+    internal static bool IsDisconnectedShell(Exception exception) =>
         exception is InvalidComObjectException || exception is COMException && exception.HResult is
             unchecked((int)0x80010108) or unchecked((int)0x800401FD) or
             unchecked((int)0x800706BA) or unchecked((int)0x800706BE) or

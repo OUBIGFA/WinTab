@@ -19,6 +19,12 @@ internal static class ExplorerDirectTabTests
     {
         yield return ("an unrelated preloaded frame cannot complete an accepted direct request", PreloadedFrameDoesNotAnswerRequest);
         yield return ("a tab Explorer appends for a direct request is the one returned", AppendedTabIsReturned);
+        yield return ("direct tab creation refuses two concurrent additions", () => AmbiguousTabsAreNotClaimed(false, false));
+        yield return ("classic tab creation refuses two concurrent additions", () => AmbiguousTabsAreNotClaimed(true, false));
+        yield return ("direct tab creation refuses a replaced old tab", () => AmbiguousTabsAreNotClaimed(false, true));
+        yield return ("classic tab creation refuses a replaced old tab", () => AmbiguousTabsAreNotClaimed(true, true));
+        yield return ("classic tab creation returns the unique addition", ClassicUniqueTabIsReturned);
+        yield return ("a direct tab at another location is never redirected", DirectTabAtAnotherLocationIsNotNavigated);
         yield return ("a window instead of a tab retires direct tab creation", WindowInsteadOfTabRetiresDirectTabs);
         yield return ("no answer to a direct tab request retires direct tab creation", NoAnswerRetiresDirectTabs);
         yield return ("a retired direct request is not issued again", RetiredRequestIsNotIssued);
@@ -65,6 +71,55 @@ internal static class ExplorerDirectTabTests
         Check.That(!fixture.DirectTabUnsupported, "A successful request must keep direct tab creation enabled.");
         Check.Equal(0, fixture.Statuses.Count, "A successful request must not report anything: " + string.Join(" | ", fixture.Statuses));
     }, tabCount: 1);
+
+    private static Task AmbiguousTabsAreNotClaimed(bool classic, bool replaceOld) => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        var window = fixture.Window;
+        var knownTabs = new HashSet<nint>(ExplorerWindowDiscovery.GetAllExplorerTabs(window.Handle));
+        fixture.SetExplorerWindowSource(() => [window.Handle]);
+        var wait = classic
+            ? ExplorerWindowDiscovery.ListenForNewExplorerTabAsync(window.Handle, knownTabs, 500)
+            : (Task<nint>)fixture.Invoke("WaitForTabAtLocationAsync", window.Handle, knownTabs,
+                new HashSet<nint> { window.Handle }, Fixture.Location, 500)!;
+        var first = window.AddTab();
+        var second = window.AddTab();
+        if (replaceOld)
+            Check.That(WinTab.WinAPI.WinApi.TrySendMessage(window.FirstTab, WinTab.WinAPI.WinApi.WM_CLOSE, 0, 0),
+                "The old tab must close before the next observation.");
+        var rejected = false;
+        try { await wait; }
+        catch (InvalidOperationException) { rejected = true; }
+        Check.That(rejected, "Competing tab changes must abort the merge rather than claim a user's tab.");
+        var remaining = ExplorerWindowDiscovery.GetAllExplorerTabs(window.Handle).ToArray();
+        Check.That(remaining.Contains(first) && remaining.Contains(second), "Neither unowned new tab may be closed.");
+        Check.That(!fixture.DirectTabUnsupported, "A competing user action must not disable direct tab support or request a fallback tab.");
+    }, tabCount: 1);
+
+    private static Task ClassicUniqueTabIsReturned() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        var window = fixture.Window;
+        var wait = ExplorerWindowDiscovery.ListenForNewExplorerTabAsync(window.Handle,
+            ExplorerWindowDiscovery.GetAllExplorerTabs(window.Handle).ToArray(), 500);
+        var appended = window.AddTab();
+        Check.Equal(appended, await wait, "A unique new tab must still be claimed on the classic path.");
+    }, tabCount: 1);
+
+    private static Task DirectTabAtAnotherLocationIsNotNavigated() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        var navigations = 0;
+        var browser = fixture.CreateBrowser((method, _) => method switch
+        {
+            "get_HWND" => (long)fixture.Window.Handle,
+            "get_LocationURL" => "file:///C:/Users",
+            "get_Document" => null,
+            "Navigate2" => Count(ref navigations),
+            "add_NavigateComplete2" or "remove_NavigateComplete2" => null,
+            _ => throw new InvalidOperationException("Unexpected browser call: " + method)
+        });
+        Check.That(!await (Task<bool>)fixture.Invoke("NavigateNewTabToTargetAsync", browser, Fixture.Location, true)!,
+            "A direct tab that never reaches the requested location must not count as the merge's result.");
+        Check.Equal(0, navigations, "An unconfirmed direct tab may belong to the user and must never be redirected.");
+    });
 
     private static Task WindowInsteadOfTabRetiresDirectTabs() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
     {

@@ -24,6 +24,8 @@ internal sealed class RemoteExplorerFrame : IDisposable
     private static readonly ConcurrentDictionary<string, bool> RegisteredClasses = new();
     private static readonly nint Module = GetModuleHandle(null);
     private readonly Thread _thread;
+    private nint _desktop;
+    private int _desktopError;
     private readonly ManualResetEventSlim _ready = new();
     private readonly TaskCompletionSource _blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly ConcurrentQueue<string> _trace = new();
@@ -45,10 +47,27 @@ internal sealed class RemoteExplorerFrame : IDisposable
         _visible = visible;
         _tabCount = tabCount;
         _className = explorerClass ? ExplorerClassName : OwnClassName;
+        if (explorerClass)
+        {
+            // Only fake Explorer frames live off the input desktop: an installed WinTab must not see
+            // their show events. The test runner stays on the real desktop for taskbar COM and focus tests.
+            _desktop = CreateDesktop("WinTabTestFrame-" + Guid.NewGuid().ToString("N"), 0, 0, 0, 0x01ff, 0);
+            if (_desktop == 0)
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
         _thread = new Thread(Run) { IsBackground = true, Name = "WinTab remote test frame" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
-        Check.That(_ready.Wait(5_000) && Handle != 0 && _tabs.Length == tabCount, "The remote test frame must start with its tabs.");
+        try
+        {
+            Check.That(_ready.Wait(5_000) && Handle != 0 && _tabs.Length == tabCount,
+                $"The remote test frame must start with its tabs (desktop error: {_desktopError}).");
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
     public nint Handle { get; private set; }
@@ -96,6 +115,12 @@ internal sealed class RemoteExplorerFrame : IDisposable
 
     private void Run()
     {
+        if (_desktop != 0 && !SetThreadDesktop(_desktop))
+        {
+            _desktopError = Marshal.GetLastWin32Error();
+            _ready.Set();
+            return;
+        }
         // The isolated test desktop has no text services. Without this, the first activation of the frame
         // blocks its thread for about two seconds while the IME context is set up, which discards commands
         // sent to it in the meantime and has nothing to do with Explorer.
@@ -237,7 +262,21 @@ internal sealed class RemoteExplorerFrame : IDisposable
         // A frame may still be sleeping through a block or a slow close; give it time to finish and exit.
         Check.That(_thread.Join(5_000), "The isolated frame thread must stop before its wait handle is disposed.");
         _ready.Dispose();
+        if (_desktop != 0)
+        {
+            Check.That(CloseDesktop(_desktop), "The isolated frame desktop must be released after its thread exits.");
+            _desktop = 0;
+        }
     }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern nint CreateDesktop(string name, nint device, nint mode, uint flags, uint access, nint security);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetThreadDesktop(nint desktop);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseDesktop(nint desktop);
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate nint WindowProcedure(nint handle, uint message, nint parameter, nint argument);

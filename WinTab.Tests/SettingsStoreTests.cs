@@ -24,6 +24,10 @@ internal static class SettingsStoreTests
         yield return ("settings recover a backup after a nonfinite dimension", () => RecoversInvalidValues("""{"FormSize":{"Width":1e999,"Height":720}}"""));
         yield return ("invalid settings and backup use valid defaults and retain the error", InvalidBackupUsesDefaults);
         yield return ("failed settings replacement preserves the previous file", FailedReplacementPreservesFile);
+        yield return ("an unreadable primary with a backup cannot be overwritten by fallback settings", () => UnreadablePrimaryIsPreserved(true));
+        yield return ("an unreadable primary without a backup cannot be overwritten by defaults", () => UnreadablePrimaryIsPreserved(false));
+        yield return ("an unreadable backup is preserved when the primary is damaged", () => UnreadableBackupIsPreserved(true));
+        yield return ("an unreadable backup is preserved when the primary is missing", () => UnreadableBackupIsPreserved(false));
     }
 
     private static string NewPath() => Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"), "settings.json");
@@ -221,6 +225,67 @@ internal static class SettingsStoreTests
         {
             RecycleDirectory(path);
         }
+    }
+
+    private static async Task UnreadablePrimaryIsPreserved(bool hasBackup)
+    {
+        var path = NewPath();
+        const string primary = """{"Theme":"Dark","Language":"original-primary"}""";
+        const string backup = """{"Theme":"Light","Language":"old-backup"}""";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, primary, Encoding.UTF8);
+            if (hasBackup) File.WriteAllText(path + ".bak", backup, Encoding.UTF8);
+            SettingsStore store;
+            using (var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+                store = new SettingsStore(path);
+            using (store)
+            {
+                Check.That(store.LastError is IOException, "A sharing violation must remain visible to the caller.");
+                Check.That(!await store.FlushAsync(), "Exit flush must not overwrite an unreadable primary, even after it is unlocked.");
+                store.Update(settings => settings with { Language = "in-memory-change" });
+                Check.That(!await store.FlushAsync(), "Changes to fallback settings must not replace unknown on-disk values.");
+                Check.Equal("in-memory-change", store.Snapshot.Language, "Read protection must not freeze in-memory settings.");
+                Check.That(store.LastError is IOException, "Blocked saving must not clear the original read failure.");
+            }
+            Check.Equal(primary, File.ReadAllText(path, Encoding.UTF8), "The unreadable primary must remain byte-for-byte unchanged.");
+            Check.Equal(hasBackup, File.Exists(path + ".bak"), "Saving fallback values must not create or remove a backup.");
+            if (hasBackup) Check.Equal(backup, File.ReadAllText(path + ".bak", Encoding.UTF8), "The valid old backup must be preserved.");
+            using var reopened = new SettingsStore(path);
+            Check.Equal("original-primary", reopened.Snapshot.Language, "A successful restart must load the original primary.");
+            reopened.Update(settings => settings with { Language = "saved-after-restart" });
+            Check.That(await reopened.FlushAsync(), "Saving may resume after a successful fresh read.");
+        }
+        finally { RecycleDirectory(path); }
+    }
+
+    private static async Task UnreadableBackupIsPreserved(bool damagedPrimary)
+    {
+        var path = NewPath();
+        const string backup = """{"Language":"only-valid-copy"}""";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            if (damagedPrimary) File.WriteAllText(path, "{damaged", Encoding.UTF8);
+            File.WriteAllText(path + ".bak", backup, Encoding.UTF8);
+            SettingsStore store;
+            using (var locked = new FileStream(path + ".bak", FileMode.Open, FileAccess.Read, FileShare.None))
+                store = new SettingsStore(path);
+            using (store)
+            {
+                store.Update(settings => settings with { AutoUpdate = false });
+                Check.That(!await store.FlushAsync(), "An unreadable recovery copy must block persistence of unverified defaults.");
+                Check.That(store.LastError != null, "The failed read must remain observable.");
+            }
+            Check.Equal(damagedPrimary, File.Exists(path), "An unavailable backup must not cause a new default primary to be written.");
+            if (damagedPrimary) Check.Equal("{damaged", File.ReadAllText(path, Encoding.UTF8), "The primary must be untouched while recovery is uncertain.");
+            Check.Equal(backup, File.ReadAllText(path + ".bak", Encoding.UTF8), "The only valid copy must not be replaced.");
+            using var reopened = new SettingsStore(path);
+            Check.Equal("only-valid-copy", reopened.Snapshot.Language, "Recovery must work once the backup can be read.");
+            Check.That(await reopened.FlushAsync(), "Confirmed recovery values may repair the primary.");
+        }
+        finally { RecycleDirectory(path); }
     }
 
     private static void RecycleDirectory(string path)

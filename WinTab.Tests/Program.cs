@@ -38,6 +38,7 @@ internal static class UnitTestRunner
             .Concat(PollingTests.All())
             .Concat(StaTaskSchedulerTests.All())
             .Concat(SettingsStoreTests.All())
+            .Concat(RegistryManagerTests.All())
             .Concat(ThemeManagerTests.All())
             .Concat(BackgroundWorkTests.All())
             .Concat(BufferedDiagnosticLogTests.All())

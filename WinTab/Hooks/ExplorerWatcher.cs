@@ -1451,9 +1451,13 @@ public partial class ExplorerWatcher : IHook
                             return false;
                         }
                     }
-                    newTabIdentity = WindowIdentity.Capture(newTabHandle);
+                    var candidateIdentity = WindowIdentity.Capture(newTabHandle);
+                    // A direct request can race with a user-created tab. It is not ours to clean up until
+                    // its location confirms the request; classic tabs still need explicit navigation.
+                    if (!createdAtLocation)
+                        newTabIdentity = candidateIdentity;
                     EnsureWindowIdentity(mainWindowIdentity);
-                    EnsureWindowIdentity(newTabIdentity);
+                    EnsureWindowIdentity(candidateIdentity);
                     ExplorerDebugLog.Write($"OpenTab new-tab={newTabHandle} target={windowToOpen.Location}");
 
                     window = await Helper.DoUntilNotDefaultAsync(
@@ -1462,6 +1466,17 @@ public partial class ExplorerWatcher : IHook
                         50, CurrentCancellation);
                     EnsureCurrentMerge();
 
+                    if (createdAtLocation)
+                    {
+                        if (window == null || !await WaitForNavigation(window, windowToOpen.Location, NavigationVerificationWaitMs))
+                        {
+                            ExplorerDebugLog.Write($"OpenTab direct ownership unconfirmed tab={newTabHandle} target={windowToOpen.Location}");
+                            return false;
+                        }
+                        EnsureWindowIdentity(mainWindowIdentity);
+                        EnsureWindowIdentity(candidateIdentity);
+                        newTabIdentity = candidateIdentity;
+                    }
                     if (window == null)
                     {
                         await CloseFailedNewTabAsync(mainWindowIdentity, newTabIdentity);
@@ -1585,7 +1600,7 @@ public partial class ExplorerWatcher : IHook
         long windowSeenAt = 0;
         var outcome = await Helper.DoUntilConditionAsync(() =>
             {
-                var tab = ExplorerWindowDiscovery.GetAllExplorerTabs(mainWindowHWnd).FirstOrDefault(handle => !knownTabs.Contains(handle));
+                var tab = ExplorerWindowDiscovery.GetUniqueNewExplorerTab(mainWindowHWnd, knownTabs);
                 // Windows 11 preloads hidden frames at any time; only a frame Explorer has shown is its
                 // answer to the request. A hidden one is not, and the tab may still arrive within the wait.
                 if (tab != 0 || !_getExplorerWindows().Any(handle => !knownWindows.Contains(handle) && WinApi.IsWindowVisible(handle)))
@@ -1778,10 +1793,10 @@ public partial class ExplorerWatcher : IHook
         if (AreLocationsEquivalent(TryGetLocation(window), targetLocation))
             return true;
 
-        // A tab Explorer created at the location may still be on its way there; a second request would
-        // only make it load the folder twice.
-        if (navigationStarted && await WaitForNavigation(window, targetLocation, NavigationVerificationWaitMs))
-            return true;
+        // Direct requests must reach their location themselves. Redirecting an unconfirmed tab could
+        // overwrite a competing user navigation, so failure is reported without another Navigate2.
+        if (navigationStarted)
+            return await WaitForNavigation(window, targetLocation, NavigationVerificationWaitMs);
 
         var navigationCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         DWebBrowserEvents2_NavigateComplete2EventHandler? navigateHandler = null;
