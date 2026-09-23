@@ -25,13 +25,24 @@ if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--user-
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--mixed-default-folder-stress"))
     return await ExplorerStressTest.RunMixedDefaultFolderAsync(args);
 
-return await UnitTestRunner.RunAll(args.Length == 2 && args[0] == "--filter" ? args[1] : null);
+string? filter = null;
+string? exclude = null;
+for (var i = 0; i < args.Length - 1; i++)
+{
+    if (StringComparer.OrdinalIgnoreCase.Equals(args[i], "--filter"))
+        filter = args[i + 1];
+    else if (StringComparer.OrdinalIgnoreCase.Equals(args[i], "--exclude"))
+        exclude = args[i + 1];
+}
+
+return await UnitTestRunner.RunAll(filter, exclude);
 
 internal static class UnitTestRunner
 {
-    public static async Task<int> RunAll(string? filter = null)
+    public static async Task<int> RunAll(string? filter = null, string? exclude = null)
     {
-        var filters = filter?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var filters = Split(filter);
+        var excludes = Split(exclude);
         var tests = Enumerable.Empty<(string Name, Func<Task> Body)>()
             .Concat(ExplorerLaunchLocationResolverTests.All())
             .Concat(LocationTests.All())
@@ -67,6 +78,13 @@ internal static class UnitTestRunner
             .Where(test => filters == null || filters.Any(part => test.Name.Contains(part, StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
+        // Host interference (an installed WinTab or Explorer running on this machine) can make a few
+        // Explorer-facing tests fail on a developer's desktop. Excluded tests are reported, never silent.
+        var skipped = excludes == null ? 0 : tests.RemoveAll(test =>
+            excludes.Any(part => test.Name.Contains(part, StringComparison.OrdinalIgnoreCase)));
+        if (skipped > 0)
+            Console.WriteLine($"SKIP {skipped} test(s) excluded by: {exclude}");
+
         if (tests.Count == 0)
         {
             Console.Error.WriteLine($"No tests match: {filter}");
@@ -95,5 +113,12 @@ internal static class UnitTestRunner
 
         Console.WriteLine($"{tests.Count - failed}/{tests.Count} passed");
         return failed == 0 ? 0 : 1;
+    }
+
+    /// <summary>Splits a <c>|</c>-separated substring list, or null when nothing was given.</summary>
+    private static string[]? Split(string? value)
+    {
+        var parts = value?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts is { Length: > 0 } ? parts : null;
     }
 }
