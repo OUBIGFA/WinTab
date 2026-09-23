@@ -74,6 +74,29 @@ internal static class ExplorerNavigationAccess
         return false;
     }
 
+    /// <summary>
+    /// Whether <paramref name="hit"/> is a control in the Explorer frame that can be observed for a native
+    /// middle-click navigation. Windows 11's address bar is hosted by the frame/XAML island rather than below
+    /// the active ShellTabWindowClass, so it cannot be rejected solely because it is not an active-tab child.
+    /// The caller still requires a unique appended tab before selecting anything; this method only permits
+    /// observation and never treats a frame click as a navigation by itself.
+    /// </summary>
+    public static bool IsPotentialNavigationTarget(nint hit, nint window)
+    {
+        if (hit == 0 || window == 0 || hit == window ||
+            !ExplorerWindowDiscovery.IsFileExplorerWindow(window))
+            return false;
+
+        nint current = hit;
+        for (var depth = 0; current != 0 && depth < 64; depth++)
+        {
+            if (current == window)
+                return true;
+            current = WinApi.GetParent(current);
+        }
+        return false;
+    }
+
     public static NavigationTabObservation Observe(nint window) => new(Tabs(window), ActiveTab(window));
 
     /// <summary>

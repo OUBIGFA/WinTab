@@ -50,8 +50,21 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
     private static nint WindowAt(Point point)
     {
         var hit = WinApi.WindowFromPoint(point);
-        var root = hit == 0 ? 0 : WinApi.GetAncestor(hit, WinApi.GA_ROOT);
-        return ExplorerWindowDiscovery.IsShownExplorerWindow(root) ? root : 0;
+        if (hit == 0) return 0;
+
+        // Address-bar XAML islands can make the root returned by GA_ROOT differ from the CabinetWClass
+        // frame. Walk the parent chain as well so the click is still associated with the visible Explorer.
+        var root = WinApi.GetAncestor(hit, WinApi.GA_ROOT);
+        if (ExplorerWindowDiscovery.IsShownExplorerWindow(root))
+            return root;
+        nint current = hit;
+        for (var depth = 0; current != 0 && depth < 64; depth++)
+        {
+            if (ExplorerWindowDiscovery.IsShownExplorerWindow(current))
+                return current;
+            current = WinApi.GetParent(current);
+        }
+        return 0;
     }
 
     private void OnForeground(nint window)
@@ -95,7 +108,8 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         var startedAt = Stopwatch.GetTimestamp();
         var window = WindowAt(input.Point);
         var target = WinApi.WindowFromPoint(input.Point);
-        if (window == 0 || !ExplorerNavigationAccess.IsInsideActiveTab(target, window))
+        if (window == 0 || (!ExplorerNavigationAccess.IsInsideActiveTab(target, window) &&
+                            !ExplorerNavigationAccess.IsPotentialNavigationTarget(target, window)))
         {
             _clicks.Cancel();
             return;
