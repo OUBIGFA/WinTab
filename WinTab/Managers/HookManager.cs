@@ -29,7 +29,7 @@ public sealed class HookManager : IDisposable
         _explorerWatcher = new ExplorerWatcher(RegistryManager.GetDefaultExplorerLaunchId);
         _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab);
         _middleClickHook = new ExplorerNavigationMiddleClickHook();
-        _wheelSwitchHook = new ExplorerTabWheelSwitchHook(_explorerWatcher);
+        _wheelSwitchHook = new ExplorerTabWheelSwitchHook(_explorerWatcher, () => SettingsManager.WheelSwitchSensitivity);
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
         _doubleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
@@ -101,6 +101,12 @@ public sealed class HookManager : IDisposable
     {
         SettingsManager.WheelSwitchTab = enabled;
         ChangeHookStatus(_wheelSwitchHook, enabled);
+        RaiseStateChanged();
+    }
+
+    public void SetWheelSwitchSensitivity(WheelSwitchSensitivity sensitivity)
+    {
+        SettingsManager.WheelSwitchSensitivity = sensitivity;
         RaiseStateChanged();
     }
 

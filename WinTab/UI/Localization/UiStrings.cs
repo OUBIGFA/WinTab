@@ -31,6 +31,16 @@ internal static class UiStrings
     public static string MiddleClickDescription => Pick("中键点击侧边栏、文件列表或主页中的文件夹时，新标签一律在前台打开", "Open folders middle-clicked in the navigation pane, file list or Home in the foreground instead of the background");
     public static string WheelSwitchTitle => Pick("滚轮切换标签页", "Scroll to switch tabs");
     public static string WheelSwitchDescription => Pick("鼠标在标签栏上滚动滚轮，向上切到左侧标签，向下切到右侧标签", "Scroll the mouse wheel over the tab row: up for the tab on the left, down for the tab on the right");
+    public static string WheelSensitivityLabel => Pick("灵敏度", "Sensitivity");
+    public static string WheelSensitivityLow => Pick("低", "Low");
+    public static string WheelSensitivityMedium => Pick("中", "Medium");
+    public static string WheelSensitivityHigh => Pick("高", "High");
+    public static string WheelSensitivityHint(WinTab.Hooks.WheelSwitchSensitivity sensitivity) => sensitivity switch
+    {
+        WinTab.Hooks.WheelSwitchSensitivity.Low => Pick("滚动两格切换一次，不易误触", "Two notches per switch, hard to trigger by accident"),
+        WinTab.Hooks.WheelSwitchSensitivity.High => Pick("每格立即切换，适合快速浏览多个标签", "Every notch switches at once, for skimming many tabs"),
+        _ => Pick("每格切换一次，快速连滚不会连跳多个标签", "One switch per notch; a quick flick does not skip several tabs")
+    };
     public static string StartupTitle => Pick("开机启动", "Start with Windows");
     public static string StartupDescription => Pick("开机后在后台静默运行", "Run quietly in the background on startup");
     public static string ShowTrayIconTitle => Pick("显示托盘图标", "Show tray icon");

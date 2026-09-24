@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
 using WinTab.Helpers;
+using WinTab.Hooks;
 
 namespace WinTab.Managers;
 
@@ -51,6 +52,13 @@ public static class SettingsManager
     {
         get => Store.Snapshot.WheelSwitchTab;
         set => SetProperty(settings => settings with { WheelSwitchTab = value });
+    }
+
+    public static WheelSwitchSensitivity WheelSwitchSensitivity
+    {
+        get => Enum.TryParse<WheelSwitchSensitivity>(Store.Snapshot.WheelSwitchSensitivity, out var value) &&
+               Enum.IsDefined(value) ? value : WheelSwitchSensitivity.Medium;
+        set => SetProperty(settings => settings with { WheelSwitchSensitivity = value.ToString() });
     }
 
     public static bool AutoUpdate
