@@ -47,6 +47,12 @@ public static class SettingsManager
         set => SetProperty(settings => settings with { MiddleClickForegroundTab = value });
     }
 
+    public static bool WheelSwitchTab
+    {
+        get => Store.Snapshot.WheelSwitchTab;
+        set => SetProperty(settings => settings with { WheelSwitchTab = value });
+    }
+
     public static bool AutoUpdate
     {
         get => Store.Snapshot.AutoUpdate;

@@ -172,12 +172,21 @@
                                 </StackPanel>
                             </DockPanel>
                         </Border>
-                        <Border Style="{StaticResource LastSettingRowStyle}">
+                        <Border Style="{StaticResource SettingRowStyle}">
                             <DockPanel>
                                 <CheckBox x:Name="DoubleClickCloseToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
                                     <TextBlock x:Name="DoubleClickTitleText" Text="Double-click to close tabs" Style="{StaticResource SettingTitleStyle}" />
                                     <TextBlock x:Name="DoubleClickDescText" Text="Double-click any tab title to close it" Style="{StaticResource SettingDescriptionStyle}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource LastSettingRowStyle}">
+                            <DockPanel>
+                                <CheckBox x:Name="WheelSwitchToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
+                                <StackPanel>
+                                    <TextBlock x:Name="WheelSwitchTitleText" Text="Scroll to switch tabs" Style="{StaticResource SettingTitleStyle}" />
+                                    <TextBlock x:Name="WheelSwitchDescText" Text="Scroll the mouse wheel over the tab row to switch tabs" Style="{StaticResource SettingDescriptionStyle}" />
                                 </StackPanel>
                             </DockPanel>
                         </Border>

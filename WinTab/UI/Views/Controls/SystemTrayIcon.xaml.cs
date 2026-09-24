@@ -36,6 +36,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         ReuseTabsMenu.Click += (_, _) => _hookManager.SetReuseTabs(ReuseTabsMenu.IsChecked);
         DoubleClickCloseMenu.Click += (_, _) => _hookManager.SetDoubleClickClose(DoubleClickCloseMenu.IsChecked);
         MiddleClickForegroundMenu.Click += (_, _) => _hookManager.SetMiddleClickForeground(MiddleClickForegroundMenu.IsChecked);
+        WheelSwitchMenu.Click += (_, _) => _hookManager.SetWheelSwitch(WheelSwitchMenu.IsChecked);
         StartupMenu.Click += StartupMenu_Click;
         AutoUpdateMenu.Click += (_, _) => SettingsManager.AutoUpdate = AutoUpdateMenu.IsChecked;
         ShowTrayIconMenu.Click += (_, _) => SettingsManager.ShowTrayIcon = ShowTrayIconMenu.IsChecked;
@@ -55,6 +56,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         ReuseTabsMenu.Header = UiStrings.TrayReuseTabs;
         DoubleClickCloseMenu.Header = UiStrings.TrayDoubleClickClose;
         MiddleClickForegroundMenu.Header = UiStrings.TrayMiddleClickForeground;
+        WheelSwitchMenu.Header = UiStrings.TrayWheelSwitch;
         StartupMenu.Header = UiStrings.TrayStartup;
         AutoUpdateMenu.Header = UiStrings.TrayAutoUpdate;
         ShowTrayIconMenu.Header = UiStrings.TrayShowTrayIcon;
@@ -68,6 +70,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         ReuseTabsMenu.IsChecked = SettingsManager.ReuseTabs;
         DoubleClickCloseMenu.IsChecked = SettingsManager.DoubleClickCloseTab;
         MiddleClickForegroundMenu.IsChecked = SettingsManager.MiddleClickForegroundTab;
+        WheelSwitchMenu.IsChecked = SettingsManager.WheelSwitchTab;
         StartupMenu.IsChecked = RegistryManager.IsStartupEnabled;
         AutoUpdateMenu.IsChecked = SettingsManager.AutoUpdate;
         ShowTrayIconMenu.IsChecked = SettingsManager.ShowTrayIcon;

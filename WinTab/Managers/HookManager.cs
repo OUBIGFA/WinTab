@@ -14,6 +14,7 @@ public sealed class HookManager : IDisposable
     private readonly ExplorerWatcher _explorerWatcher;
     private readonly ExplorerTabDoubleClickHook _doubleClickHook;
     private readonly ExplorerNavigationMiddleClickHook _middleClickHook;
+    private readonly ExplorerTabWheelSwitchHook _wheelSwitchHook;
     private readonly System.Windows.SessionEndingCancelEventHandler _sessionEndingHandler;
     private bool _disposed;
 
@@ -28,9 +29,11 @@ public sealed class HookManager : IDisposable
         _explorerWatcher = new ExplorerWatcher(RegistryManager.GetDefaultExplorerLaunchId);
         _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab);
         _middleClickHook = new ExplorerNavigationMiddleClickHook();
+        _wheelSwitchHook = new ExplorerTabWheelSwitchHook(_explorerWatcher);
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
         _doubleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
+        _wheelSwitchHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
         _middleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
 
         _sessionEndingHandler = (_, _) => Dispose();
@@ -47,6 +50,7 @@ public sealed class HookManager : IDisposable
         SetReuseTabs(SettingsManager.ReuseTabs);
         SetDoubleClickClose(SettingsManager.DoubleClickCloseTab);
         SetMiddleClickForeground(SettingsManager.MiddleClickForegroundTab);
+        SetWheelSwitch(SettingsManager.WheelSwitchTab);
     }
 
     /// <summary>Turning window merging off also turns tab reuse off; reuse needs the merge hook.</summary>
@@ -93,6 +97,13 @@ public sealed class HookManager : IDisposable
         RaiseStateChanged();
     }
 
+    public void SetWheelSwitch(bool enabled)
+    {
+        SettingsManager.WheelSwitchTab = enabled;
+        ChangeHookStatus(_wheelSwitchHook, enabled);
+        RaiseStateChanged();
+    }
+
     private static void ChangeHookStatus(IHook hook, bool isActive)
     {
         if (hook.IsHookActive == isActive)
@@ -116,6 +127,7 @@ public sealed class HookManager : IDisposable
 
         _disposed = true;
         System.Windows.Application.Current.SessionEnding -= _sessionEndingHandler;
+        _wheelSwitchHook.Dispose();
         _middleClickHook.Dispose();
         _doubleClickHook.Dispose();
         _explorerWatcher.Dispose();

@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Threading;
+using System.Threading.Tasks;
 using H.Hooks;
 using WinTab.Helpers;
 using WinTab.WinAPI;
@@ -16,6 +17,8 @@ public sealed class ExplorerTabDoubleClickHook : IHook
     private readonly LowLevelMouseHook _lowLevelMouseHook;
     private readonly ExplorerTabDoubleClickCloseController _controller;
     private readonly Func<bool> _isEnabled;
+    private readonly object _closeQueueGate = new();
+    private Task _closeQueueTail = Task.CompletedTask;
 
     public ExplorerTabDoubleClickHook(ExplorerWatcher explorerWatcher, Func<bool>? isEnabled = null)
     {
@@ -61,33 +64,47 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         if (decision.CloseRequest is not { } closeRequest)
             return;
 
-        // Hand off to the threadpool so the hook thread is never blocked. A tiny delay lets the suppressed
-        // mouse-up message drain before we synthesize the middle-click; without it, on slow systems the
-        // injected click can race with the original left-up sequence.
-        ThreadPool.QueueUserWorkItem(_ =>
+        QueueClose(closeRequest);
+    }
+
+    private void QueueClose(ExplorerTabCloseRequest closeRequest)
+    {
+        lock (_closeQueueGate)
         {
-            Thread.Sleep(10);
+            // Preserve the order of rapid double-clicks. Independent thread-pool work items can otherwise
+            // inject middle-clicks out of order while Explorer is still rebuilding the tab strip.
+            _closeQueueTail = _closeQueueTail
+                .ContinueWith(_ => ExecuteCloseAsync(closeRequest), CancellationToken.None,
+                    TaskContinuationOptions.None, TaskScheduler.Default)
+                .Unwrap();
+        }
+    }
+
+    private async Task ExecuteCloseAsync(ExplorerTabCloseRequest closeRequest)
+    {
+        // Let the suppressed mouse-up drain before synthesizing the middle-click; without this small delay,
+        // the injected click can race with the original left-up sequence on slower systems.
+        await Task.Delay(10).ConfigureAwait(false);
+        try
+        {
+            MouseSimulator.SendMiddleClick(closeRequest.Point);
+            StatusChanged?.Invoke("Closed Explorer tab via middle-click.");
+        }
+        catch
+        {
+            // 忽略关闭请求失败，避免后台任务影响钩子线程。
+        }
+        finally
+        {
             try
             {
-                MouseSimulator.SendMiddleClick(closeRequest.Point);
-                StatusChanged?.Invoke("Closed Explorer tab via middle-click.");
+                _tabStrip.Refresh(closeRequest.ExplorerWindow);
             }
             catch
             {
-                // 忽略关闭请求失败，避免后台任务影响钩子线程。
+                // 忽略刷新失败，后续鼠标事件会重新计算。
             }
-            finally
-            {
-                try
-                {
-                    _tabStrip.Refresh(closeRequest.ExplorerWindow);
-                }
-                catch
-                {
-                    // 忽略刷新失败，后续鼠标事件会重新计算。
-                }
-            }
-        });
+        }
     }
 
     private static bool IsLeftMouse(MouseEventArgs e) => e.CurrentKey is Key.MouseLeft or Key.LButton;

@@ -8,6 +8,7 @@ internal sealed record AppSettings
     public bool ReuseTabs { get; init; } = true;
     public bool DoubleClickCloseTab { get; init; } = true;
     public bool MiddleClickForegroundTab { get; init; } = true;
+    public bool WheelSwitchTab { get; init; } = true;
     public bool AutoUpdate { get; init; } = true;
     public bool ShowTrayIcon { get; init; } = true;
     public string Language { get; init; } = "zh-CN";
