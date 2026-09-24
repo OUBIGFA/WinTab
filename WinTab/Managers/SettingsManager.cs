@@ -85,7 +85,7 @@ public static class SettingsManager
         set => SetProperty(settings => settings with { Theme = NormalizeTheme(value) });
     }
 
-    public static Size FormSize
+    public static Size? FormSize
     {
         get => Store.Snapshot.FormSize;
         set => SetProperty(settings => settings with { FormSize = value }, notify: false, deferred: true);

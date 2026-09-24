@@ -10,6 +10,7 @@ namespace WinTab.Managers;
 internal sealed class SettingsStore : IDisposable
 {
     private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+    private static readonly System.Windows.Size LegacyDefaultFormSize = new(960, 760);
     private readonly object _gate = new();
     private readonly string _path;
     private readonly Action<AppSettings> _write;
@@ -166,10 +167,13 @@ internal sealed class SettingsStore : IDisposable
             throw new JsonException("The settings file contains an invalid value.", exception);
         }
 
-        var size = settings.FormSize;
+        if (settings.FormSize is not { } size)
+            return settings;
         if (!double.IsFinite(size.Width) || !double.IsFinite(size.Height) || size.Width <= 0 || size.Height <= 0)
             throw new JsonException("The saved window dimensions must be finite and positive.");
-        return settings;
+        // Earlier versions stored their fixed 960x760 default without any user resize; treating it as
+        // unset lets those installs fit the current content instead of keeping a scroll bar.
+        return size == LegacyDefaultFormSize ? settings with { FormSize = null } : settings;
     }
 
     private void WriteAtomically(AppSettings snapshot)

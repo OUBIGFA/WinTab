@@ -23,6 +23,9 @@ internal static class SettingsStoreTests
         yield return ("settings recover a backup after a zero dimension", () => RecoversInvalidValues("""{"FormSize":{"Width":1020,"Height":0}}"""));
         yield return ("settings recover a backup after a nonfinite dimension", () => RecoversInvalidValues("""{"FormSize":{"Width":1e999,"Height":720}}"""));
         yield return ("invalid settings and backup use valid defaults and retain the error", InvalidBackupUsesDefaults);
+        yield return ("settings without a saved window size leave the size to fit the content", () => LoadsFormSize("""{"Theme":"Dark"}""", null));
+        yield return ("settings treat the legacy fixed window size as never chosen", () => LoadsFormSize("""{"FormSize":{"Width":960,"Height":760}}""", null));
+        yield return ("settings keep a window size the user chose", () => LoadsFormSize("""{"FormSize":{"Width":960,"Height":900}}""", new System.Windows.Size(960, 900)));
         yield return ("failed settings replacement preserves the previous file", FailedReplacementPreservesFile);
         yield return ("an unreadable primary with a backup cannot be overwritten by fallback settings", () => UnreadablePrimaryIsPreserved(true));
         yield return ("an unreadable primary without a backup cannot be overwritten by defaults", () => UnreadablePrimaryIsPreserved(false));
@@ -178,8 +181,8 @@ internal static class SettingsStoreTests
             File.WriteAllText(path + ".bak", """{"Theme":"Dark","FormSize":{"Width":1100,"Height":760}}""", Encoding.UTF8);
             using var recovered = new SettingsStore(path);
             Check.Equal("Dark", recovered.Snapshot.Theme, "Invalid values must recover the backup rather than prevent startup.");
-            Check.Equal(1100d, recovered.Snapshot.FormSize.Width, "The valid backup width must be preserved.");
-            Check.Equal(760d, recovered.Snapshot.FormSize.Height, "The valid backup height must be preserved.");
+            Check.Equal(1100d, recovered.Snapshot.FormSize?.Width, "The valid backup width must be preserved.");
+            Check.Equal(760d, recovered.Snapshot.FormSize?.Height, "The valid backup height must be preserved.");
             Check.That(recovered.LastError is JsonException, "The invalid setting must be reported as damaged data.");
             Check.That(await recovered.FlushAsync(), "Recovered values must be writable.");
             using var reloaded = new SettingsStore(path);
@@ -197,10 +200,24 @@ internal static class SettingsStoreTests
             File.WriteAllText(path, """{"FormSize":{"Width":-1,"Height":720}}""", Encoding.UTF8);
             File.WriteAllText(path + ".bak", """{"FormSize":{"Width":1020,"Height":-1}}""", Encoding.UTF8);
             using var recovered = new SettingsStore(path);
-            var defaults = new AppSettings().FormSize;
-            Check.Equal(defaults.Width, recovered.Snapshot.FormSize.Width, "An invalid backup must not replace the valid default width.");
-            Check.Equal(defaults.Height, recovered.Snapshot.FormSize.Height, "An invalid backup must not replace the valid default height.");
+            Check.That(recovered.Snapshot.FormSize is null, "An invalid backup must not replace the content-fitted default size.");
             Check.That(recovered.LastError is JsonException, "Using defaults must not hide the damaged-settings error.");
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
+    }
+
+    private static Task LoadsFormSize(string json, System.Windows.Size? expected)
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, json, Encoding.UTF8);
+            using var store = new SettingsStore(path);
+            Check.That(store.LastError is null, "A valid settings file must load without an error.");
+            Check.That(store.Snapshot.FormSize == expected,
+                $"Expected window size {expected?.ToString() ?? "unset"}, got {store.Snapshot.FormSize?.ToString() ?? "unset"}.");
         }
         finally { RecycleDirectory(path); }
         return Task.CompletedTask;
