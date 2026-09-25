@@ -244,7 +244,7 @@ public partial class ExplorerWatcher : IHook
     private int _tabSelectionsInProgress;
     private int _ignoreNativeFocusThrough = Environment.TickCount;
 
-    public async Task<bool> SelectTabByHandle(nint windowHandle, nint tabHandle, int timeoutMs = 2_500)
+    public async Task<bool> SelectTabByHandle(nint windowHandle, nint tabHandle, int timeoutMs = 2_500, bool bringToFront = true)
     {
         if (windowHandle == 0 || tabHandle == 0)
             return false;
@@ -255,7 +255,25 @@ public partial class ExplorerWatcher : IHook
             var tabIdentity = WindowIdentity.Capture(tabHandle);
             EnsureWindowIdentity(parentIdentity);
             EnsureWindowIdentity(tabIdentity);
-            Helper.RestoreWindowToForeground(windowHandle);
+            ExplorerDebugLog.Write($"SelectTab hwnd={windowHandle} tab={tabHandle} foreground={WinApi.GetForegroundWindow()} bringToFront={bringToFront}");
+            if (bringToFront)
+            {
+                var wasMinimized = WinApi.IsIconic(windowHandle);
+                Helper.RestoreWindowToForeground(windowHandle);
+                if (wasMinimized)
+                {
+                    // Restoring a minimized frame is asynchronous. Do not race its old-view focus
+                    // restoration with tab-switch commands while it is still coming to the foreground.
+                    var foreground = await Helper.DoUntilConditionAsync(ExplorerNavigationAccess.ForegroundFrame,
+                        handle => handle == windowHandle, 500, 10, CurrentCancellation);
+                    EnsureWindowIdentity(parentIdentity);
+                    EnsureWindowIdentity(tabIdentity);
+                    if (foreground != windowHandle)
+                        return false;
+                }
+            }
+            else if (WinApi.IsIconic(windowHandle))
+                return false;
             var selected = await TabSelectionEngine.CycleToTabAsync(tabHandle,
                 () => ExplorerWindowDiscovery.GetAllExplorerTabs(windowHandle).ToArray(),
                 () => GetActiveTabHandle(windowHandle),
@@ -1382,11 +1400,14 @@ public partial class ExplorerWatcher : IHook
         var createdAtLocation = false;
         var appendedIndex = 0;
         var focusGuarded = false;
+        var lockHeld = false;
 
         try
         {
             await _toOpenWindowsLock.WaitAsync(CurrentCancellation);
-            try
+            lockHeld = true;
+            // Keep creation and activation in one critical section. A second merge must not foreground
+            // this frame while the first merge still has a newly appended, unselected tab settling.
             {
                 EnsureCurrentMerge();
                 ExplorerDebugLog.Write($"OpenTab lock target={windowToOpen.Location}");
@@ -1426,6 +1447,8 @@ public partial class ExplorerWatcher : IHook
                 {
                     mainWindowIdentity = WindowIdentity.Capture(mainWindowHWnd);
                     EnsureWindowIdentity(mainWindowIdentity);
+                    if (!await PrepareWindowForTabCreationAsync(mainWindowIdentity))
+                        return false;
                     var currentTabs = ExplorerWindowDiscovery.GetAllExplorerTabs(mainWindowHWnd).ToArray();
                     ExplorerDebugLog.Write($"OpenTab main={mainWindowHWnd} tabs={currentTabs.Length} target={windowToOpen.Location}");
 
@@ -1494,10 +1517,6 @@ public partial class ExplorerWatcher : IHook
                     return false;
                 }
             }
-            finally
-            {
-                _toOpenWindowsLock.Release();
-            }
 
             try
             {
@@ -1514,24 +1533,12 @@ public partial class ExplorerWatcher : IHook
 
                 EnsureWindowIdentity(mainWindowIdentity);
                 EnsureWindowIdentity(newTabIdentity);
-                if (createdAtLocation)
+                if (createdAtLocation &&
+                    !await ActivateAppendedTabAsync(mainWindowHWnd, mainWindowIdentity, newTabHandle, newTabIdentity, appendedIndex))
                 {
-                    // Tab switches of concurrent merges are serialized; two of them observing one window would
-                    // read each other's switches as their own outcome.
-                    await _toOpenWindowsLock.WaitAsync(CurrentCancellation);
-                    try
-                    {
-                        if (!await ActivateAppendedTabAsync(mainWindowHWnd, mainWindowIdentity, newTabHandle, newTabIdentity, appendedIndex))
-                        {
-                            ExplorerDebugLog.Write($"OpenTab activation-failed tab={newTabHandle} target={windowToOpen.Location}");
-                            await CloseFailedNewTabAsync(mainWindowIdentity, newTabIdentity);
-                            return false;
-                        }
-                    }
-                    finally
-                    {
-                        _toOpenWindowsLock.Release();
-                    }
+                    ExplorerDebugLog.Write($"OpenTab activation-failed tab={newTabHandle} target={windowToOpen.Location}");
+                    await CloseFailedNewTabAsync(mainWindowIdentity, newTabIdentity);
+                    return false;
                 }
                 if (!createdAtLocation)
                     Helper.RestoreWindowToForeground(mainWindowHWnd);
@@ -1559,8 +1566,30 @@ public partial class ExplorerWatcher : IHook
                 Volatile.Write(ref _ignoreNativeFocusThrough, Environment.TickCount);
                 Interlocked.Decrement(ref _tabSelectionsInProgress);
             }
+            if (lockHeld)
+                _toOpenWindowsLock.Release();
         }
     }
+
+    /// <summary>
+    /// BrowseObject itself foregrounds the frame and then refocuses its old view, even for a background tab.
+    /// Activate the settled frame once BEFORE creating anything so that native focus transfer is a no-op.
+    /// Once a new tab exists, activation still strictly selects the tab before any further foreground work.
+    /// The caller holds the merge lock through creation and selection to keep that boundary safe.
+    /// </summary>
+    private async Task<bool> PrepareWindowForTabCreationAsync(WindowIdentity identity)
+    {
+        EnsureWindowIdentity(identity);
+        Helper.RestoreWindowToForeground(identity.Handle);
+        var foreground = await Helper.DoUntilConditionAsync(ExplorerNavigationAccess.ForegroundFrame,
+            handle => handle == identity.Handle, 500, 10, CurrentCancellation);
+        EnsureWindowIdentity(identity);
+        if (foreground == identity.Handle)
+            return true;
+        ExplorerDebugLog.Write($"Tab creation cancelled; target did not reach foreground hwnd={identity.Handle}");
+        return false;
+    }
+
     /// <summary>
     /// Asks Explorer, through the browser of one of the target window's tabs, to open the location as a new tab
     /// of that window. Explorer appends the tab in the background and creates it at the location, so the window
@@ -1705,7 +1734,9 @@ public partial class ExplorerWatcher : IHook
                 return await BringActivatedTabToFrontAsync(windowHandle, windowIdentity, tabHandle, tabIdentity);
 
             ExplorerDebugLog.Write($"Appended tab not active by index hwnd={windowHandle} tab={tabHandle} index={tabIndex} active={active}");
-            return await SelectTabByHandle(windowHandle, tabHandle);
+            if (!await SelectTabByHandle(windowHandle, tabHandle, bringToFront: false))
+                return false;
+            return await BringActivatedTabToFrontAsync(windowHandle, windowIdentity, tabHandle, tabIdentity);
         }
         finally
         {
@@ -1729,6 +1760,7 @@ public partial class ExplorerWatcher : IHook
     private async Task<bool> BringActivatedTabToFrontAsync(nint windowHandle, WindowIdentity windowIdentity,
         nint tabHandle, WindowIdentity tabIdentity)
     {
+        ExplorerDebugLog.Write($"Appended tab foreground hwnd={windowHandle} tab={tabHandle} foreground={WinApi.GetForegroundWindow()}");
         Helper.RestoreWindowToForeground(windowHandle);
         var active = await Helper.DoUntilConditionAsync(() => GetActiveTabHandle(windowHandle),
             handle => handle != tabHandle, ForegroundSettleWaitMs, 20, CurrentCancellation);
@@ -1738,7 +1770,7 @@ public partial class ExplorerWatcher : IHook
             return true;
 
         ExplorerDebugLog.Write($"Appended tab lost to foreground change hwnd={windowHandle} tab={tabHandle} active={active}");
-        return await SelectTabByHandle(windowHandle, tabHandle);
+        return await SelectTabByHandle(windowHandle, tabHandle, bringToFront: false);
     }
 
     private async Task CloseFailedNewTabAsync(WindowIdentity parent, WindowIdentity tab)

@@ -6,6 +6,9 @@ using System.Threading.Tasks;
 
 Console.InputEncoding = new UTF8Encoding(false);
 Console.OutputEncoding = new UTF8Encoding(false);
+// A developer's WINTAB_DEBUG_LOG belongs to the installed WinTab. Test hooks must not write into it; the
+// stress tests hand the WinTab they start its own log explicitly.
+Environment.SetEnvironmentVariable("WINTAB_DEBUG_LOG", null);
 
 if (args.Length == 3 && args[0] == "--conceal-test-window")
     return WindowSafetyTests.ConcealRecoveryWindow(args[1], args[2]);

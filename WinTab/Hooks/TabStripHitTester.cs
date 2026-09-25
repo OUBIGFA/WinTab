@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows.Automation;
+using System.Threading;
+using System.Threading.Tasks;
 using WinTab.Helpers;
 using WinTab.WinAPI;
 
@@ -14,7 +15,12 @@ internal sealed class TabStripHitTester : IDisposable
 {
     private const int StaleBoundsMs = 1_500;
     private const int RectMatchSlop = 2;
-    private readonly BackgroundRefreshCache<nint, TabStripBounds> _boundsCache = new(ComputeBounds);
+    private readonly BackgroundRefreshCache<nint, TabStripBounds> _boundsCache;
+
+    public TabStripHitTester() : this(ExplorerTabAutomation.ReadTabs) { }
+
+    internal TabStripHitTester(Func<nint, ExplorerTabAutomation.Tab[]> readTabs) =>
+        _boundsCache = new(window => ComputeBounds(window, readTabs));
 
     /// <param name="TabRow">The band of the window that holds the tab titles, including the space beside them.</param>
     private sealed record TabStripBounds(DrawingRectangle[] TabRects, DrawingRectangle TabRow, RECT WindowRect, long RefreshedAt, WindowIdentity Identity);
@@ -43,6 +49,14 @@ internal sealed class TabStripHitTester : IDisposable
         return true;
     }
 
+    /// <summary>Resolves a cold hit test off the input hook without discarding the gesture that requested it.</summary>
+    public async Task<DrawingRectangle?> GetTabRowAsync(nint explorerWindow, CancellationToken cancellationToken)
+    {
+        return await Helper.DoUntilConditionAsync<DrawingRectangle?>(() =>
+            TryGetTabRow(explorerWindow, out var row) ? row : null,
+            row => row.HasValue, 1_000, 5, cancellationToken);
+    }
+
     private static bool TryGetWindowRect(nint explorerWindow, out RECT windowRect)
     {
         windowRect = default;
@@ -52,16 +66,22 @@ internal sealed class TabStripHitTester : IDisposable
 
     private bool TryGetBounds(nint explorerWindow, RECT windowRect, out TabStripBounds bounds)
     {
-        if (_boundsCache.TryGet(explorerWindow, out var cached) && cached!.Identity.IsCurrent &&
-            RectsApproxEqual(cached.WindowRect, windowRect))
+        if (_boundsCache.TryGet(explorerWindow, out var cached))
         {
-            if (Environment.TickCount64 - cached.RefreshedAt > StaleBoundsMs)
-                ScheduleRefresh(explorerWindow);
-            bounds = cached;
-            return true;
+            if (cached!.Identity.IsCurrent && RectsApproxEqual(cached.WindowRect, windowRect))
+            {
+                if (Environment.TickCount64 - cached.RefreshedAt > StaleBoundsMs)
+                    ScheduleRefresh(explorerWindow);
+                bounds = cached;
+                return true;
+            }
+            _boundsCache.Invalidate(explorerWindow);
         }
-
-        _boundsCache.Invalidate(explorerWindow);
+        else
+        {
+            // Repeated cold lookups must not invalidate the computation already in flight.
+            _boundsCache.Request(explorerWindow);
+        }
         bounds = null!;
         return false;
     }
@@ -78,7 +98,7 @@ internal sealed class TabStripHitTester : IDisposable
         Math.Abs(first.Right - second.Right) <= RectMatchSlop &&
         Math.Abs(first.Bottom - second.Bottom) <= RectMatchSlop;
 
-    private static TabStripBounds? ComputeBounds(nint explorerWindow)
+    private static TabStripBounds? ComputeBounds(nint explorerWindow, Func<nint, ExplorerTabAutomation.Tab[]> readTabs)
     {
         if (!ExplorerWindowDiscovery.IsFileExplorerWindow(explorerWindow) ||
             !WinApi.GetWindowRect(explorerWindow, out var initialRect))
@@ -87,13 +107,11 @@ internal sealed class TabStripHitTester : IDisposable
         var identity = WindowIdentity.Capture(explorerWindow);
         if (!identity.IsCurrent)
             return null;
-        var root = AutomationElement.FromHandle(explorerWindow);
-        var tabItems = root.FindAll(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
-        var tabRects = new List<DrawingRectangle>(tabItems.Count);
-        foreach (AutomationElement tab in tabItems)
+        var tabs = readTabs(explorerWindow);
+        var tabRects = new List<DrawingRectangle>(tabs.Length);
+        foreach (var tab in tabs)
         {
-            var rectangle = tab.Current.BoundingRectangle;
+            var rectangle = tab.Bounds;
             if (!rectangle.IsEmpty && rectangle.Width >= 24 && rectangle.Height >= 12)
                 tabRects.Add(new DrawingRectangle((int)rectangle.X, (int)rectangle.Y, (int)rectangle.Width, (int)rectangle.Height));
         }

@@ -35,7 +35,7 @@ internal static class NavigationTabActivation
 
     public static async Task<NavigationActivationResult> RunAsync(
         nint[] before, nint sourceTab,
-        Func<bool> isCurrent, Func<NavigationTabObservation> observe,
+        Func<bool> isCurrent, Func<NavigationTabObservation?> observe,
         Func<nint, NavigationSelectOutcome> select, CancellationToken cancellationToken,
         int timeoutMs = 1_500, int pollMs = 20)
     {
@@ -52,6 +52,13 @@ internal static class NavigationTabActivation
                 var current = observe();
                 if (cancellationToken.IsCancellationRequested || !isCurrent())
                     return NavigationActivationResult.Cancelled;
+
+                // No consistent snapshot while Explorer moves tab windows; that says nothing about the click.
+                if (current == null)
+                {
+                    await Task.Delay(pollMs, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
 
                 // Lost or extra tabs mean another operation is competing with this click.
                 if (!before.All(current.Handles.Contains) || current.Handles.Length > before.Length + 1)

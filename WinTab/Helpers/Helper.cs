@@ -87,6 +87,10 @@ public static class Helper
 
     public static void RestoreWindowToForeground(nint window)
     {
+        if (window == 0) return;
+        var foreground = WinApi.GetForegroundWindow();
+        if (!WinApi.IsIconic(window) && (foreground == window || WinApi.GetAncestor(foreground, WinApi.GA_ROOT) == window))
+            return;
         if (WinApi.IsIconic(window))
             WinApi.ShowWindow(window, WinApi.SW_SHOWNOACTIVATE);
 

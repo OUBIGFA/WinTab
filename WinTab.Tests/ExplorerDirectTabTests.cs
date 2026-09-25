@@ -32,6 +32,8 @@ internal static class ExplorerDirectTabTests
         yield return ("an appended tab is activated by its index with a single command", AppendedTabIsActivatedByIndex);
         yield return ("a slow Explorer tab switch still activates the appended tab", SlowSwitchStillActivates);
         yield return ("an appended tab whose index moved is still activated", MovedIndexStillActivates);
+        yield return ("an appended index fallback selects before foreground activation", FallbackSelectsBeforeForeground);
+        yield return ("tab creation foregrounds the settled frame before any new tab exists", CreationPreparesSettledFrame);
         yield return ("a tab created at its location is not navigated a second time", TabCreatedAtLocationIsNotNavigatedAgain);
         yield return ("a tab created elsewhere is navigated to the location", TabCreatedElsewhereIsNavigated);
         yield return ("a failed tab is still closed after the merge's own deadline has passed", FailedTabIsClosedAfterMergeDeadline);
@@ -215,6 +217,35 @@ internal static class ExplorerDirectTabTests
 
         Check.That(activated, $"A moved tab must still be activated; commands={string.Join(',', frame.SwitchCommands)} trace={frame.Trace}");
         Check.Equal(target, frame.ActiveTab, "The appended tab must end up active even when its index moved.");
+    });
+
+    private static Task FallbackSelectsBeforeForeground() => WithFrame(async (fixture, frame) =>
+    {
+        var target = frame.TabAt(2);
+        frame.SetActive(0);
+        fixture.Window.Show();
+        Helper.RestoreWindowToForeground(fixture.Window.Handle);
+        frame.TabsOnActivation.Clear();
+        Check.That(await Activate(fixture, frame, target, 1), "An outdated appended index must still resolve the correct tab.");
+        Check.That(frame.TabsOnActivation.TryPeek(out var firstActivated) && firstActivated == target,
+            "The half-created background tab must be selected before foregrounding, including the index fallback.");
+        Check.Equal(1, frame.TabsOnActivation.Count, "Selection recovery must not activate the frame twice.");
+    });
+
+    private static Task CreationPreparesSettledFrame() => WithFrame(async (fixture, frame) =>
+    {
+        fixture.Window.Show();
+        Helper.RestoreWindowToForeground(fixture.Window.Handle);
+        frame.SetActive(0);
+        frame.TabsOnActivation.Clear();
+        var identity = WindowIdentity.Capture(frame.Handle);
+        Check.That(await (Task<bool>)fixture.Invoke("PrepareWindowForTabCreationAsync", identity)!,
+            "The settled frame must reach foreground before BrowseObject is allowed to create a tab.");
+        Check.Equal(frame.Handle, WinTab.WinAPI.WinApi.GetForegroundWindow());
+        Check.Equal(0, frame.SwitchCommands.Count, "Preparation must not cycle any existing tabs.");
+        Check.Equal(frame.TabAt(0), frame.ActiveTab);
+        Check.That(await (Task<bool>)fixture.Invoke("PrepareWindowForTabCreationAsync", identity)!, "An already foreground frame stays ready.");
+        Check.Equal(1, frame.TabsOnActivation.Count, "An already foreground frame must not be activated again.");
     });
 
     private static Task TabCreatedAtLocationIsNotNavigatedAgain() => ExplorerTabLifetimeTests.WithFixture(async fixture =>

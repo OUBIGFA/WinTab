@@ -17,11 +17,14 @@ namespace WinTab.Hooks;
 internal sealed record NavigationClick(WindowIdentity Window, WindowIdentity SourceTab, WindowIdentity Target, nint[] TabsBefore, Point Point,
     bool OnNavigationTree = false)
 {
-    /// <summary>The click can still be acted on: the same window, tab and target exist and the window is in front.</summary>
+    /// <summary>
+    /// The click can still be acted on: the same window, tab and target exist. The window need not be in front:
+    /// a click on an Explorer window behind another application brings it to the front only after the button
+    /// is released. Moving on to another window ends the click through the foreground event instead.
+    /// </summary>
     public bool IsCurrent() =>
         Window.IsCurrent && SourceTab.IsCurrent && Target.IsCurrent &&
-        WinApi.GetParent(SourceTab.Handle) == Window.Handle &&
-        ExplorerNavigationAccess.ForegroundFrame() == Window.Handle;
+        WinApi.GetParent(SourceTab.Handle) == Window.Handle;
 }
 
 /// <summary>Reads native tab handles and navigation items. Accessibility work never runs on the hook thread.</summary>
@@ -41,7 +44,8 @@ internal static class ExplorerNavigationAccess
         return root != 0 ? root : foreground;
     }
 
-    public static nint[] Tabs(nint window) => ExplorerWindowDiscovery.GetAllExplorerTabs(window).Take(MaxTabs + 1).ToArray();
+    /// <summary>The window's tabs as one snapshot, the active tab first; null while Explorer is moving tab windows.</summary>
+    public static nint[]? ReadTabs(nint window) => ExplorerWindowDiscovery.GetStableExplorerTabs(window, MaxTabs + 1);
 
     public static bool SameHandles(nint[] first, nint[] second) => first.Length == second.Length && new HashSet<nint>(first).SetEquals(second);
 
@@ -97,7 +101,9 @@ internal static class ExplorerNavigationAccess
         return false;
     }
 
-    public static NavigationTabObservation Observe(nint window) => new(Tabs(window), ActiveTab(window));
+    /// <summary>The tabs and the active tab from one snapshot; null when no consistent snapshot could be read.</summary>
+    public static NavigationTabObservation? Observe(nint window) =>
+        ReadTabs(window) is { } tabs ? new(tabs, tabs.Length > 0 ? tabs[0] : 0) : null;
 
     /// <summary>
     /// Whether the point is on a folder item of the navigation pane, where a middle click makes Explorer
@@ -134,8 +140,12 @@ internal static class ExplorerNavigationAccess
     {
         var window = click.Window.Handle;
         nint[] expected = [.. click.TabsBefore, newTab];
-        if (!isCurrent() || WinApi.GetParent(newTab) != window ||
-            ActiveTab(window) != click.SourceTab.Handle || !SameHandles(Tabs(window), expected))
+        if (!isCurrent() || WinApi.GetParent(newTab) != window)
+            return NavigationSelectOutcome.Rejected;
+        // Explorer may still be moving the new tab's window; that is no evidence either way.
+        if (ReadTabs(window) is not { } tabs)
+            return NavigationSelectOutcome.NotReady;
+        if (!SameHandles(tabs, expected) || tabs[0] != click.SourceTab.Handle)
             return NavigationSelectOutcome.Rejected;
         return WinApi.PostMessage(window, WinApi.WM_COMMAND, 0xA221, expected.Length)
             ? NavigationSelectOutcome.Selected

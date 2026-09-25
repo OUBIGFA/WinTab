@@ -98,16 +98,27 @@ public partial class ExplorerWatcher
         }
 
         var hookGeneration = _hookGeneration;
-        bool IsOwnerCurrent() => CanReuseDesktopFolder && hookGeneration == _hookGeneration && IsCurrentWindow(window, info);
+        var selecting = false;
+        bool IsOwnerCurrent() => CanReuseDesktopFolder && hookGeneration == _hookGeneration && IsCurrentWindow(window, info) &&
+            (!selecting || ExplorerNavigationAccess.ForegroundFrame() == parent);
         using var operation = new MergeOperation(info.Identity, hookGeneration, _shellLifetime.Token,
             IsOwnerCurrent, MergeTimeoutMs, _hookLifetime.Token);
+        // This observer only repairs the native "activate an existing window" case. If Explorer instead
+        // opens a source window, registration owns both merging and foreground activation. Bringing the
+        // target forward here races that native open and produces target -> source -> target flicker.
+        var foreground = await Helper.DoUntilConditionAsync(ExplorerNavigationAccess.ForegroundFrame,
+            handle => handle == parent || !IsDesktopFrame(handle), 1_000, 10, operation.Token);
+        if (foreground != parent)
+            return;
+        selecting = true;
         await _toOpenWindowsLock.WaitAsync(operation.Token);
         var previousOperation = _currentMerge.Value;
         _currentMerge.Value = operation;
         try
         {
-            operation.ThrowIfInvalid();
-            var selected = await SelectTabByHandle(parent, tab);
+            if (!operation.IsCurrent || GetActiveTabHandle(parent) == tab)
+                return;
+            var selected = await SelectTabByHandle(parent, tab, bringToFront: false);
             ExplorerDebugLog.Write($"Desktop open selected={selected} hwnd={parent} tab={tab} target={location}");
         }
         finally
@@ -116,4 +127,7 @@ public partial class ExplorerWatcher
             _toOpenWindowsLock.Release();
         }
     });
+
+    private static bool IsDesktopFrame(nint window) => window == 0 ||
+        WinApi.IsWindowHasClassName(window, "Progman") || WinApi.IsWindowHasClassName(window, "WorkerW");
 }

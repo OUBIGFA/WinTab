@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using WinTab.Helpers;
 using WinTab.Hooks;
+using WinTab.WinAPI;
 
 /// <summary>
 /// A middle click on the navigation pane makes Explorer open a tab in the background. WinTab records the
@@ -26,12 +28,16 @@ internal static class NavigationMiddleClickTests
         yield return ("navigation middle-click stops when its window identity or foreground expires", InvalidContext);
         yield return ("navigation middle-click refuses a candidate that changes during observation", ChangingCandidate);
         yield return ("navigation middle-click does not guess for duplicate handles", DuplicateHandles);
+        yield return ("navigation middle-click keeps observing while Explorer reorders its tab windows", KeepsObservingThroughTornRead);
+        yield return ("explorer tab snapshot rereads a walk that listed a tab twice", () => SnapshotRereadsTornWalk([1, 2, 3, 2]));
+        yield return ("explorer tab snapshot rereads a walk that missed a tab", () => SnapshotRereadsTornWalk([1, 2]));
+        yield return ("explorer tab snapshot reports a frame that keeps changing", SnapshotReportsChangingFrame);
+        yield return ("navigation input observer ignores pointer movement and the wheel", IgnoresMovementAndWheel);
         yield return ("navigation click gate pairs down/up without consuming the native click", PairsClick);
-        yield return ("navigation click gate quarantines overlapping and late requests", OverlappingClicks);
-        yield return ("navigation click gate cancels drag even when the pointer returns", CancelsDrag);
+        yield return ("navigation click gate lets a new click replace an unresolved one", NewClickReplacesUnresolved);
+        yield return ("navigation click gate never holds back the click after a cancelled or fruitless one", NoCooldownAfterFailure);
         yield return ("navigation click gate releases the worker after cancellation and disposal", CancelsLifetime);
         yield return ("navigation click gate allows the next click immediately after success", NextSuccessfulClick);
-        yield return ("navigation click gate forgets a click beside the folder items without a cooldown", DiscardedClickHasNoCooldown);
         yield return ("navigation click gate preserves a same-window request after an old worker retires", () => RetiredClickPreservesForeground(100));
         yield return ("navigation click gate preserves a different-window request after an old worker retires", () => RetiredClickPreservesForeground(200));
         yield return ("navigation click gate still cancels a real foreground change", ForegroundChangeCancels);
@@ -42,13 +48,14 @@ internal static class NavigationMiddleClickTests
         public readonly nint[] Before = [11, 22];
         public NavigationTabObservation Current = new([11, 22, 33], 11);
         public readonly CancellationTokenSource Lifetime = new();
-        public Func<NavigationTabObservation>? OnObserve;
+        /// <summary>Replaces the observation; returning null models a tab walk that was not a consistent snapshot.</summary>
+        public Func<NavigationTabObservation?>? OnObserve;
         public Func<NavigationSelectOutcome>? OnSelect;
         public bool Valid = true, Activate = true;
         public int SelectCalls, Observations;
         public nint SelectedTab;
         public Task<NavigationActivationResult> Run(int timeoutMs = 800) => NavigationTabActivation.RunAsync(Before, 11,
-            () => Valid, () => { Observations++; return OnObserve?.Invoke() ?? Current; },
+            () => Valid, () => { Observations++; return OnObserve != null ? OnObserve() : Current; },
             tab =>
             {
                 SelectCalls++;
@@ -155,79 +162,134 @@ internal static class NavigationMiddleClickTests
         return Task.CompletedTask;
     }
 
+    private static async Task KeepsObservingThroughTornRead()
+    {
+        using var fixture = new Fixture();
+        // Right after creating the tab Explorer moves its window in the z-order; a walk spanning that move is
+        // no snapshot of the tabs. It proves nothing about competing tabs, so the click keeps observing.
+        fixture.OnObserve = () => fixture.Observations == 2 ? null : fixture.Current;
+        Check.Equal(NavigationActivationResult.Activated, await fixture.Run(), "A torn tab walk must not end the click as ambiguous.");
+        Check.Equal((nint)33, fixture.SelectedTab, "The new tab is still the one selected.");
+        Check.Equal(1, fixture.SelectCalls, "The torn walk does not cause a second selection.");
+    }
+
+    private static Task SnapshotRereadsTornWalk(nint[] torn)
+    {
+        nint[] settled = [1, 3, 2];
+        var walks = new Queue<nint[]>([torn, settled, settled]);
+        var snapshot = ExplorerWindowDiscovery.ReadStable(walks.Dequeue);
+        Check.That(snapshot != null && snapshot.SequenceEqual(settled), "A torn walk is read again until two consecutive walks agree.");
+        return Task.CompletedTask;
+    }
+
+    private static Task SnapshotReportsChangingFrame()
+    {
+        var walk = 0;
+        Check.That(ExplorerWindowDiscovery.ReadStable<nint>(() => ++walk % 2 == 0 ? [1, 2] : [1, 2, 3]) == null,
+            "A frame that never settles has no snapshot; it is not reported as having fewer or more tabs.");
+        nint[] duplicated = [1, 2, 2];
+        Check.That(ExplorerWindowDiscovery.ReadStable(() => duplicated) == null, "A walk that lists a tab twice is never a snapshot.");
+        return Task.CompletedTask;
+    }
+
+    private static Task IgnoresMovementAndWheel()
+    {
+        // Explorer opens the folder's tab even when the pointer or the wheel moves while the wheel button is
+        // pressed, so neither may end the click. They are not observed at all.
+        Check.Equal<NavigationPointerKind?>(null, NavigationInputObserver.Classify(WinApi.WM_MOUSEMOVE), "Pointer movement is not part of a middle click.");
+        Check.Equal<NavigationPointerKind?>(null, NavigationInputObserver.Classify(WinApi.WM_MOUSEWHEEL), "The wheel is not part of a middle click.");
+        Check.Equal<NavigationPointerKind?>(null, NavigationInputObserver.Classify(WinApi.WM_MOUSEHWHEEL), "A tilted wheel is not part of a middle click.");
+        Check.Equal<NavigationPointerKind?>(NavigationPointerKind.MiddleDown, NavigationInputObserver.Classify(WinApi.WM_MBUTTONDOWN));
+        Check.Equal<NavigationPointerKind?>(NavigationPointerKind.MiddleUp, NavigationInputObserver.Classify(WinApi.WM_MBUTTONUP));
+        Check.Equal<NavigationPointerKind?>(NavigationPointerKind.OtherDown, NavigationInputObserver.Classify(WinApi.WM_RBUTTONDOWN),
+            "Another button starts a different action, such as a context menu that opens a tab.");
+        return Task.CompletedTask;
+    }
+
     private static Task PairsClick()
     {
         using var gate = new NavigationClickGate();
-        var lease = gate.Begin(100, new Point(100, 200), 10)!;
+        var lease = gate.Begin(100, 10, out _)!;
         Check.That(!lease.Released.Task.IsCompleted, "No activation before the matching button-up.");
-        gate.Release(new Point(102, 201), 30, 4, 4);
-        Check.That(lease.Released.Task.IsCompletedSuccessfully && gate.IsCurrent(lease, 30), "A small click movement is permitted.");
-        gate.Complete(lease, true);
+        gate.Release(30);
+        Check.That(lease.Released.Task.IsCompletedSuccessfully && gate.IsCurrent(lease, 30), "The button-up completes the click.");
+        gate.Complete(lease);
+        var late = gate.Begin(100, 100, out _)!;
+        gate.Release(100 + NavigationClickGate.RequestLifetimeMs);
+        Check.That(!late.Released.Task.IsCompleted && !gate.IsCurrent(late, 100 + NavigationClickGate.RequestLifetimeMs),
+            "A button-up after the click's lifetime ends the click instead.");
+        gate.Complete(late);
         return Task.CompletedTask;
     }
 
-    private static Task OverlappingClicks()
+    private static Task NewClickReplacesUnresolved()
     {
         using var gate = new NavigationClickGate();
-        var first = gate.Begin(100, new Point(1, 1), 100)!;
-        Check.That(gate.Begin(100, new Point(2, 2), 120) == null && first.Token.IsCancellationRequested,
-            "A second click invalidates the unresolved first request instead of stealing its late tab.");
-        gate.Complete(first, false);
-        Check.That(gate.Begin(100, new Point(2, 2), 500) == null, "A late first tab must not be assigned to another request.");
-        var later = gate.Begin(100, new Point(2, 2), 2_101);
-        Check.That(later != null, "Quarantine is bounded.");
-        gate.Complete(later!, false);
+        var first = gate.Begin(100, 100, out var replacedByFirst)!;
+        var second = gate.Begin(100, 120, out var replacedBySecond);
+        Check.That(!replacedByFirst && replacedBySecond, "Only an unresolved click is reported as replaced.");
+        Check.That(second != null && first.Token.IsCancellationRequested && !gate.IsCurrent(first, 120),
+            "A new click retires the unresolved one instead of being dropped; a click that opened nothing must not cost the next one its tab.");
+        gate.Complete(first);
+        Check.That(gate.IsCurrent(second!, 130), "The retired click's worker cannot end the new click.");
+        gate.Release(140);
+        Check.That(second!.Released.Task.IsCompletedSuccessfully, "The button-up belongs to the new click.");
+        gate.Complete(second);
         return Task.CompletedTask;
     }
 
-    private static Task CancelsDrag()
+    private static Task NoCooldownAfterFailure()
     {
         using var gate = new NavigationClickGate();
-        var lease = gate.Begin(100, new Point(100, 100), 0)!;
-        gate.Move(new Point(110, 100), 4, 4);
-        gate.Release(new Point(100, 100), 50, 4, 4);
-        Check.That(!gate.IsCurrent(lease, 50), "Returning to the down point cannot turn a drag into a click.");
-        gate.Complete(lease, false);
+        var cancelled = gate.Begin(100, 0, out _)!;
+        Check.That(gate.Cancel() && !gate.Cancel(), "A cancelled click is cancelled once and is then no longer pending.");
+        var afterCancel = gate.Begin(100, 30, out var replaced);
+        Check.That(afterCancel != null && !replaced && gate.IsCurrent(afterCancel, 30),
+            "A cancelled click must not hold back the next one, whose tab would otherwise stay in the background.");
+        gate.Complete(cancelled);
+        Check.That(gate.IsCurrent(afterCancel!, 40), "Completing the cancelled click later must not disturb the current one.");
+        gate.Complete(afterCancel!);
+        var afterFruitless = gate.Begin(100, 50, out _);
+        Check.That(afterFruitless != null && gate.IsCurrent(afterFruitless, 60), "A click that opened nothing must not hold back the next one either.");
+        gate.Complete(afterFruitless!);
         return Task.CompletedTask;
     }
 
     private static Task CancelsLifetime()
     {
         var gate = new NavigationClickGate();
-        var lease = gate.Begin(100, Point.Empty, 0)!;
+        var lease = gate.Begin(100, 0, out _)!;
         gate.Dispose();
         Check.That(lease.Token.IsCancellationRequested && !gate.IsCurrent(lease, 1), "Disposal cancels all pending work.");
-        Check.That(gate.Begin(100, Point.Empty, 3_000) == null, "A disposed gate cannot accept new input.");
-        gate.Complete(lease, false);
+        Check.That(gate.Begin(100, 3_000, out _) == null, "A disposed gate cannot accept new input.");
+        gate.Complete(lease);
         return Task.CompletedTask;
     }
 
     private static Task NextSuccessfulClick()
     {
         using var gate = new NavigationClickGate();
-        var first = gate.Begin(100, Point.Empty, 0)!;
-        gate.Complete(first, true);
-        var next = gate.Begin(100, Point.Empty, 20);
-        Check.That(next != null, "Resolved clicks should not incur the ambiguity cooldown.");
-        gate.Complete(next!, true);
+        var first = gate.Begin(100, 0, out _)!;
+        gate.Complete(first);
+        var next = gate.Begin(100, 20, out var replaced);
+        Check.That(next != null && !replaced, "A resolved click is not replaced; the next click simply starts.");
+        gate.Complete(next!);
         return Task.CompletedTask;
     }
 
     private static Task RetiredClickPreservesForeground(nint nextWindow)
     {
         using var gate = new NavigationClickGate();
-        var old = gate.Begin(100, Point.Empty, 0)!;
-        gate.Discard(old);
-        var next = gate.Begin(nextWindow, Point.Empty, 20)!;
+        var old = gate.Begin(100, 0, out _)!;
+        var next = gate.Begin(nextWindow, 20, out _)!;
 
         // The old worker's finally can run only after the next request has acquired its window.
-        gate.Complete(old, false);
-        gate.Discard(old);
+        gate.Complete(old);
         Check.That(!gate.CancelIfForegroundChanged(nextWindow), "The new request still owns its foreground window after old cleanup.");
         Check.That(!next.Token.IsCancellationRequested && gate.IsCurrent(next, 30), "Old cleanup must not cancel or retire the new request.");
-        gate.Release(Point.Empty, 40, 4, 4);
+        gate.Release(40);
         Check.That(next.Released.Task.IsCompletedSuccessfully, "The new request must still receive its button-up.");
-        gate.Complete(next, true);
+        gate.Complete(next);
         Check.That(!gate.CancelIfForegroundChanged(300), "A completed request must not leave a stale foreground owner.");
         return Task.CompletedTask;
     }
@@ -235,26 +297,15 @@ internal static class NavigationMiddleClickTests
     private static Task ForegroundChangeCancels()
     {
         using var gate = new NavigationClickGate();
-        var lease = gate.Begin(100, Point.Empty, 0)!;
+        var lease = gate.Begin(100, 0, out _)!;
         Check.That(!gate.CancelIfForegroundChanged(100), "A foreground event from the click's own window is not a cancellation.");
         Check.That(gate.CancelIfForegroundChanged(200), "Moving to another window must still cancel the request.");
         Check.That(lease.Token.IsCancellationRequested && !gate.IsCurrent(lease, 20), "No late activation may follow a real foreground change.");
-        gate.Complete(lease, false);
-        Check.That(gate.Begin(200, Point.Empty, 30) == null, "A cancelled click must retain its late-tab quarantine.");
-        return Task.CompletedTask;
-    }
-
-    private static Task DiscardedClickHasNoCooldown()
-    {
-        using var gate = new NavigationClickGate();
-        var beside = gate.Begin(100, new Point(5, 5), 0)!;
-        gate.Discard(beside);
-        Check.That(beside.Token.IsCancellationRequested && !gate.IsCurrent(beside, 1), "A forgotten click must not keep its worker alive.");
-        var next = gate.Begin(100, new Point(6, 6), 20);
-        Check.That(next != null, "A click beside the folder items opens nothing, so the next click must not be held back.");
-        gate.Complete(beside, false);
-        Check.That(gate.IsCurrent(next!, 30), "Completing the forgotten click later must not disturb the current one.");
-        gate.Complete(next!, true);
+        gate.Complete(lease);
+        var next = gate.Begin(200, 30, out _);
+        Check.That(next != null && gate.IsCurrent(next, 40), "A click in the window the user moved to starts at once.");
+        gate.Complete(next!);
         return Task.CompletedTask;
     }
 }
+

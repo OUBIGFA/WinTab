@@ -2,7 +2,6 @@ using System;
 using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Windows.Automation;
 using H.Hooks;
 using WinTab.Helpers;
 using WinTab.WinAPI;
@@ -10,42 +9,25 @@ using WinTab.WinAPI;
 namespace WinTab.Hooks;
 
 /// <summary>
-/// Scrolling the mouse wheel over an Explorer window's tab row switches its active tab: wheel up selects
-/// the tab to the left, wheel down the tab to the right, stopping at either end. The wheel is swallowed only
-/// over the tab row; everywhere else it reaches Explorer untouched.
+/// Scrolling over Explorer's tab row selects the adjacent tab without wrapping. UI Automation and tab
+/// commands run off the input hook; a cold hit test retains the first gesture without swallowing scrolling
+/// whose target is not yet known. File-view scrolling is always left to Explorer.
 /// </summary>
 public sealed class ExplorerTabWheelSwitchHook : IHook
 {
     private const int SelectTabCommand = 0xA221;
     private const int CommandTimeoutMs = 500;
     private const int SelectionWaitMs = 300;
-    private const int KnownSelectionTrustMs = 1_500;
-
-    private static readonly Condition TabItemCondition =
-        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem);
-
     private readonly TabStripHitTester _tabStrip;
     private readonly Func<WheelSwitchSensitivity> _sensitivity;
     private readonly LowLevelMouseHook _lowLevelMouseHook;
-    private readonly WheelSwitchThrottle _throttle = new();
-    private readonly object _gate = new();
-    private nint _throttleWindow;
-    private nint _pendingWindow;
-    private int _pendingSteps;
-    private bool _workerRunning;
-
-    // The last known selection, trusted only briefly and while the same tab is still active with the same
-    // tab count; past that, a dragged tab could have moved, so the order is read again.
-    private nint _knownWindow;
-    private nint _knownTab;
-    private int _knownIndex;
-    private int _knownCount;
-    private long _knownAt;
+    private readonly ExplorerTabWheelSwitchController _controller;
 
     public ExplorerTabWheelSwitchHook(ExplorerWatcher explorerWatcher, Func<WheelSwitchSensitivity>? sensitivity = null)
     {
         _tabStrip = explorerWatcher.TabStrip;
         _sensitivity = sensitivity ?? (() => WheelSwitchSensitivity.Medium);
+        _controller = new ExplorerTabWheelSwitchController(_tabStrip.GetTabRowAsync, SwitchAsync);
         _lowLevelMouseHook = new LowLevelMouseHook { Handling = true };
         _lowLevelMouseHook.Wheel += OnWheel;
     }
@@ -53,190 +35,91 @@ public sealed class ExplorerTabWheelSwitchHook : IHook
     public event Action<string>? StatusChanged;
     public bool IsHookActive => _lowLevelMouseHook.IsStarted;
 
-    public void StartHook() => _lowLevelMouseHook.Start();
-    public void StopHook() => _lowLevelMouseHook.Stop();
+    public void StartHook()
+    {
+        _controller.Start();
+        _lowLevelMouseHook.Start();
+    }
+
+    public void StopHook()
+    {
+        _controller.Stop();
+        _lowLevelMouseHook.Stop();
+    }
 
     /// <summary>The tab index a wheel movement lands on, or null when it would not change the selection.</summary>
     internal static int? ResolveTargetIndex(int currentIndex, int tabCount, int steps)
     {
         if (tabCount < 2 || currentIndex < 0 || currentIndex >= tabCount || steps == 0)
             return null;
-
         var target = Math.Clamp(currentIndex + steps, 0, tabCount - 1);
         return target == currentIndex ? null : target;
     }
 
     private void OnWheel(object? sender, MouseEventArgs e)
     {
-        if (e.Delta == 0)
-            return;
-
+        if (e.Delta == 0) return;
         var window = GetExplorerWindowAt(e.Position);
-        if (window == 0)
-            return;
+        if (window == 0) return;
+        var knownRow = _tabStrip.TryGetTabRow(window, out var tabRow);
+        if (knownRow && !tabRow.Contains(e.Position)) return;
 
-        if (!_tabStrip.TryGetTabRow(window, out var tabRow))
-        {
-            _tabStrip.ScheduleRefresh(window);
-            return;
-        }
-
-        if (!tabRow.Contains(e.Position))
-            return;
-
-        e.IsHandled = true;
-        QueueStep(window, e.Delta);
+        var identity = WindowIdentity.Capture(window);
+        if (!identity.IsCurrent || !WinApi.GetWindowRect(window, out var initialRect)) return;
+        var point = e.Position;
+        bool IsCurrent() => identity.IsCurrent && WinApi.GetWindowRect(window, out var rect) &&
+            rect.Equals(initialRect) && GetExplorerWindowAt(point) == window;
+        // Unknown bounds do not consume a file-view scroll. The queued input still gets its hit test and
+        // tab switch once the first bounds arrive; the user does not have to turn the wheel a second time.
+        if (knownRow) e.IsHandled = true;
+        _ = ReportSwitchAsync(window, _controller.QueueAsync(window, point, e.Delta,
+            Environment.TickCount64, _sensitivity(), IsCurrent));
     }
 
-    private void QueueStep(nint window, int delta)
+    private async Task ReportSwitchAsync(nint window, Task<bool> work)
     {
-        lock (_gate)
+        try
         {
-            if (_throttleWindow != window)
-            {
-                _throttleWindow = window;
-                _throttle.Reset();
-            }
-
-            var step = _throttle.Accept(delta, Environment.TickCount64, _sensitivity());
-            if (step == 0)
-                return;
-
-            if (_pendingWindow != window)
-                _pendingSteps = 0;
-            _pendingWindow = window;
-            _pendingSteps += step;
-            if (_workerRunning)
-                return;
-
-            _workerRunning = true;
+            if (await work)
+                StatusChanged?.Invoke("Switched Explorer tab via mouse wheel.");
         }
-
-        // UI Automation and the tab command both wait on Explorer; keep them off the hook thread.
-        Task.Run(DrainAsync);
-    }
-
-    private async Task DrainAsync()
-    {
-        while (true)
+        catch (Exception exception)
         {
-            nint window;
-            int steps;
-            lock (_gate)
-            {
-                if (_pendingSteps == 0)
-                {
-                    _workerRunning = false;
-                    return;
-                }
-
-                window = _pendingWindow;
-                steps = _pendingSteps;
-                _pendingSteps = 0;
-            }
-
-            try
-            {
-                if (await SwitchAsync(window, steps))
-                    StatusChanged?.Invoke("Switched Explorer tab via mouse wheel.");
-            }
-            catch (Exception exception)
-            {
-                _knownWindow = 0;
-                ExplorerDebugLog.Write($"Wheel tab switch failed hwnd={window} error={exception.GetType().Name}");
-            }
+            ExplorerDebugLog.Write($"Wheel tab switch failed hwnd={window} error={exception.GetType().Name}");
         }
     }
 
-    private async Task<bool> SwitchAsync(nint window, int steps)
+    private static async Task<bool> SwitchAsync(nint window, int steps, Func<bool> isCurrent)
     {
-        if (!ExplorerWindowDiscovery.IsFileExplorerWindow(window) ||
-            !TryGetSelection(window, out var activeTab, out var currentIndex, out var tabCount) ||
+        if (!isCurrent()) return false;
+        var activeTab = ExplorerNavigationAccess.ActiveTab(window);
+        if (activeTab == 0 || !ExplorerTabAutomation.TryReadSelection(window, out var currentIndex, out var tabCount) ||
+            !isCurrent() || ExplorerNavigationAccess.ActiveTab(window) != activeTab ||
+            ExplorerWindowDiscovery.GetAllExplorerTabs(window).Count() != tabCount ||
             ResolveTargetIndex(currentIndex, tabCount, steps) is not { } target)
             return false;
 
-        if (!WinApi.TrySendMessage(window, WinApi.WM_COMMAND, SelectTabCommand, target + 1, CommandTimeoutMs))
-        {
-            _knownWindow = 0;
-            return false;
-        }
-
-        // Watching the active tab handle is far cheaper than asking UI Automation again, and it tells the next
-        // step exactly where the selection now is.
+        // A timeout does not retract the command: observe Explorer's result before reporting failure.
+        WinApi.TrySendMessage(window, WinApi.WM_COMMAND, SelectTabCommand, target + 1, CommandTimeoutMs);
         var deadline = Environment.TickCount64 + SelectionWaitMs;
-        while (Environment.TickCount64 < deadline)
+        do
         {
-            var nowActive = GetActiveTab(window);
+            if (!isCurrent()) return false;
+            var nowActive = ExplorerNavigationAccess.ActiveTab(window);
             if (nowActive != 0 && nowActive != activeTab)
-            {
-                Remember(window, nowActive, target, tabCount);
-                return true;
-            }
-
+                return ExplorerTabAutomation.TryReadSelection(window, out var selected, out _) && selected == target;
             await Task.Delay(5);
         }
+        while (Environment.TickCount64 < deadline);
 
-        _knownWindow = 0;
-        return true;
-    }
-
-    private bool TryGetSelection(nint window, out nint activeTab, out int index, out int count)
-    {
-        activeTab = GetActiveTab(window);
-        if (window == _knownWindow && activeTab != 0 && activeTab == _knownTab &&
-            Environment.TickCount64 - _knownAt <= KnownSelectionTrustMs &&
-            ExplorerWindowDiscovery.GetAllExplorerTabs(window).Count() == _knownCount)
-        {
-            index = _knownIndex;
-            count = _knownCount;
-            return true;
-        }
-
-        if (!TryReadSelection(window, out index, out count))
-        {
-            _knownWindow = 0;
-            return false;
-        }
-
-        activeTab = GetActiveTab(window);
-        Remember(window, activeTab, index, count);
-        return true;
-    }
-
-    private void Remember(nint window, nint tab, int index, int count)
-    {
-        _knownWindow = tab == 0 ? 0 : window;
-        _knownTab = tab;
-        _knownIndex = index;
-        _knownCount = count;
-        _knownAt = Environment.TickCount64;
-    }
-
-    private static nint GetActiveTab(nint window) => ExplorerNavigationAccess.ActiveTab(window);
-
-    /// <summary>Reads the tab titles in visual order, as the tab command numbers them.</summary>
-    private static bool TryReadSelection(nint window, out int selectedIndex, out int tabCount)
-    {
-        selectedIndex = -1;
-        tabCount = 0;
-        var tabItems = AutomationElement.FromHandle(window).FindAll(TreeScope.Descendants, TabItemCondition);
-        foreach (AutomationElement tab in tabItems)
-        {
-            if (tab.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern) &&
-                ((SelectionItemPattern)pattern).Current.IsSelected)
-                selectedIndex = tabCount;
-            tabCount++;
-        }
-
-        return selectedIndex >= 0;
+        ExplorerDebugLog.Write($"Wheel tab switch not observed hwnd={window} index={target}");
+        return false;
     }
 
     private static nint GetExplorerWindowAt(Point point)
     {
         var hit = WinApi.WindowFromPoint(point);
-        if (hit == 0)
-            return 0;
-
+        if (hit == 0) return 0;
         var root = WinApi.GetAncestor(hit, WinApi.GA_ROOT);
         return ExplorerWindowDiscovery.IsFileExplorerWindow(root) ? root : 0;
     }
@@ -244,6 +127,7 @@ public sealed class ExplorerTabWheelSwitchHook : IHook
     public void Dispose()
     {
         StopHook();
+        _controller.Dispose();
         _lowLevelMouseHook.Dispose();
     }
 }

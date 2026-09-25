@@ -8,7 +8,7 @@ using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
-internal enum NavigationPointerKind { Move, MiddleDown, MiddleUp, OtherDown, Wheel }
+internal enum NavigationPointerKind { MiddleDown, MiddleUp, OtherDown }
 /// <param name="FromWinTab">The input was synthesized by WinTab itself (a double-click close), not by the user or another tool.</param>
 internal readonly record struct NavigationPointerInput(NavigationPointerKind Kind, Point Point, bool FromWinTab);
 
@@ -96,26 +96,27 @@ internal sealed class NavigationInputObserver : IDisposable
         }
     }
 
+    /// <summary>
+    /// The mouse input that makes up a middle click: its button-down and button-up, and another button, which
+    /// starts a different action. Pointer movement and the wheel are not observed: Explorer opens the folder's
+    /// tab even when the pointer or the wheel moves while the wheel button is pressed.
+    /// </summary>
+    internal static NavigationPointerKind? Classify(uint message) => message switch
+    {
+        WinApi.WM_MBUTTONDOWN => NavigationPointerKind.MiddleDown,
+        WinApi.WM_MBUTTONUP => NavigationPointerKind.MiddleUp,
+        WinApi.WM_LBUTTONDOWN or WinApi.WM_RBUTTONDOWN or WinApi.WM_XBUTTONDOWN => NavigationPointerKind.OtherDown,
+        _ => null
+    };
+
     private nint OnMouse(int code, nint message, nint data)
     {
-        if (code >= 0 && !_stopping)
+        if (code >= 0 && !_stopping && Classify((uint)message) is { } kind)
         {
-            var kind = (uint)message switch
-            {
-                WinApi.WM_MOUSEMOVE => NavigationPointerKind.Move,
-                WinApi.WM_MBUTTONDOWN => NavigationPointerKind.MiddleDown,
-                WinApi.WM_MBUTTONUP => NavigationPointerKind.MiddleUp,
-                WinApi.WM_LBUTTONDOWN or WinApi.WM_RBUTTONDOWN or WinApi.WM_XBUTTONDOWN => NavigationPointerKind.OtherDown,
-                WinApi.WM_MOUSEWHEEL or WinApi.WM_MOUSEHWHEEL => NavigationPointerKind.Wheel,
-                _ => (NavigationPointerKind?)null
-            };
-            if (kind.HasValue)
-            {
-                var input = Marshal.PtrToStructure<MouseInput>(data);
-                var fromWinTab = (input.Flags & WinApi.LLMHF_INJECTED) != 0 && input.ExtraInfo == MouseSimulator.InjectionSignature;
-                try { _pointer(new NavigationPointerInput(kind.Value, input.Point, fromWinTab)); }
-                catch (Exception exception) { ExplorerDebugLog.Write($"Navigation pointer observation failed: {exception.Message}"); }
-            }
+            var input = Marshal.PtrToStructure<MouseInput>(data);
+            var fromWinTab = (input.Flags & WinApi.LLMHF_INJECTED) != 0 && input.ExtraInfo == MouseSimulator.InjectionSignature;
+            try { _pointer(new NavigationPointerInput(kind, input.Point, fromWinTab)); }
+            catch (Exception exception) { ExplorerDebugLog.Write($"Navigation pointer observation failed: {exception.Message}"); }
         }
         return CallNextHookEx(0, code, message, data);
     }

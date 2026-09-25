@@ -79,6 +79,7 @@ internal sealed class RemoteExplorerFrame : IDisposable
     /// <summary>Whether the frame was on screen at the moment it finished handling a close request.</summary>
     public bool RevealedWhileClosing { get; private set; }
     public ConcurrentQueue<int> SwitchCommands { get; } = new();
+    public ConcurrentQueue<nint> TabsOnActivation { get; } = new();
     /// <summary>Close-tab commands (0xA021) the frame's tabs received; a tab handling one is destroyed like Explorer's.</summary>
     public int CloseTabCommandCount => _closeTabCommands;
     private int _closeTabCommands;
@@ -166,6 +167,8 @@ internal sealed class RemoteExplorerFrame : IDisposable
 
     private static nint HandleFrameMessage(RemoteExplorerFrame? frame, nint handle, uint message, nint parameter, nint argument)
     {
+        if (message == 0x0086 && parameter != 0 && frame != null)
+            frame.TabsOnActivation.Enqueue(frame.ActiveTab);
         if (message == WmBlock && frame != null)
         {
             frame._blocked.TrySetResult();

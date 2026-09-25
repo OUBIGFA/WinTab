@@ -14,6 +14,7 @@ internal static class BufferedDiagnosticLogTests
         yield return ("diagnostic files retain recent entries within the size limit", FileSizeIsBounded);
         yield return ("long diagnostic messages preserve valid UTF-8", LongMessagesStayValid);
         yield return ("diagnostic write failures are observable and stop further writes", WriteFailureIsReported);
+        yield return ("the explorer diagnostic log creates the folder it is configured to write to", LogFolderIsCreated);
     }
 
     private static async Task BoundedQueueDoesNotBlock()
@@ -94,5 +95,16 @@ internal static class BufferedDiagnosticLogTests
 
         Check.That(logger.LastError is IOException, "A write failure must remain observable.");
         Check.That(!logger.TryWrite("later entry"), "A failed writer must not accumulate more entries.");
+    }
+
+    private static Task LogFolderIsCreated()
+    {
+        // WINTAB_DEBUG_LOG may name a folder that does not exist yet; logging must still start instead of
+        // failing silently on the first write.
+        var path = Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"), "logs", "explorer-debug.log");
+        using (var stream = WinTab.Hooks.ExplorerDebugLog.OpenLogFile(path))
+            stream.Write(Encoding.UTF8.GetBytes("entry"));
+        Check.Equal("entry", File.ReadAllText(path), "The log file must be written inside the folder it was configured with.");
+        return Task.CompletedTask;
     }
 }

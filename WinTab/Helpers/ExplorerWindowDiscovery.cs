@@ -59,6 +59,31 @@ public static class ExplorerWindowDiscovery
         return WinApi.FindAllWindowsEx("ShellTabWindowClass", window);
     }
 
+    /// <summary>
+    /// The frame's tabs as one consistent snapshot in z-order, the active tab first, or null while the frame
+    /// keeps changing. Explorer moves tab windows in the z-order when it adds or activates a tab, and a sibling
+    /// walk that spans such a move lists a tab twice or misses one.
+    /// </summary>
+    public static nint[]? GetStableExplorerTabs(nint window, int maxCount) =>
+        ReadStable(() => GetAllExplorerTabs(window).Take(maxCount).ToArray());
+
+    /// <summary>
+    /// Two identical consecutive walks without a repeated entry are taken as a snapshot: a walk torn by a
+    /// z-order move differs from the walk after it.
+    /// </summary>
+    internal static T[]? ReadStable<T>(Func<T[]> read, int attempts = 4) where T : notnull
+    {
+        var previous = read();
+        for (var attempt = 1; attempt < attempts; attempt++)
+        {
+            var current = read();
+            if (current.SequenceEqual(previous) && current.Distinct().Count() == current.Length)
+                return current;
+            previous = current;
+        }
+        return null;
+    }
+
     public static IEnumerable<nint> GetAllExplorerWindows()
     {
         return WinApi.FindAllWindowsEx("CabinetWClass");

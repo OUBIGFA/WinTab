@@ -65,7 +65,7 @@ public partial class ExplorerWatcher
                 if (!IsCurrentRequest() || GetActiveTabHandle(parent) == tab) return;
                 _currentMerge.Value = operation;
                 operation.ThrowIfInvalid();
-                var selected = await SelectTabByHandle(parent, tab);
+                var selected = await SelectTabByHandle(parent, tab, bringToFront: false);
                 ExplorerDebugLog.Write($"Native file-location focus selected={selected} hwnd={parent} tab={tab}");
             }
             catch (OperationCanceledException)

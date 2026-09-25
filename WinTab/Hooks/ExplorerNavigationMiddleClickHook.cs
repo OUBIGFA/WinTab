@@ -77,32 +77,28 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
             ExplorerDebugLog.Write($"Navigation cancelled by foreground={window}");
     }
 
-    private void CancelForKeyboard()
+    private void CancelForKeyboard() => CancelPending("keyboard input");
+
+    private void CancelPending(string reason)
     {
-        if (_clicks.Cancel()) ExplorerDebugLog.Write("Navigation cancelled by keyboard input.");
+        if (_clicks.Cancel()) ExplorerDebugLog.Write($"Navigation cancelled by {reason}");
     }
 
     internal void ProcessPointer(NavigationPointerInput input)
     {
         if (!_active || input.FromWinTab) return;
-        if (input.Kind == NavigationPointerKind.Move)
-        {
-            _clicks.Move(input.Point, WinApi.GetSystemMetrics(WinApi.SM_CXDRAG), WinApi.GetSystemMetrics(WinApi.SM_CYDRAG));
-            return;
-        }
         if (input.Kind == NavigationPointerKind.MiddleUp)
         {
-            if (HasModifiers()) _clicks.Cancel();
-            else _clicks.Release(input.Point, Environment.TickCount64, WinApi.GetSystemMetrics(WinApi.SM_CXDRAG), WinApi.GetSystemMetrics(WinApi.SM_CYDRAG));
+            if (HasModifiers()) CancelPending("a modifier key at button-up");
+            else _clicks.Release(Environment.TickCount64);
             return;
         }
-        if (input.Kind is NavigationPointerKind.OtherDown or NavigationPointerKind.Wheel)
+        if (input.Kind == NavigationPointerKind.OtherDown)
         {
-            if (_clicks.Cancel()) ExplorerDebugLog.Write($"Navigation cancelled by pointer={input.Kind}");
+            CancelPending($"pointer={input.Kind}");
             return;
         }
-        if (input.Kind != NavigationPointerKind.MiddleDown) return;
-        if (HasModifiers()) { _clicks.Cancel(); return; }
+        if (HasModifiers()) { CancelPending("a middle click with a modifier key"); return; }
 
         // Only window handles are read here; nothing on the native input path waits for Explorer's UI thread.
         var startedAt = Stopwatch.GetTimestamp();
@@ -111,23 +107,23 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         if (window == 0 || (!ExplorerNavigationAccess.IsInsideActiveTab(target, window) &&
                             !ExplorerNavigationAccess.IsPotentialNavigationTarget(target, window)))
         {
-            _clicks.Cancel();
+            CancelPending("a middle click outside Explorer's tabs");
             return;
         }
         var onTree = ExplorerNavigationAccess.IsNavigationTree(target, window);
-        var tabs = ExplorerNavigationAccess.Tabs(window);
-        var sourceTab = ExplorerNavigationAccess.ActiveTab(window);
-        if (tabs.Length is 0 or > ExplorerNavigationAccess.MaxTabs || sourceTab == 0)
+        var tabs = ExplorerNavigationAccess.ReadTabs(window);
+        var sourceTab = tabs is { Length: > 0 } ? tabs[0] : 0;
+        if (tabs is null || tabs.Length > ExplorerNavigationAccess.MaxTabs || sourceTab == 0)
         {
-            _clicks.Cancel();
-            ExplorerDebugLog.Write($"Navigation middle-click left native: tabs={tabs.Length} hwnd={window}");
+            CancelPending("a middle click in a window whose tabs cannot be followed");
+            ExplorerDebugLog.Write($"Navigation middle-click left native: tabs={tabs?.Length.ToString() ?? "changing"} hwnd={window}");
             return;
         }
-        var lease = _clicks.Begin(window, input.Point, Environment.TickCount64);
+        var lease = _clicks.Begin(window, Environment.TickCount64, out var replaced);
         if (lease == null) return;
         var click = new NavigationClick(WindowIdentity.Capture(window), WindowIdentity.Capture(sourceTab),
             WindowIdentity.Capture(target), tabs, input.Point, onTree);
-        ExplorerDebugLog.Write($"Navigation click captured hwnd={window} tab={sourceTab} target={target} tree={onTree} tabs={tabs.Length} hookMs={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F1}");
+        ExplorerDebugLog.Write($"Navigation click captured hwnd={window} tab={sourceTab} target={target} tree={onTree} tabs={tabs.Length} replacedEarlier={replaced} hookMs={Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F1}");
         _ = Task.Run(() => ActivateAsync(click, lease));
     }
 
@@ -147,8 +143,8 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         try
         {
             // On the navigation tree a click beside the folder items is known to open nothing, so it is forgotten
-            // at once and does not hold up the next click. Elsewhere (file list, Home page, address bar) the only
-            // evidence is the tab Explorer does or does not open, so the click waits for it.
+            // at once. Elsewhere (file list, Home page, address bar) the only evidence is the tab Explorer does or
+            // does not open, so the click waits for it; a later click replaces it rather than waiting behind it.
             if (click.OnNavigationTree)
             {
                 var onFolder = await Task.Run(() => ExplorerNavigationAccess.IsFolderItemAt(click.Target.Handle, click.Point))
@@ -156,7 +152,6 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
                 if (!onFolder)
                 {
                     forgotten = true;
-                    _clicks.Discard(lease);
                     ExplorerDebugLog.Write($"Navigation middle-click left native: not on a folder item hwnd={click.Window.Handle}");
                     return;
                 }
@@ -167,7 +162,13 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
             if (Current())
             {
                 result = await NavigationTabActivation.RunAsync(click.TabsBefore, click.SourceTab.Handle,
-                    Current, () => ExplorerNavigationAccess.Observe(click.Window.Handle),
+                    Current, () =>
+                    {
+                        var observation = ExplorerNavigationAccess.Observe(click.Window.Handle);
+                        if (observation == null)
+                            ExplorerDebugLog.Write($"Navigation tab windows moving; observing again at {Elapsed()}");
+                        return observation;
+                    },
                     newTab =>
                     {
                         ExplorerDebugLog.Write($"Navigation new tab={newTab} seen at {Elapsed()}");
@@ -188,7 +189,7 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         {
             if (!forgotten)
                 ExplorerDebugLog.Write($"Navigation activation result={result} hwnd={click.Window.Handle} at {Elapsed()}");
-            _clicks.Complete(lease, result is NavigationActivationResult.Activated or NavigationActivationResult.AlreadyActive);
+            _clicks.Complete(lease);
         }
         if (result == NavigationActivationResult.Activated)
             StatusChanged?.Invoke("Activated Explorer tab opened by middle-click.");
