@@ -196,11 +196,18 @@ function Test-InstallerRuntime {
         if (-not $resolvedDirectory.StartsWith($temporaryRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
             throw "Refusing to clean a test directory outside $temporaryRoot"
         }
-        Add-Type -AssemblyName Microsoft.VisualBasic
-        [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(
-            $resolvedDirectory,
-            [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
-            [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin)
+        try {
+            Add-Type -AssemblyName Microsoft.VisualBasic
+            [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(
+                $resolvedDirectory,
+                [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
+                [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin)
+        }
+        catch {
+            # The shell can report a failure after it already removed the directory; clean up whatever
+            # is left without failing the build.
+            try { [System.IO.Directory]::Delete($resolvedDirectory, $true) } catch { }
+        }
     }
 }
 

@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualBasic.FileIO;
 using WinTab.Helpers;
 using WinTab.Hooks;
 using WinTab.Managers;
@@ -423,8 +422,7 @@ internal static class ExplorerSessionNativeTests
                 await work.StopAsync();
                 await store.FlushAsync();
                 store.Dispose();
-                if (Directory.Exists(directory))
-                    FileSystem.DeleteDirectory(directory, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                TestCleanup.DeleteDirectory(directory);
             }
         }, tabCount: 1);
 

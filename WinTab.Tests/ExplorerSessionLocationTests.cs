@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualBasic.FileIO;
 using WinTab.Hooks;
 using WinTab.Models;
 
@@ -232,8 +231,5 @@ internal static class ExplorerSessionLocationTests
     }
 
     private static string NewDirectory() => Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"));
-    private static void Recycle(string directory)
-    {
-        if (Directory.Exists(directory)) FileSystem.DeleteDirectory(directory, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-    }
+    private static void Recycle(string directory) => TestCleanup.DeleteDirectory(directory);
 }

@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualBasic.FileIO;
 using WinTab.Managers;
 using WinTab.Models;
 
@@ -263,10 +262,6 @@ internal static class ExplorerSessionStoreTests
     {
         var directory = Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"));
         try { await test(Path.Combine(directory, "session.json")); }
-        finally
-        {
-            if (Directory.Exists(directory))
-                FileSystem.DeleteDirectory(directory, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-        }
+        finally { TestCleanup.DeleteDirectory(directory); }
     }
 }

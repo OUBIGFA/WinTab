@@ -136,13 +136,7 @@ internal static class BufferedDiagnosticLogTests
 
     private static string NewLogFolder() => Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"), "logs");
 
-    private static void DeleteTestFolder(string folder)
-    {
-        var root = Path.GetDirectoryName(folder)!;
-        if (Directory.Exists(root))
-            Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(root,
-                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-    }
+    private static void DeleteTestFolder(string folder) => TestCleanup.DeleteDirectory(Path.GetDirectoryName(folder)!);
 
     private static Task DailyLogKeepsTwoDays()
     {

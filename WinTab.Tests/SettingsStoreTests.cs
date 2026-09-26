@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.VisualBasic.FileIO;
 using WinTab.Managers;
 
 internal static class SettingsStoreTests
@@ -393,10 +392,5 @@ internal static class SettingsStoreTests
         finally { RecycleDirectory(path); }
     }
 
-    private static void RecycleDirectory(string path)
-    {
-        var directory = Path.GetDirectoryName(path)!;
-        if (Directory.Exists(directory))
-            FileSystem.DeleteDirectory(directory, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
-    }
+    private static void RecycleDirectory(string path) => TestCleanup.DeleteDirectory(Path.GetDirectoryName(path)!);
 }
