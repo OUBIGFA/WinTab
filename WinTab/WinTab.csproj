@@ -8,7 +8,7 @@
         <ApplicationIcon>Icon.ico</ApplicationIcon>
         <AssemblyName>WinTab</AssemblyName>
         <RootNamespace>WinTab</RootNamespace>
-        <Version>2.0.8</Version>
+        <Version>2.1.0</Version>
         <LangVersion>latest</LangVersion>
         <Title>WinTab</Title>
         <Authors>OUBIGFA</Authors>
