@@ -23,6 +23,7 @@ internal static class NavigationMiddleClickTests
         yield return ("navigation middle-click skips selection when Explorer already activated the new tab", AlreadyActive);
         yield return ("navigation middle-click cancels when the user selects another old tab", UserSwitchedTab);
         yield return ("navigation middle-click cancels after a slow observation returns", CancellationAfterObservation);
+        yield return ("navigation middle-click reports cancellation during a selection readiness check", CancellationDuringSelection);
         yield return ("navigation middle-click does not report success without active-tab evidence", VerifiesSelection);
         yield return ("navigation middle-click reports a rejected selection", RejectedSelection);
         yield return ("navigation middle-click stops when its window identity or foreground expires", InvalidContext);
@@ -34,6 +35,7 @@ internal static class NavigationMiddleClickTests
         yield return ("explorer tab snapshot reports a frame that keeps changing", SnapshotReportsChangingFrame);
         yield return ("navigation input observer ignores pointer movement and the wheel", IgnoresMovementAndWheel);
         yield return ("navigation click gate pairs down/up without consuming the native click", PairsClick);
+        yield return ("navigation click gate waits for a slow tab from the button release", WaitsForSlowTabAfterRelease);
         yield return ("navigation click gate lets a new click replace an unresolved one", NewClickReplacesUnresolved);
         yield return ("navigation click gate never holds back the click after a cancelled or fruitless one", NoCooldownAfterFailure);
         yield return ("navigation click gate releases the worker after cancellation and disposal", CancelsLifetime);
@@ -123,6 +125,19 @@ internal static class NavigationMiddleClickTests
         Check.Equal(0, fixture.SelectCalls, "A cancelled query must not cause a late action.");
     }
 
+    private static async Task CancellationDuringSelection()
+    {
+        using var fixture = new Fixture();
+        fixture.OnSelect = () =>
+        {
+            fixture.Lifetime.Cancel();
+            return NavigationSelectOutcome.Rejected;
+        };
+        Check.Equal(NavigationActivationResult.Cancelled, await fixture.Run(),
+            "A click retired during a native readiness check is cancelled, not a failed selection.");
+        Check.Equal(1, fixture.SelectCalls, "No further command may follow the cancellation.");
+    }
+
     private static async Task VerifiesSelection()
     {
         using var fixture = new Fixture { Activate = false };
@@ -196,13 +211,16 @@ internal static class NavigationMiddleClickTests
     {
         // Explorer opens the folder's tab even when the pointer or the wheel moves while the wheel button is
         // pressed, so neither may end the click. They are not observed at all.
-        Check.Equal<NavigationPointerKind?>(null, NavigationInputObserver.Classify(WinApi.WM_MOUSEMOVE), "Pointer movement is not part of a middle click.");
-        Check.Equal<NavigationPointerKind?>(null, NavigationInputObserver.Classify(WinApi.WM_MOUSEWHEEL), "The wheel is not part of a middle click.");
-        Check.Equal<NavigationPointerKind?>(null, NavigationInputObserver.Classify(WinApi.WM_MOUSEHWHEEL), "A tilted wheel is not part of a middle click.");
-        Check.Equal<NavigationPointerKind?>(NavigationPointerKind.MiddleDown, NavigationInputObserver.Classify(WinApi.WM_MBUTTONDOWN));
-        Check.Equal<NavigationPointerKind?>(NavigationPointerKind.MiddleUp, NavigationInputObserver.Classify(WinApi.WM_MBUTTONUP));
-        Check.Equal<NavigationPointerKind?>(NavigationPointerKind.OtherDown, NavigationInputObserver.Classify(WinApi.WM_RBUTTONDOWN),
+        Check.That(NavigationInputObserver.Classify(0).Count == 0, "Pointer movement is not part of a middle click.");
+        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.Wheel).Count == 0, "The wheel is not part of a middle click.");
+        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.HorizontalWheel).Count == 0, "A tilted wheel is not part of a middle click.");
+        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.MiddleDown).SequenceEqual([NavigationPointerKind.MiddleDown]), "The middle button's down.");
+        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.MiddleUp).SequenceEqual([NavigationPointerKind.MiddleUp]), "The middle button's up.");
+        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.RightDown).SequenceEqual([NavigationPointerKind.OtherDown]),
             "Another button starts a different action, such as a context menu that opens a tab.");
+        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.MiddleDown | NavigationInputObserver.MiddleUp)
+                .SequenceEqual([NavigationPointerKind.MiddleDown, NavigationPointerKind.MiddleUp]),
+            "A click reported in one input packet is still a down followed by its up.");
         return Task.CompletedTask;
     }
 
@@ -215,10 +233,27 @@ internal static class NavigationMiddleClickTests
         Check.That(lease.Released.Task.IsCompletedSuccessfully && gate.IsCurrent(lease, 30), "The button-up completes the click.");
         gate.Complete(lease);
         var late = gate.Begin(100, 100, out _)!;
-        gate.Release(100 + NavigationClickGate.RequestLifetimeMs);
-        Check.That(!late.Released.Task.IsCompleted && !gate.IsCurrent(late, 100 + NavigationClickGate.RequestLifetimeMs),
-            "A button-up after the click's lifetime ends the click instead.");
+        gate.Release(100 + NavigationClickGate.HoldLimitMs);
+        Check.That(!late.Released.Task.IsCompleted && !gate.IsCurrent(late, 100 + NavigationClickGate.HoldLimitMs),
+            "A button-up after the hold limit ends the click instead.");
         gate.Complete(late);
+        return Task.CompletedTask;
+    }
+
+    private static Task WaitsForSlowTabAfterRelease()
+    {
+        // A busy Explorer, or a drive that has to wake up, can open the tab seconds after the button is released.
+        // The click waits from the release, however long the button was held.
+        using var gate = new NavigationClickGate();
+        var lease = gate.Begin(100, 0, out _)!;
+        gate.Release(1_500);
+        Check.Equal(1_500L + NavigationClickGate.AfterReleaseMs, lease.Deadline, "The wait for the tab starts at the release.");
+        Check.That(gate.IsCurrent(lease, 1_500 + NavigationClickGate.AfterReleaseMs - 1),
+            "A tab that arrives late but within the wait after the release is still followed.");
+        Check.That(!gate.IsCurrent(lease, 1_500 + NavigationClickGate.AfterReleaseMs),
+            "A click that opened nothing does not stay pending forever.");
+        Check.That(NavigationClickGate.AfterReleaseMs > 2_000, "The wait must exceed the old two seconds from the button-down.");
+        gate.Complete(lease);
         return Task.CompletedTask;
     }
 
@@ -299,6 +334,8 @@ internal static class NavigationMiddleClickTests
         using var gate = new NavigationClickGate();
         var lease = gate.Begin(100, 0, out _)!;
         Check.That(!gate.CancelIfForegroundChanged(100), "A foreground event from the click's own window is not a cancellation.");
+        Check.That(!gate.CancelIfForegroundChanged(150, owner: 100), "A popup owned by the click's window is still that window.");
+        Check.That(!gate.CancelIfForegroundChanged(0), "No foreground window at all is a transition, not a switch to another window.");
         Check.That(gate.CancelIfForegroundChanged(200), "Moving to another window must still cancel the request.");
         Check.That(lease.Token.IsCancellationRequested && !gate.IsCurrent(lease, 20), "No late activation may follow a real foreground change.");
         gate.Complete(lease);

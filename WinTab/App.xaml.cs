@@ -1,6 +1,7 @@
 using System;
 using System.Windows;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Linq;
 using System.Windows.Controls;
 using WinTab.UI.Views;
@@ -24,6 +25,7 @@ public partial class App : Application
 
         if (createdNew)
         {
+            StartLogging(e.Args);
             base.OnStartup(e);
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
             SetupTooltipBehavior();
@@ -52,6 +54,23 @@ public partial class App : Application
         if (!ExplorerDebugLog.Complete(TimeSpan.FromMilliseconds(100)))
             System.Diagnostics.Debug.WriteLine("Diagnostic logging is still pending; shutdown will not wait longer.");
         _mutex?.Dispose();
+    }
+
+    /// <summary>The log starts before anything else, and failures nobody handles are written to it.</summary>
+    private void StartLogging(string[] args)
+    {
+        var version = typeof(App).Assembly.GetName().Version;
+        ExplorerDebugLog.Write($"WinTab {version} started pid={Environment.ProcessId} os={Environment.OSVersion.Version} " +
+            $"arch={System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture} args=[{string.Join(" ", args)}]");
+        ExplorerDebugLog.Write($"Settings {SettingsManager.Describe()}");
+        DispatcherUnhandledException += (_, args) => ExplorerDebugLog.Write($"Unhandled UI exception: {args.Exception}");
+        TaskScheduler.UnobservedTaskException += (_, args) => ExplorerDebugLog.Write($"Unobserved task exception: {args.Exception}");
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            ExplorerDebugLog.Write($"Unhandled exception terminating={args.IsTerminating}: {args.ExceptionObject}");
+            if (args.IsTerminating)
+                ExplorerDebugLog.Complete(TimeSpan.FromMilliseconds(500));
+        };
     }
 
     private void StartShowMainWindowRequestListener()

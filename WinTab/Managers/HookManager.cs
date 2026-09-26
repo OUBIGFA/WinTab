@@ -32,8 +32,9 @@ public sealed class HookManager : IDisposable
         _wheelSwitchHook = new ExplorerTabWheelSwitchHook(_explorerWatcher, () => SettingsManager.WheelSwitchSensitivity);
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
-        _doubleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
-        _wheelSwitchHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
+        _explorerWatcher.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
+        _doubleClickHook.StatusChanged += message => ReportHookStatus("Double-click close", message);
+        _wheelSwitchHook.StatusChanged += message => ReportHookStatus("Wheel switch", message);
         _middleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
 
         _sessionEndingHandler = (_, _) => Dispose();
@@ -48,6 +49,9 @@ public sealed class HookManager : IDisposable
     {
         SetWindowHook(SettingsManager.IsWindowHookActive);
         SetReuseTabs(SettingsManager.ReuseTabs);
+        SetRestoreOnAnyFolder(SettingsManager.RestoreOnAnyFolder);
+        SetRestoreSingleTab(SettingsManager.RestoreSingleTab);
+        SetRestoreTabs(SettingsManager.RestoreTabs);
         SetDoubleClickClose(SettingsManager.DoubleClickCloseTab);
         SetMiddleClickForeground(SettingsManager.MiddleClickForegroundTab);
         SetWheelSwitch(SettingsManager.WheelSwitchTab);
@@ -83,6 +87,29 @@ public sealed class HookManager : IDisposable
         RaiseStateChanged();
     }
 
+    /// <summary>Restoration and its capture lifecycle remain independent of the merge/reuse toggle pair.</summary>
+    public void SetRestoreTabs(bool enabled)
+    {
+        SettingsManager.RestoreTabs = enabled;
+        _explorerWatcher.SetRestoreTabs(enabled);
+        RaiseStateChanged();
+    }
+
+    public void SetRestoreOnAnyFolder(bool enabled)
+    {
+        SettingsManager.RestoreOnAnyFolder = enabled;
+        _explorerWatcher.SetRestoreOnAnyFolder(enabled);
+        RaiseStateChanged();
+    }
+
+    /// <summary>Off: single-tab windows neither replace the saved group nor are restored as one.</summary>
+    public void SetRestoreSingleTab(bool enabled)
+    {
+        SettingsManager.RestoreSingleTab = enabled;
+        _explorerWatcher.SetRestoreSingleTab(enabled);
+        RaiseStateChanged();
+    }
+
     public void SetDoubleClickClose(bool enabled)
     {
         SettingsManager.DoubleClickCloseTab = enabled;
@@ -115,10 +142,25 @@ public sealed class HookManager : IDisposable
         if (hook.IsHookActive == isActive)
             return;
 
-        if (isActive)
-            hook.StartHook();
-        else
-            hook.StopHook();
+        ExplorerDebugLog.Write($"{hook.GetType().Name} {(isActive ? "starting" : "stopping")}");
+        try
+        {
+            if (isActive)
+                hook.StartHook();
+            else
+                hook.StopHook();
+        }
+        catch (Exception exception)
+        {
+            ExplorerDebugLog.Write($"{hook.GetType().Name} could not be {(isActive ? "started" : "stopped")}: {exception}");
+            throw;
+        }
+    }
+
+    private void ReportHookStatus(string source, string message)
+    {
+        ExplorerDebugLog.Write($"{source}: {message}");
+        _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
     }
 
     private void RaiseStateChanged()

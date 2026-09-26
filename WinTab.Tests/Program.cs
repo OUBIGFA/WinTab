@@ -6,13 +6,16 @@ using System.Threading.Tasks;
 
 Console.InputEncoding = new UTF8Encoding(false);
 Console.OutputEncoding = new UTF8Encoding(false);
-// A developer's WINTAB_DEBUG_LOG belongs to the installed WinTab. Test hooks must not write into it; the
-// stress tests hand the WinTab they start its own log explicitly.
-Environment.SetEnvironmentVariable("WINTAB_DEBUG_LOG", null);
+// WinTab always logs, by default into the user's own log folder. The tests' hooks write to a file of their own
+// instead; the stress tests hand the WinTab they start its own log explicitly.
+Environment.SetEnvironmentVariable(WinTab.Hooks.ExplorerDebugLog.FileOverrideVariable,
+    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "WinTab.Tests", "tests.log"));
 
 if (args.Length == 3 && args[0] == "--conceal-test-window")
     return WindowSafetyTests.ConcealRecoveryWindow(args[1], args[2]);
 
+if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--session-restore-stress"))
+    return await ExplorerStressTest.RunSessionRestoreAsync(args);
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--stress"))
     return await ExplorerStressTest.RunAsync(args);
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--activation-stress"))
@@ -52,6 +55,10 @@ internal static class UnitTestRunner
             .Concat(PollingTests.All())
             .Concat(StaTaskSchedulerTests.All())
             .Concat(SettingsStoreTests.All())
+            .Concat(ExplorerSessionStoreTests.All())
+            .Concat(ExplorerSessionTests.All())
+            .Concat(ExplorerSessionLocationTests.All())
+            .Concat(ExplorerSessionNativeTests.All())
             .Concat(RegistryManagerTests.All())
             .Concat(ThemeManagerTests.All())
             .Concat(BackgroundWorkTests.All())
@@ -60,6 +67,7 @@ internal static class UnitTestRunner
             .Concat(SelectionSnapshotTests.All())
             .Concat(TabSelectionEngineTests.All())
             .Concat(NavigationMiddleClickTests.All())
+            .Concat(NavigationInputObserverTests.All())
             .Concat(NavigationNativeSelectionTests.All())
             .Concat(MergeSourceConcealPulseTests.All())
             .Concat(ExplorerTabDoubleClickCloseTests.All())

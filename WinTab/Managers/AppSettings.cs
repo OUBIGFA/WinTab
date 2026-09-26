@@ -6,6 +6,10 @@ internal sealed record AppSettings
 {
     public bool WindowHook { get; init; } = true;
     public bool ReuseTabs { get; init; } = true;
+    public bool RestoreTabs { get; init; } = false;
+    public bool RestoreOnAnyFolder { get; init; } = false;
+    /// <summary>Off: a window with a single tab is neither saved nor restored as a tab group.</summary>
+    public bool RestoreSingleTab { get; init; } = false;
     public bool DoubleClickCloseTab { get; init; } = true;
     public bool MiddleClickForegroundTab { get; init; } = true;
     public bool WheelSwitchTab { get; init; } = true;

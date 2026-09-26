@@ -86,7 +86,10 @@ internal static class NavigationTabActivation
                     {
                         if (cancellationToken.IsCancellationRequested || !isCurrent())
                             return NavigationActivationResult.Cancelled;
-                        switch (select(newTab))
+                        var outcome = select(newTab);
+                        if (cancellationToken.IsCancellationRequested || !isCurrent())
+                            return NavigationActivationResult.Cancelled;
+                        switch (outcome)
                         {
                             case NavigationSelectOutcome.Selected:
                                 selected = true;

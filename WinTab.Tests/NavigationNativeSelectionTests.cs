@@ -15,6 +15,80 @@ internal static class NavigationNativeSelectionTests
         yield return ("navigation middle-click activates the tab of a window that is not yet in front", SelectsInWindowNotYetInFront);
         yield return ("navigation expired accessibility work cannot block later clicks", ExpiredWorkCannotBlock);
         yield return ("navigation middle-click accepts any control inside the active tab and nothing outside it", AcceptsWholeActiveTab);
+        yield return ("navigation-pane middle-click activates its tab while Explorer is too busy to answer", () => FollowWhileBusy(onTree: true, busyMs: 2_500));
+        yield return ("navigation middle-click activates a tab Explorer finishes after the old two-second budget", () => FollowWhileBusy(onTree: false, busyMs: 3_500));
+        yield return ("navigation cancelled while Explorer is busy never queues a late tab switch", CancelWhileBusyDoesNotSwitchLater);
+        yield return ("navigation waits for the new tab view to become visible before selecting it", WaitsForVisibleView);
+    }
+
+    private sealed class NoInput : IDisposable
+    {
+        public void Dispose() { }
+    }
+
+    /// <summary>
+    /// Right after a click Explorer's UI thread is busy opening the tab, most of all on the first click after
+    /// Explorer starts: it answers nothing until it is done. The click must be followed without asking Explorer
+    /// anything first, and for as long as Explorer takes to open the tab after the button is released.
+    /// </summary>
+    private static async Task FollowWhileBusy(bool onTree, int busyMs)
+    {
+        using var frame = new RemoteExplorerFrame(visible: true, tabCount: 3);
+        frame.SetActive(0);
+        using var hook = new ExplorerNavigationMiddleClickHook(_ => new NoInput());
+        hook.StartHook();
+        // The third tab plays the one Explorer opened for the click.
+        nint[] before = [frame.TabAt(0), frame.TabAt(1)];
+        var click = new NavigationClick(WindowIdentity.Capture(frame.Handle), WindowIdentity.Capture(frame.Tab),
+            WindowIdentity.Capture(frame.Tab), before, default, onTree);
+        await frame.BlockMessagesAsync(busyMs);
+        var startedAt = Environment.TickCount64;
+        var following = hook.Follow(click);
+        hook.ProcessPointer(new NavigationPointerInput(NavigationPointerKind.MiddleUp, default, FromWinTab: false));
+        var result = await following.WaitAsync(TimeSpan.FromSeconds(15));
+        Check.Equal(NavigationActivationResult.Activated, result,
+            $"A click on a busy Explorer must still bring its tab to the front (ended after {Environment.TickCount64 - startedAt} ms).");
+        Check.Equal(frame.TabAt(2), frame.ActiveTab, "The tab the click opened must be the active tab.");
+    }
+
+    private static async Task CancelWhileBusyDoesNotSwitchLater()
+    {
+        using var frame = new RemoteExplorerFrame(visible: true, tabCount: 3);
+        frame.SetActive(0);
+        using var hook = new ExplorerNavigationMiddleClickHook(_ => new NoInput());
+        hook.StartHook();
+        nint[] before = [frame.TabAt(0), frame.TabAt(1)];
+        var click = new NavigationClick(WindowIdentity.Capture(frame.Handle), WindowIdentity.Capture(frame.Tab),
+            WindowIdentity.Capture(frame.Tab), before, default);
+        await frame.BlockMessagesAsync(1_000);
+        var following = hook.Follow(click);
+        hook.ProcessPointer(new NavigationPointerInput(NavigationPointerKind.MiddleUp, default, FromWinTab: false));
+        await Task.Delay(200);
+        hook.StopHook();
+        Check.Equal(NavigationActivationResult.Cancelled, await following.WaitAsync(TimeSpan.FromSeconds(3)),
+            "Stopping the hook must retire the pending click while Explorer is busy.");
+        await Task.Delay(1_100);
+        Check.Equal(0, frame.SwitchCommands.Count, "A cancelled click must not leave a tab command queued in Explorer.");
+        Check.Equal(frame.Tab, frame.ActiveTab, "Explorer becoming responsive later must not switch the cancelled click's tab.");
+    }
+
+    private static async Task WaitsForVisibleView()
+    {
+        using var frame = new RemoteExplorerFrame(visible: true, tabCount: 3);
+        frame.SetActive(0);
+        WinTab.WinAPI.WinApi.ShowWindow(frame.TabAt(2), WinTab.WinAPI.WinApi.SW_HIDE);
+        nint[] before = [frame.TabAt(0), frame.TabAt(1)];
+        var click = new NavigationClick(WindowIdentity.Capture(frame.Handle), WindowIdentity.Capture(frame.Tab),
+            WindowIdentity.Capture(frame.Tab), before, default);
+        Check.Equal(NavigationSelectOutcome.NotReady, ExplorerNavigationAccess.SelectNewTab(click, frame.TabAt(2), click.IsCurrent),
+            "A native HWND without a visible view is not ready for the appended-tab command.");
+        Check.Equal(0, frame.SwitchCommands.Count, "No command may run against the half-created view.");
+        WinTab.WinAPI.WinApi.ShowWindow(frame.TabAt(2), WinTab.WinAPI.WinApi.SW_SHOWNOACTIVATE);
+        frame.SetActive(0);
+        Check.Equal(NavigationSelectOutcome.Selected, ExplorerNavigationAccess.SelectNewTab(click, frame.TabAt(2), click.IsCurrent),
+            "Once Explorer publishes the view, the same click can select it without waiting for UIA titles.");
+        var active = await Helper.DoUntilConditionAsync(() => frame.ActiveTab, handle => handle == frame.TabAt(2), 1_000, 20);
+        Check.Equal(frame.TabAt(2), active, "The queued native command must activate the ready view.");
     }
 
     private static async Task AcceptsWholeActiveTab()
@@ -89,10 +163,10 @@ internal static class NavigationNativeSelectionTests
     {
         using var gate = new NavigationClickGate();
         var stalled = gate.Begin(100, 0, out _)!;
-        var next = gate.Begin(100, NavigationClickGate.RequestLifetimeMs + 1, out _);
+        var next = gate.Begin(100, NavigationClickGate.HoldLimitMs + 1, out _);
         Check.That(next != null, "An expired accessibility worker must not require an extra click or its eventual completion to release the gate.");
         gate.Complete(stalled);
-        Check.That(gate.IsCurrent(next!, NavigationClickGate.RequestLifetimeMs + 2), "The old worker cannot retire the new request when it finally returns.");
+        Check.That(gate.IsCurrent(next!, NavigationClickGate.HoldLimitMs + 2), "The old worker cannot retire the new request when it finally returns.");
         gate.Complete(next!);
         return Task.CompletedTask;
     }

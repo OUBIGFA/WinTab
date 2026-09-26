@@ -323,6 +323,7 @@ public partial class ExplorerWatcher
 
     private void RetireShellConnection(string reason)
     {
+        CompleteClosedSessions();
         _preExistingExplorerWindowsProtected = false;
         Interlocked.Increment(ref _shellGeneration);
         _shellLifetime.Cancel();
@@ -338,6 +339,8 @@ public partial class ExplorerWatcher
             await Task.WhenAll(_registrationWork.StopAsync(), _selectionWork.StopAsync(), _shellTransitionTask).ConfigureAwait(false);
             await Task.Factory.StartNew(DisposeShellObjects, CancellationToken.None,
                 TaskCreationOptions.DenyChildAttach, _staTaskScheduler).ConfigureAwait(false);
+            if (_sessionStore != null)
+                await _sessionStore.FlushAsync().ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -348,6 +351,8 @@ public partial class ExplorerWatcher
             _staTaskScheduler.Dispose();
             _shellLifetime.Dispose();
             _hookLifetime.Dispose();
+            _sessionLifetime.Dispose();
+            _sessionStore?.Dispose();
             _instanceRunning = false;
         }
     }

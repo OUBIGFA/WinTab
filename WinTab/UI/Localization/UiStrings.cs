@@ -25,6 +25,16 @@ internal static class UiStrings
     public static string WindowHookDescription => Pick("新文件夹自动作为标签页打开", "Open new folders as tabs in active window");
     public static string ReuseTabsTitle => Pick("复用同一标签页", "Reuse opened tabs");
     public static string ReuseTabsDescription => Pick("重复打开同一文件夹时直接跳转", "Switch to existing tab instead of opening duplicate");
+    public static string RestoreTabsTitle => Pick("恢复上次标签组", "Restore last tab group");
+    public static string RestoreTabsDescription => Pick("无其他资源管理器窗口时，下次打开恢复最后关闭窗口的标签组", "Restore the last closed window's tab group on the next launch when no other Explorer windows are open");
+    public static string RestoreSingleTabTitle => Pick("恢复单个标签", "Restore single-tab windows");
+    public static string RestoreSingleTabDescription => Pick("默认关闭；关闭时仅保存和恢复含两个及以上标签的窗口", "Off by default; only save and restore windows with two or more tabs when off");
+    public static string RestoreNormalLaunchOnly => Pick("仅普通启动", "Normal launch only");
+    public static string RestoreAnyFolder => Pick("打开任意文件夹", "Any folder");
+    public static string RestoreModeHint(bool anyFolder) => anyFolder
+        ? Pick("保留最初打开的标签并停留在它上面，包括主页／此电脑等启动页", "Keep the initial tab active, including start pages such as Home or This PC")
+        : Pick("仅从主页／此电脑等默认位置普通启动时恢复；打开特定文件夹不恢复", "Restore only on a normal launch to a default location such as Home or This PC, not when opening a specific folder");
+    public static string RestoreExclusions => Pick("拖出的窗口和 Ctrl + Shift 独立窗口不触发恢复", "Torn-off windows and Ctrl + Shift separate windows do not trigger restoration");
     public static string DoubleClickTitle => Pick("双击关闭标签页", "Double-click to close tabs");
     public static string DoubleClickDescription => Pick("双击标签页标题直接关闭", "Double-click any tab title to close it");
     public static string MiddleClickTitle => Pick("中键前台打开标签页", "Open middle-clicked tabs in foreground");
@@ -51,6 +61,8 @@ internal static class UiStrings
 
     // About row
     public static string CheckButton => Pick("检查更新", "Check for updates");
+    public static string OpenLogsButton => Pick("打开日志", "Open logs");
+    public static string OpenLogsFailed => Pick("无法打开日志文件夹", "Could not open the log folder");
     public static string UpdateChecking => Pick("正在检查更新...", "Checking for updates...");
     public static string UpdateFailed => Pick("检查更新失败，请重试", "Update check failed, try again");
     public static string UpdateUpToDate => Pick("已是最新版本", "You're up to date");

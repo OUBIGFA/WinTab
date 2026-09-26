@@ -13,6 +13,7 @@ public static class WinApi
 {
     public const int EVENT_SYSTEM_FOREGROUND = 0x0003;
     public const int EVENT_OBJECT_CREATE = 0x8000;
+    public const int EVENT_OBJECT_DESTROY = 0x8001;
     public const int EVENT_OBJECT_FOCUS = 0x8005;
     public const int EVENT_OBJECT_SHOW = 0x8002;
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
@@ -66,6 +67,7 @@ public static class WinApi
     public const int LWA_ALPHA = 0x2; // Determine the opacity of a layered window
 
     public const uint GA_ROOT = 2;
+    public const uint GA_ROOTOWNER = 3;
 
     public const uint SIGDN_URL = 0x80068000;
 

@@ -199,6 +199,15 @@
                         </Border>
                         <Border Style="{StaticResource SettingRowStyle}">
                             <DockPanel>
+                                <CheckBox x:Name="DoubleClickCloseToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
+                                <StackPanel>
+                                    <TextBlock x:Name="DoubleClickTitleText" Text="Double-click to close tabs" Style="{StaticResource SettingTitleStyle}" />
+                                    <TextBlock x:Name="DoubleClickDescText" Text="Double-click any tab title to close it" Style="{StaticResource SettingDescriptionStyle}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource SettingRowStyle}">
+                            <DockPanel>
                                 <CheckBox x:Name="MiddleClickForegroundToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
                                     <TextBlock x:Name="MiddleClickTitleText" Text="Open middle-clicked tabs in foreground" Style="{StaticResource SettingTitleStyle}" />
@@ -207,15 +216,6 @@
                             </DockPanel>
                         </Border>
                         <Border Style="{StaticResource SettingRowStyle}">
-                            <DockPanel>
-                                <CheckBox x:Name="DoubleClickCloseToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
-                                <StackPanel>
-                                    <TextBlock x:Name="DoubleClickTitleText" Text="Double-click to close tabs" Style="{StaticResource SettingTitleStyle}" />
-                                    <TextBlock x:Name="DoubleClickDescText" Text="Double-click any tab title to close it" Style="{StaticResource SettingDescriptionStyle}" />
-                                </StackPanel>
-                            </DockPanel>
-                        </Border>
-                        <Border Style="{StaticResource LastSettingRowStyle}">
                             <DockPanel>
                                 <CheckBox x:Name="WheelSwitchToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                 <StackPanel>
@@ -236,6 +236,35 @@
                                     </DockPanel>
                                 </StackPanel>
                             </DockPanel>
+                        </Border>
+                        <Border Style="{StaticResource LastSettingRowStyle}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <CheckBox x:Name="RestoreTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
+                                    <StackPanel>
+                                        <TextBlock x:Name="RestoreTabsTitleText" Text="Restore last tab group" Style="{StaticResource SettingTitleStyle}" />
+                                        <TextBlock x:Name="RestoreTabsDescText" Style="{StaticResource SettingDescriptionStyle}" />
+                                    </StackPanel>
+                                </DockPanel>
+                                <StackPanel x:Name="RestoreModePanel" Margin="0,10,0,0">
+                                    <Border Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="7" Padding="2" HorizontalAlignment="Left">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton x:Name="RestoreNormalLaunchOnly" GroupName="RestoreMode" Content="Normal launch only" Style="{StaticResource SegmentStyle}" />
+                                            <RadioButton x:Name="RestoreAnyFolder" GroupName="RestoreMode" Content="Any folder" Style="{StaticResource SegmentStyle}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock x:Name="RestoreModeHintText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,6,0,0" />
+                                    <TextBlock x:Name="RestoreExclusionsText" Style="{StaticResource SettingDescriptionStyle}" />
+                                    <DockPanel Margin="0,10,0,0">
+                                        <CheckBox x:Name="RestoreSingleTabToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
+                                                  AutomationProperties.LabeledBy="{Binding ElementName=RestoreSingleTabTitleText}" />
+                                        <StackPanel>
+                                            <TextBlock x:Name="RestoreSingleTabTitleText" Text="Restore single-tab windows" Style="{StaticResource SettingTitleStyle}" />
+                                            <TextBlock x:Name="RestoreSingleTabDescText" Style="{StaticResource SettingDescriptionStyle}" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </StackPanel>
+                            </StackPanel>
                         </Border>
                     </StackPanel>
                 </Border>
@@ -280,12 +309,17 @@
                 <Border Style="{StaticResource SettingsGroupStyle}">
                     <Border Style="{StaticResource LastSettingRowStyle}">
                         <DockPanel>
-                            <Button x:Name="CheckUpdatesButton"
-                                    DockPanel.Dock="Right"
-                                    Content="Check for updates"
-                                    Style="{StaticResource FlatButtonStyle}"
-                                    VerticalAlignment="Center"
-                                    Margin="24,0,0,0" />
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="24,0,0,0">
+                                <Button x:Name="OpenLogsButton"
+                                        Content="Open logs"
+                                        Style="{StaticResource FlatButtonStyle}"
+                                        VerticalAlignment="Center" />
+                                <Button x:Name="CheckUpdatesButton"
+                                        Content="Check for updates"
+                                        Style="{StaticResource FlatButtonStyle}"
+                                        VerticalAlignment="Center"
+                                        Margin="8,0,0,0" />
+                            </StackPanel>
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock x:Name="AboutVersionText" Text="WinTab" Style="{StaticResource SettingTitleStyle}" />
                                 <TextBlock x:Name="AboutLinksText" Style="{StaticResource SettingDescriptionStyle}">

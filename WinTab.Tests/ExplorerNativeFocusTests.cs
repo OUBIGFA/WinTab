@@ -32,11 +32,10 @@ internal static class ExplorerNativeFocusTests
         fixture.EnableMerging();
         var view = fixture.Window.CreateFolderView(index);
         fixture.Window.Show();
-        Helper.RestoreWindowToForeground(fixture.Window.Handle);
         for (var attempt = 0; attempt < 3; attempt++)
         {
             fixture.Window.SetActive(0);
-            SetFocus(view);
+            await EstablishViewFocusAsync(fixture, view);
             await (Task)fixture.Invoke("TryActivateNativeFocusedTabAsync", view)!;
             Check.Equal(target, fixture.Window.ActiveTab, $"Native focus in an inactive file view must activate its exact tab, even without a new window or navigation. attempt={attempt} parent={fixture.Window.Handle} foreground={WinApi.GetForegroundWindow()} liveFocus={fixture.Invoke("HasNativeViewFocus", view, fixture.Window.Handle)}");
             Check.Equal(3, ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Window.Handle).Count(), "Native reuse must not create or close tabs.");
@@ -53,8 +52,7 @@ internal static class ExplorerNativeFocusTests
         var view = fixture.Window.CreateFolderView(2);
         fixture.Window.Show();
         fixture.Window.SetActive(0);
-        Helper.RestoreWindowToForeground(fixture.Window.Handle);
-        SetFocus(view);
+        await EstablishViewFocusAsync(fixture, view);
         // If Explorer already holds keyboard focus on this hidden view, selecting the file can report
         // only the accessible item, without a second OBJID_CLIENT / CHILDID_SELF notification.
         fixture.Invoke("OnWindowShown", (nint)0, (uint)WinApi.EVENT_OBJECT_FOCUS, view, 8301, child, 0u,
@@ -75,8 +73,7 @@ internal static class ExplorerNativeFocusTests
         var view = fixture.Window.CreateFolderView(2);
         fixture.Window.Show();
         fixture.Window.SetActive(0);
-        Helper.RestoreWindowToForeground(fixture.Window.Handle);
-        SetFocus(view);
+        await EstablishViewFocusAsync(fixture, view);
         fixture.Window.SwitchDelayMs = 400;
         await (Task)fixture.Invoke("TryActivateNativeFocusedTabAsync", view)!;
         Check.Equal(target, fixture.Window.ActiveTab,
@@ -92,8 +89,7 @@ internal static class ExplorerNativeFocusTests
         var view = fixture.Window.CreateFolderView(0);
         fixture.Window.Show();
         fixture.Window.SetActive(0);
-        Helper.RestoreWindowToForeground(fixture.Window.Handle);
-        SetFocus(view);
+        await EstablishViewFocusAsync(fixture, view);
         await (Task)fixture.Invoke("TryActivateNativeFocusedTabAsync", view)!;
         Check.Equal(fixture.Window.FirstTab, fixture.Window.ActiveTab, "Ordinary file focus must not switch tabs.");
     });
@@ -109,8 +105,7 @@ internal static class ExplorerNativeFocusTests
         fixture.Window.Show();
         fixture.Window.SetActive(1);
         var before = fixture.Window.ActiveTab;
-        Helper.RestoreWindowToForeground(fixture.Window.Handle);
-        SetFocus(disabled ? view : before);
+        await EstablishViewFocusAsync(fixture, disabled ? view : before);
         await (Task)fixture.Invoke("TryActivateNativeFocusedTabAsync", view)!;
         Check.Equal(before, fixture.Window.ActiveTab, "Stale focus or disabled reuse must not switch tabs.");
     });
@@ -125,8 +120,7 @@ internal static class ExplorerNativeFocusTests
         fixture.Window.Show();
         fixture.Window.SetActive(1);
         var before = fixture.Window.ActiveTab;
-        Helper.RestoreWindowToForeground(fixture.Window.Handle);
-        SetFocus(view);
+        await EstablishViewFocusAsync(fixture, view);
         var openLock = fixture.OpenLock;
         await openLock.WaitAsync();
         Task pending;
@@ -151,8 +145,7 @@ internal static class ExplorerNativeFocusTests
         fixture.Window.Show();
         fixture.Window.SetActive(1);
         var before = fixture.Window.ActiveTab;
-        Helper.RestoreWindowToForeground(fixture.Window.Handle);
-        SetFocus(view);
+        await EstablishViewFocusAsync(fixture, view);
         var previousEvent = unchecked((uint)(Environment.TickCount - 10));
         // Even an already-active selection establishes the event boundary of a WinTab command.
         await fixture.Watcher.SelectTabByHandle(fixture.Window.Handle, before);
@@ -163,6 +156,19 @@ internal static class ExplorerNativeFocusTests
         await (Task)fixture.Invoke("TryActivateNativeFocusedTabAsync", view)!;
         Check.Equal(fixture.Window.FirstTab, fixture.Window.ActiveTab, "A fresh external request with the same live view must still be accepted.");
     });
+
+    private static async Task EstablishViewFocusAsync(ExplorerTabLifetimeTests.Fixture fixture, nint view)
+    {
+        // Foreground activation can complete asynchronously. Arrange real native focus before the action
+        // under test; do not confuse a still-pending setup request with a failure to reuse the tab.
+        Helper.RestoreWindowToForeground(fixture.Window.Handle);
+        var foreground = await Helper.DoUntilConditionAsync(WinApi.GetForegroundWindow,
+            handle => handle == fixture.Window.Handle, 1_000, 20);
+        Check.Equal(fixture.Window.Handle, foreground, "The owned test frame must be foreground before arranging file-view focus.");
+        SetFocus(view);
+        Check.That((bool)fixture.Invoke("HasNativeViewFocus", view, fixture.Window.Handle)!,
+            "The intended view must actually hold native focus before exercising reuse.");
+    }
 
     [DllImport("user32.dll")] private static extern nint SetFocus(nint window);
 }

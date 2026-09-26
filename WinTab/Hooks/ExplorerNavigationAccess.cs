@@ -2,38 +2,33 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
-using System.Runtime.InteropServices;
 using WinTab.Helpers;
-using WinTab.Interop;
 using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
 /// <summary>
 /// What was true at the moment the middle button went down inside a tab. <paramref name="Target"/> is the
-/// control under the pointer; <paramref name="OnNavigationTree"/> tells whether it is the navigation pane's
-/// tree, the one place where a click beside the folder items can be recognised before Explorer reacts.
+/// control under the pointer; <paramref name="OnNavigationTree"/> tells whether it is the navigation pane's tree.
 /// </summary>
 internal sealed record NavigationClick(WindowIdentity Window, WindowIdentity SourceTab, WindowIdentity Target, nint[] TabsBefore, Point Point,
     bool OnNavigationTree = false)
 {
     /// <summary>
-    /// The click can still be acted on: the same window, tab and target exist. The window need not be in front:
-    /// a click on an Explorer window behind another application brings it to the front only after the button
-    /// is released. Moving on to another window ends the click through the foreground event instead.
+    /// The click can still be acted on: the same window and tab exist. The control that was clicked need not:
+    /// Explorer may rebuild an address-bar or Home-page control while it opens the tab, and the tab is still the
+    /// click's. The window need not be in front either: a click on an Explorer window behind another application
+    /// brings it to the front only after the button is released. Moving on to another window ends the click
+    /// through the foreground event instead.
     /// </summary>
     public bool IsCurrent() =>
-        Window.IsCurrent && SourceTab.IsCurrent && Target.IsCurrent &&
-        WinApi.GetParent(SourceTab.Handle) == Window.Handle;
+        Window.IsCurrent && SourceTab.IsCurrent && WinApi.GetParent(SourceTab.Handle) == Window.Handle;
 }
 
-/// <summary>Reads native tab handles and navigation items. Accessibility work never runs on the hook thread.</summary>
+/// <summary>Reads native tab handles and selects the tab a click opened. Only window handles are read on the input thread.</summary>
 internal static class ExplorerNavigationAccess
 {
     internal const int MaxTabs = 128;
-    private const uint ObjIdClient = 0xFFFFFFFC;
-    private const int OutlineItemRole = 0x24;
-    private const int UnavailableOrInvisible = 0x1 | 0x8000 | 0x10000;
 
     public static nint ActiveTab(nint window) => WinApi.FindWindowEx(window, 0, "ShellTabWindowClass", null);
 
@@ -106,32 +101,6 @@ internal static class ExplorerNavigationAccess
         ReadTabs(window) is { } tabs ? new(tabs, tabs.Length > 0 ? tabs[0] : 0) : null;
 
     /// <summary>
-    /// Whether the point is on a folder item of the navigation pane, where a middle click makes Explorer
-    /// open a tab. The item's label and its icon count; the expansion glyph beside them does not.
-    /// </summary>
-    public static bool IsFolderItemAt(nint tree, Point point)
-    {
-        var accessible = AccessibleTree(tree);
-        try
-        {
-            var child = accessible.accHitTest(point.X, point.Y);
-            try
-            {
-                if (child is not int id)
-                    return false;
-                var item = ReadItem(accessible, id, tree);
-                return item != null && item.HitBounds.Contains(point);
-            }
-            finally
-            {
-                if (child != null && Marshal.IsComObject(child))
-                    Marshal.ReleaseComObject(child);
-            }
-        }
-        finally { Marshal.ReleaseComObject(accessible); }
-    }
-
-    /// <summary>
     /// Explorer appends a navigation middle-click tab. After its unique native handle is confirmed, select
     /// the appended index with Explorer's own command; no UIA tree, title publication or COM call is needed.
     /// The caller still verifies the exact active HWND after the command, rather than claiming success here.
@@ -142,42 +111,25 @@ internal static class ExplorerNavigationAccess
         nint[] expected = [.. click.TabsBefore, newTab];
         if (!isCurrent() || WinApi.GetParent(newTab) != window)
             return NavigationSelectOutcome.Rejected;
+        // The native tab HWND appears before its view is ready. Do not select a half-created view, even
+        // if its UI thread happens to answer sent messages while it is still initializing the tab.
+        if (!WinApi.IsWindowVisible(newTab))
+            return NavigationSelectOutcome.NotReady;
+        // Do not park a switch in an already busy Explorer's queue: the click may be cancelled before it
+        // reaches that command. Probe without side effects, then recheck the lease and tabs before posting.
+        if (!WinApi.TrySendMessage(window, WinApi.WM_NULL, 0, 0, 20))
+            return isCurrent() ? NavigationSelectOutcome.NotReady : NavigationSelectOutcome.Rejected;
+        if (!isCurrent())
+            return NavigationSelectOutcome.Rejected;
         // Explorer may still be moving the new tab's window; that is no evidence either way.
         if (ReadTabs(window) is not { } tabs)
             return NavigationSelectOutcome.NotReady;
-        if (!SameHandles(tabs, expected) || tabs[0] != click.SourceTab.Handle)
+        if (!SameHandles(tabs, expected) || tabs[0] != click.SourceTab.Handle || !isCurrent())
             return NavigationSelectOutcome.Rejected;
+        // Explorer must dispatch this command in its normal message loop. A synchronous send can reenter
+        // tab initialization (even after WM_NULL answered) and leave the new view permanently uninitialized.
         return WinApi.PostMessage(window, WinApi.WM_COMMAND, 0xA221, expected.Length)
             ? NavigationSelectOutcome.Selected
             : NavigationSelectOutcome.Rejected;
     }
-
-    private sealed record NavigationItem(int Id, Rectangle HitBounds);
-
-    private static NavigationItem? ReadItem(IAccessible accessible, int id, nint tree)
-    {
-        if (id <= 0 || Convert.ToInt32(accessible.get_accRole(id)) != OutlineItemRole ||
-            (Convert.ToInt32(accessible.get_accState(id)) & UnavailableOrInvisible) != 0) return null;
-        accessible.accLocation(out var left, out var top, out var width, out var height, id);
-        if (width <= 0 || height <= 0 || !WinApi.GetWindowRect(tree, out var bounds)) return null;
-        var dpi = Math.Max(96u, WinApi.GetDpiForWindow(tree));
-        // MSAA gives the label rectangle. Include its adjacent small icon, not the expansion glyph to its left.
-        var iconWidth = GetSystemMetricsForDpi(WinApi.SM_CXSMICON, dpi) + (int)(4 * dpi / 96);
-        var hit = Rectangle.Intersect(new Rectangle(left - iconWidth, top, width + iconWidth, height),
-            new Rectangle(bounds.Left, bounds.Top, bounds.Right - bounds.Left, bounds.Bottom - bounds.Top));
-        return hit.IsEmpty ? null : new NavigationItem(id, hit);
-    }
-
-    private static IAccessible AccessibleTree(nint tree)
-    {
-        var guid = typeof(IAccessible).GUID;
-        Marshal.ThrowExceptionForHR(AccessibleObjectFromWindow(tree, ObjIdClient, ref guid, out var accessible));
-        return accessible;
-    }
-
-    [DllImport("oleacc.dll")]
-    private static extern int AccessibleObjectFromWindow(nint window, uint objectId, ref Guid interfaceId,
-        [MarshalAs(UnmanagedType.Interface)] out IAccessible accessible);
-    [DllImport("user32.dll")]
-    private static extern int GetSystemMetricsForDpi(int index, uint dpi);
 }

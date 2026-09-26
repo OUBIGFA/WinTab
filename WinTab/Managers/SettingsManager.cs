@@ -36,6 +36,24 @@ public static class SettingsManager
         set => SetProperty(settings => settings with { ReuseTabs = value });
     }
 
+    public static bool RestoreTabs
+    {
+        get => Store.Snapshot.RestoreTabs;
+        set => SetProperty(settings => settings with { RestoreTabs = value });
+    }
+
+    public static bool RestoreOnAnyFolder
+    {
+        get => Store.Snapshot.RestoreOnAnyFolder;
+        set => SetProperty(settings => settings with { RestoreOnAnyFolder = value });
+    }
+
+    public static bool RestoreSingleTab
+    {
+        get => Store.Snapshot.RestoreSingleTab;
+        set => SetProperty(settings => settings with { RestoreSingleTab = value });
+    }
+
     public static bool DoubleClickCloseTab
     {
         get => Store.Snapshot.DoubleClickCloseTab;
@@ -94,9 +112,14 @@ public static class SettingsManager
     private static void SetProperty(Func<AppSettings, AppSettings> update,
         [CallerMemberName] string propertyName = "", bool notify = true, bool deferred = false)
     {
-        if (Store.Update(update, deferred) && notify)
-            StaticPropertyChanged?.Invoke(null, new PropertyChangedEventArgs(propertyName));
+        if (!Store.Update(update, deferred) || !notify)
+            return;
+        ExplorerDebugLog.Write($"Setting changed {propertyName}: {Describe()}");
+        StaticPropertyChanged?.Invoke(null, new PropertyChangedEventArgs(propertyName));
     }
+
+    /// <summary>Every current setting, for the log.</summary>
+    public static string Describe() => Store.Snapshot.ToString();
 
     public static void SaveSettings() => _ = Store.FlushAsync();
 

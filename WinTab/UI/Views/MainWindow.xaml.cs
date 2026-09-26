@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Navigation;
@@ -60,11 +61,16 @@ public partial class MainWindow : Window
         MinimizeButton.Click += (_, _) => Hide();
         CloseButton.Click += (_, _) => Hide();
         CheckUpdatesButton.Click += CheckUpdatesButton_Click;
+        OpenLogsButton.Click += OpenLogsButton_Click;
         LanguageToggleButton.Click += LanguageToggleButton_Click;
         ThemeToggleButton.Click += ThemeToggleButton_Click;
 
         WindowHookToggle.Click += (_, _) => _hookManager.SetWindowHook(WindowHookToggle.IsChecked == true);
         ReuseTabsToggle.Click += (_, _) => _hookManager.SetReuseTabs(ReuseTabsToggle.IsChecked == true);
+        RestoreTabsToggle.Click += (_, _) => _hookManager.SetRestoreTabs(RestoreTabsToggle.IsChecked == true);
+        RestoreSingleTabToggle.Click += (_, _) => _hookManager.SetRestoreSingleTab(RestoreSingleTabToggle.IsChecked == true);
+        RestoreNormalLaunchOnly.Click += (_, _) => _hookManager.SetRestoreOnAnyFolder(false);
+        RestoreAnyFolder.Click += (_, _) => _hookManager.SetRestoreOnAnyFolder(true);
         DoubleClickCloseToggle.Click += (_, _) => _hookManager.SetDoubleClickClose(DoubleClickCloseToggle.IsChecked == true);
         MiddleClickForegroundToggle.Click += (_, _) => _hookManager.SetMiddleClickForeground(MiddleClickForegroundToggle.IsChecked == true);
         WheelSwitchToggle.Click += (_, _) => _hookManager.SetWheelSwitch(WheelSwitchToggle.IsChecked == true);
@@ -107,6 +113,12 @@ public partial class MainWindow : Window
     {
         WindowHookToggle.IsChecked = SettingsManager.IsWindowHookActive;
         ReuseTabsToggle.IsChecked = SettingsManager.ReuseTabs;
+        RestoreTabsToggle.IsChecked = SettingsManager.RestoreTabs;
+        RestoreSingleTabToggle.IsChecked = SettingsManager.RestoreSingleTab;
+        RestoreNormalLaunchOnly.IsChecked = !SettingsManager.RestoreOnAnyFolder;
+        RestoreAnyFolder.IsChecked = SettingsManager.RestoreOnAnyFolder;
+        RestoreModePanel.IsEnabled = SettingsManager.RestoreTabs;
+        RestoreModeHintText.Text = UiStrings.RestoreModeHint(SettingsManager.RestoreOnAnyFolder);
         DoubleClickCloseToggle.IsChecked = SettingsManager.DoubleClickCloseTab;
         MiddleClickForegroundToggle.IsChecked = SettingsManager.MiddleClickForegroundTab;
         WheelSwitchToggle.IsChecked = SettingsManager.WheelSwitchTab;
@@ -162,6 +174,14 @@ public partial class MainWindow : Window
         WindowHookDescText.Text = UiStrings.WindowHookDescription;
         ReuseTabsTitleText.Text = UiStrings.ReuseTabsTitle;
         ReuseTabsDescText.Text = UiStrings.ReuseTabsDescription;
+        RestoreTabsTitleText.Text = UiStrings.RestoreTabsTitle;
+        RestoreTabsDescText.Text = UiStrings.RestoreTabsDescription;
+        RestoreSingleTabTitleText.Text = UiStrings.RestoreSingleTabTitle;
+        RestoreSingleTabDescText.Text = UiStrings.RestoreSingleTabDescription;
+        RestoreNormalLaunchOnly.Content = UiStrings.RestoreNormalLaunchOnly;
+        RestoreAnyFolder.Content = UiStrings.RestoreAnyFolder;
+        RestoreModeHintText.Text = UiStrings.RestoreModeHint(SettingsManager.RestoreOnAnyFolder);
+        RestoreExclusionsText.Text = UiStrings.RestoreExclusions;
         DoubleClickTitleText.Text = UiStrings.DoubleClickTitle;
         DoubleClickDescText.Text = UiStrings.DoubleClickDescription;
         MiddleClickTitleText.Text = UiStrings.MiddleClickTitle;
@@ -182,6 +202,7 @@ public partial class MainWindow : Window
 
         AboutVersionText.Text = $"WinTab v{_appVersion}";
         CheckUpdatesButton.Content = UiStrings.CheckButton;
+        OpenLogsButton.Content = UiStrings.OpenLogsButton;
         ApplyUpdateFeedback();
 
         LanguageToggleButton.ToolTip = UiStrings.LanguageToggleTooltip;
@@ -193,6 +214,24 @@ public partial class MainWindow : Window
     {
         ThemeToggleGlyph.Text = ThemeManager.IsDarkTheme ? SunGlyph : MoonGlyph;
         ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(ThemeManager.IsDarkTheme);
+    }
+
+    private void OpenLogsButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(ExplorerDebugLog.Folder);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = ExplorerDebugLog.Folder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception exception)
+        {
+            ExplorerDebugLog.Write($"Could not open diagnostic log folder: {exception}");
+            SetUpdateFeedback(() => UiStrings.OpenLogsFailed);
+        }
     }
 
     private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)

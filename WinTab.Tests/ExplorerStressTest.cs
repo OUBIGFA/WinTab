@@ -12,7 +12,7 @@ using WinTab.Hooks;
 using WinTab.Interop;
 using WinTab.WinAPI;
 using ShellServiceProvider = WinTab.Interop.IServiceProvider;
-internal static class ExplorerStressTest
+internal static partial class ExplorerStressTest
 {
     private static readonly Guid ShellBrowserGuid = typeof(IShellBrowser).GUID;
 
@@ -701,7 +701,7 @@ internal static class ExplorerStressTest
             UseShellExecute = false,
             WorkingDirectory = Path.GetDirectoryName(appPath) ?? Environment.CurrentDirectory
         };
-        startInfo.Environment["WINTAB_DEBUG_LOG"] = debugLog;
+        startInfo.Environment[ExplorerDebugLog.FileOverrideVariable] = debugLog;
 
         var process = Process.Start(startInfo);
         if (process == null)

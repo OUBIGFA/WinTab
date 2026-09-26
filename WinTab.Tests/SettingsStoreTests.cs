@@ -12,6 +12,17 @@ internal static class SettingsStoreTests
 {
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("settings keep tab restoration off and strict for new configurations", RestoreTabsDefaults);
+        yield return ("settings keep tab restoration off and strict for existing configurations", RestoreTabsLegacyDefaults);
+        yield return ("settings persist disabled strict tab restoration", () => RestoreTabsPersists(false, false));
+        yield return ("settings persist enabled strict tab restoration", () => RestoreTabsPersists(true, false));
+        yield return ("settings persist enabled any-folder tab restoration", () => RestoreTabsPersists(true, true));
+        yield return ("settings remember any-folder mode while tab restoration is disabled", () => RestoreTabsPersists(false, true));
+        yield return ("settings keep single-tab restoration off when upgrading an enabled restore configuration", RestoreSingleTabUpgradeDefault);
+        yield return ("settings persist enabled single-tab restoration in strict mode", () => RestoreTabsPersists(true, false, true));
+        yield return ("settings persist enabled single-tab restoration in any-folder mode", () => RestoreTabsPersists(true, true, true));
+        yield return ("settings remember single-tab restoration while group restoration is disabled", () => RestoreTabsPersists(false, false, true));
+        yield return ("settings remember single-tab and any-folder preferences while group restoration is disabled", () => RestoreTabsPersists(false, true, true));
         yield return ("settings enable navigation middle-click for existing configurations independently", MiddleClickDefaults);
         yield return ("settings persist disabling navigation middle-click independently", MiddleClickPersists);
         yield return ("settings reads and changes do not wait for a blocked disk write", BlockedWriteDoesNotBlockSettings);
@@ -34,6 +45,83 @@ internal static class SettingsStoreTests
     }
 
     private static string NewPath() => Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"), "settings.json");
+
+    private static Task RestoreTabsDefaults()
+    {
+        using var store = new SettingsStore(NewPath());
+        Check.That(!store.Snapshot.RestoreTabs, "Tab restoration must be opt-in on a new installation.");
+        Check.That(!store.Snapshot.RestoreOnAnyFolder, "Normal-launch-only mode must be the default.");
+        Check.That(!store.Snapshot.RestoreSingleTab, "Single-tab restoration must be off by default.");
+        return Task.CompletedTask;
+    }
+
+    private static Task RestoreTabsLegacyDefaults()
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, """{"WindowHook":false,"ReuseTabs":false,"Theme":"Dark"}""");
+            using var store = new SettingsStore(path);
+            Check.That(store.LastError is null, "Configurations without restoration settings must remain valid.");
+            Check.That(!store.Snapshot.RestoreTabs && !store.Snapshot.RestoreOnAnyFolder && !store.Snapshot.RestoreSingleTab,
+                "An upgrade must not enable restoration, single-tab restoration or the broader trigger mode.");
+            Check.That(!store.Snapshot.WindowHook && !store.Snapshot.ReuseTabs,
+                "Loading restoration defaults must not enable merging or reuse.");
+            Check.Equal("Dark", store.Snapshot.Theme, "Existing preferences must be retained.");
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
+    }
+
+    private static Task RestoreSingleTabUpgradeDefault()
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, """{"RestoreTabs":true,"RestoreOnAnyFolder":true}""");
+            using var store = new SettingsStore(path);
+            Check.That(store.LastError is null, "Existing restoration settings must remain valid.");
+            Check.That(!store.Snapshot.RestoreSingleTab, "Upgrading must not opt into single-tab restoration.");
+            Check.That(store.Snapshot.RestoreTabs && store.Snapshot.RestoreOnAnyFolder,
+                "The selected group restoration mode must remain unchanged.");
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
+    }
+
+    private static async Task RestoreTabsPersists(bool restoreTabs, bool restoreOnAnyFolder, bool restoreSingleTab = false)
+    {
+        var path = NewPath();
+        try
+        {
+            using (var store = new SettingsStore(path))
+            {
+                store.Update(settings => settings with
+                {
+                    RestoreTabs = !restoreTabs, RestoreOnAnyFolder = !restoreOnAnyFolder, RestoreSingleTab = !restoreSingleTab,
+                    WindowHook = false, ReuseTabs = false
+                });
+                Check.That(await store.FlushAsync(), "The initial restoration preferences must save successfully.");
+                store.Update(settings => settings with
+                {
+                    RestoreTabs = restoreTabs, RestoreOnAnyFolder = restoreOnAnyFolder, RestoreSingleTab = restoreSingleTab
+                });
+                Check.That(await store.FlushAsync(), "Changed restoration preferences must save successfully.");
+            }
+            using var reloaded = new SettingsStore(path);
+            Check.That(reloaded.LastError is null, "Restoration settings must reload without using a backup.");
+            Check.Equal(restoreTabs, reloaded.Snapshot.RestoreTabs, "The restoration toggle must survive restarting.");
+            Check.Equal(restoreOnAnyFolder, reloaded.Snapshot.RestoreOnAnyFolder,
+                "The selected mode must persist independently of the restoration toggle.");
+            Check.Equal(restoreSingleTab, reloaded.Snapshot.RestoreSingleTab,
+                "Single-tab restoration must persist independently of the group toggle and trigger mode.");
+            Check.That(!reloaded.Snapshot.WindowHook && !reloaded.Snapshot.ReuseTabs,
+                "Saving restoration preferences must not enable merging or reuse.");
+        }
+        finally { RecycleDirectory(path); }
+    }
 
     private static Task MiddleClickDefaults()
     {

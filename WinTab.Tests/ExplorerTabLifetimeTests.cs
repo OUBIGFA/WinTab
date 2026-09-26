@@ -653,6 +653,7 @@ internal static class ExplorerTabLifetimeTests
                         ? throw new COMException("Explorer is temporarily unavailable.")
                         : "file:///C:/WinTab-lifetime",
                     "get_Document" => documentFailure != null ? throw documentFailure : null,
+                    "get_LocationName" => Location,
                     "get_Busy" => false,
                     "add_OnQuit" or "remove_OnQuit" or "add_NavigateComplete2" or "remove_NavigateComplete2" => null,
                     _ => throw new InvalidOperationException("Unexpected browser call: " + method)
