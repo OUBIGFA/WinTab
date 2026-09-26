@@ -363,14 +363,14 @@ public partial class ExplorerWatcher : IHook
     }
     private void OnWindowShown(nint hWinEventHook, uint eventType, nint hWnd, int idObject, int idChild, uint dwEventThread, uint dWmsEventTime)
     {
-        if (_restoreTabs && !_disposed && eventType == WinApi.EVENT_SYSTEM_FOREGROUND)
+        if (_captureSessions && !_disposed && eventType == WinApi.EVENT_SYSTEM_FOREGROUND)
             ObserveSessionForeground(hWnd);
-        if (_restoreTabs && !_disposed && eventType == WinApi.EVENT_OBJECT_DESTROY && idObject == 0 && idChild == 0)
+        if (_captureSessions && !_disposed && eventType == WinApi.EVENT_OBJECT_DESTROY && idObject == 0 && idChild == 0)
         {
             NotifySessionWindowDestroyed(hWnd);
             return;
         }
-        if ((!_isForcingTabs && !_restoreTabs) || !_preExistingExplorerWindowsProtected || _disposed || hWnd == 0) return;
+        if ((!_isForcingTabs && !_captureSessions) || !_preExistingExplorerWindowsProtected || _disposed || hWnd == 0) return;
 
         if (eventType == WinApi.EVENT_OBJECT_FOCUS)
         {
@@ -399,9 +399,9 @@ public partial class ExplorerWatcher : IHook
         // when something actually touched a CabinetWClass window.
         var explorerTopLevel = GetExplorerTopLevelWindow(hWnd);
         if (explorerTopLevel == 0) return;
-        if (_restoreTabs)
+        if (_captureSessions)
         {
-            if (Helper.IsCtrlShiftDown())
+            if (IsIndependentOpenRequested())
                 ExcludeWindowFromSessionRestore(explorerTopLevel);
             // Explorer showed a (possibly preloaded) frame or added a tab: a launch to check or a group to capture.
             _selectionWork.Request();
@@ -422,7 +422,7 @@ public partial class ExplorerWatcher : IHook
         }
 
         if (IsWindowProtected(hWnd)) return false;
-        if (Helper.IsCtrlShiftDown()) return false;
+        if (IsIndependentOpenRequested()) return false;
         if (_hookedTopLevelUseCounts.ContainsKey(hWnd)) return false;
         if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle) return false;
         if (ExplorerWindowDiscovery.GetAllExplorerTabs(hWnd).Take(2).Count() > 1) return false;
@@ -443,8 +443,7 @@ public partial class ExplorerWatcher : IHook
         if (!_tabTearOff.TryClaim(hWnd, Environment.TickCount64))
             return false;
 
-        if (_restoreTabs)
-            ExcludeWindowFromSessionRestore(hWnd);
+        ExcludeWindowFromSessionRestore(hWnd);
         if (_mergeSourceHWnds.TryGetValue(hWnd, out var concealed))
         {
             if (RestoreConcealedWindow(concealed))
@@ -521,7 +520,7 @@ public partial class ExplorerWatcher : IHook
     {
         if (!_isForcingTabs || hWnd == 0) return;
         if (IsWindowProtected(hWnd)) return;
-        if (Helper.IsCtrlShiftDown()) return;
+        if (IsIndependentOpenRequested()) return;
         if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle) return;
         if (ExplorerWindowDiscovery.GetAllExplorerTabs(hWnd).Take(2).Count() > 1) return;
 
@@ -724,7 +723,7 @@ public partial class ExplorerWatcher : IHook
                     if (!wasTrackedTopLevel &&
                         !IsWindowProtected(hWnd) &&
                         _isForcingTabs &&
-                        !Helper.IsCtrlShiftDown() &&
+                        !IsIndependentOpenRequested() &&
                         _mainWindowHandle != hWnd &&
                         !ReleaseTornOffTabWindow(hWnd))
                     {
@@ -846,7 +845,7 @@ public partial class ExplorerWatcher : IHook
                 return;
             }
 
-            if (Helper.IsCtrlShiftDown())
+            if (IsIndependentOpenRequested())
             {
                 ExplorerDebugLog.Write($"Registered release ctrl-shift hwnd={hWnd}");
                 await RestoreMergeSourceWindowAsync(hWnd);
@@ -1027,7 +1026,7 @@ public partial class ExplorerWatcher : IHook
             () => GetTabHandle(window), timeoutMs: 2_000, pollSleepMs: 50);
         if (tabHandle == 0 && IsCurrentWindow(window, windowInfo))
             _registrationRetryPending = true;
-        if (_restoreTabs)
+        if (_captureSessions)
             CaptureExplorerSessions();
     }
     private async Task<bool> CloseMergedSourceWindowAsync(InternetExplorer window, nint handle)
@@ -1201,9 +1200,10 @@ public partial class ExplorerWatcher : IHook
         // Create a strongly-typed handler so we can remove it later
         windowInfo.OnQuitHandler = () =>
         {
-            if (_restoreTabs)
+            if (_captureSessions)
             {
                 _sessionTracker.TabClosing(windowInfo.Identity, windowInfo.TabIdentity, Environment.TickCount64);
+                RecordClosedTab(windowInfo);
                 _selectionWork.Request();
             }
             try
@@ -1227,13 +1227,13 @@ public partial class ExplorerWatcher : IHook
             if (!IsCurrentWindow(window, windowInfo))
                 return;
             var location = url?.ToString();
-            if (_restoreTabs && _restoringSessionWindows.TryGetValue(windowInfo.Identity, out var attempt) &&
+            if (_captureSessions && _restoringSessionWindows.TryGetValue(windowInfo.Identity, out var attempt) &&
                 attempt.InitialTab == windowInfo.TabIdentity)
                 attempt.InitialTabNavigated();
             if (!string.IsNullOrWhiteSpace(location))
             {
                 windowInfo.Location = Helper.NormalizeLocation(location);
-                if (_restoreTabs)
+                if (_captureSessions)
                     _sessionTracker.UpdateLocation(windowInfo.Identity, windowInfo.TabIdentity, windowInfo.Location);
             }
             windowInfo.SelectedItems = null;
@@ -1818,6 +1818,8 @@ public partial class ExplorerWatcher : IHook
                 if (!parent.IsCurrent || !tab.IsCurrent || WinApi.GetParent(tab.Handle) != parent.Handle)
                     return;
                 budget.Token.ThrowIfCancellationRequested();
+                _internalTabCloses[tab] = 0;
+                _closedTabs.Ignore(tab);
                 // Closing a tab destroys its window while the command is handled; post it and observe.
                 if (!WinApi.PostMessage(tab.Handle, WinApi.WM_COMMAND, 0xA021, 1) && tab.IsCurrent)
                 {
@@ -2408,9 +2410,11 @@ public partial class ExplorerWatcher : IHook
 
         _defaultLocation = GetDefaultExplorerLocation();
         ClearShellCaches();
-        if (_restoreTabs)
+        if (_captureSessions)
         {
-            ClearSessionTracking();
+            // Pure snapshots survive a transient COM disconnect; their HWND/process identities decide
+            // whether they closed normally or belong to an ended Explorer on the next capture pass.
+            _sessionVisuals?.Clear();
             ExcludeExistingWindowsFromRestore();
         }
         RecoverHiddenExplorerWindows("initialize-shell");
@@ -2487,9 +2491,7 @@ public partial class ExplorerWatcher : IHook
 
     private void DisposeShellObjects()
     {
-        CompleteClosedSessions();
-        if (_restoreTabs)
-            ClearSessionTracking();
+        CompleteClosedSessions(shellEnded: true);
         _preExistingExplorerWindowsProtected = false;
         StopMergeSourceConcealPulse();
         ReleaseDesktopFolderOpenObserver();
@@ -2570,6 +2572,8 @@ public partial class ExplorerWatcher : IHook
         if (_disposed)
             return;
         var startedAt = Environment.TickCount64;
+        // Windows may be ending the session with Explorer windows still open; they must survive in the journal.
+        SuspendSessionCapture();
         _disposed = true;
         _isForcingTabs = false;
         _preExistingExplorerWindowsProtected = false;

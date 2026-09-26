@@ -1,6 +1,8 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using WinTab.Hooks;
+using WinTab.UI.Localization;
 
 namespace WinTab.Managers;
 
@@ -15,12 +17,15 @@ public sealed class HookManager : IDisposable
     private readonly ExplorerTabDoubleClickHook _doubleClickHook;
     private readonly ExplorerNavigationMiddleClickHook _middleClickHook;
     private readonly ExplorerTabWheelSwitchHook _wheelSwitchHook;
+    private readonly ExplorerSessionShortcutHook _sessionShortcuts;
     private readonly System.Windows.SessionEndingCancelEventHandler _sessionEndingHandler;
     private bool _disposed;
 
     public event Action? StateChanged;
     public event Action? ShellInitialized;
     public event Action<string>? StatusChanged;
+    public event Action<SessionCommandResult>? SessionCommandFinished;
+    public string? ShortcutError { get; private set; }
 
     public HookManager()
     {
@@ -30,6 +35,12 @@ public sealed class HookManager : IDisposable
         _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab);
         _middleClickHook = new ExplorerNavigationMiddleClickHook();
         _wheelSwitchHook = new ExplorerTabWheelSwitchHook(_explorerWatcher, () => SettingsManager.WheelSwitchSensitivity);
+        _sessionShortcuts = new ExplorerSessionShortcutHook(action => _ = ExecuteSessionCommandAsync(action == SessionAction.RestoreGroup));
+        _sessionShortcuts.Failed += message =>
+        {
+            ShortcutError = UiStrings.ShortcutUnavailable + " " + message;
+            RaiseStateChanged();
+        };
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
         _explorerWatcher.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
@@ -52,6 +63,8 @@ public sealed class HookManager : IDisposable
         SetRestoreOnAnyFolder(SettingsManager.RestoreOnAnyFolder);
         SetRestoreSingleTab(SettingsManager.RestoreSingleTab);
         SetRestoreTabs(SettingsManager.RestoreTabs);
+        _explorerWatcher.EnableSessionCapture();
+        SetReopenClosedTab(SettingsManager.ReopenClosedTab);
         SetDoubleClickClose(SettingsManager.DoubleClickCloseTab);
         SetMiddleClickForeground(SettingsManager.MiddleClickForegroundTab);
         SetWheelSwitch(SettingsManager.WheelSwitchTab);
@@ -108,6 +121,63 @@ public sealed class HookManager : IDisposable
         SettingsManager.RestoreSingleTab = enabled;
         _explorerWatcher.SetRestoreSingleTab(enabled);
         RaiseStateChanged();
+    }
+
+    public void SetReopenClosedTab(bool enabled)
+    {
+        SettingsManager.ReopenClosedTab = enabled;
+        _explorerWatcher.SetRecordClosedTabs(enabled);
+        ApplySessionShortcuts();
+        RaiseStateChanged();
+    }
+
+    public bool ConfigureSessionShortcuts(bool groupEnabled, string group, bool tabEnabled, string tab)
+    {
+        if (!ExplorerShortcut.TryParse(group, out var groupKey) || !ExplorerShortcut.TryParse(tab, out var tabKey))
+        {
+            ShortcutError = UiStrings.ShortcutInvalid;
+            RaiseStateChanged();
+            return false;
+        }
+        if (groupKey == tabKey)
+        {
+            ShortcutError = UiStrings.ShortcutDuplicate;
+            RaiseStateChanged();
+            return false;
+        }
+        SettingsManager.SetSessionShortcuts(groupEnabled, groupKey.ToString(), tabEnabled, tabKey.ToString());
+        ApplySessionShortcuts();
+        RaiseStateChanged();
+        return ShortcutError == null;
+    }
+
+    private void ApplySessionShortcuts()
+    {
+        ShortcutError = null;
+        var groupValid = ExplorerShortcut.TryParse(SettingsManager.RestoreGroupShortcut, out var group);
+        var tabValid = ExplorerShortcut.TryParse(SettingsManager.ReopenTabShortcut, out var tab);
+        if (!groupValid || !tabValid || group == tab)
+            ShortcutError = groupValid && tabValid ? UiStrings.ShortcutDuplicate : UiStrings.ShortcutInvalid;
+        try
+        {
+            _sessionShortcuts.Configure(ShortcutError == null && SettingsManager.RestoreGroupShortcutEnabled ? group : null,
+                ShortcutError == null && SettingsManager.ReopenClosedTab && SettingsManager.ReopenTabShortcutEnabled ? tab : null);
+        }
+        catch (Exception exception)
+        {
+            ShortcutError = UiStrings.ShortcutUnavailable + " " + exception.Message;
+            ReportHookStatus("Session shortcuts", exception.Message);
+        }
+    }
+
+    public async Task ExecuteSessionCommandAsync(bool group)
+    {
+        if (_disposed) return;
+        var result = group ? await _explorerWatcher.RestoreLastSessionAsync() : await _explorerWatcher.ReopenClosedTabAsync();
+        _syncContext.Post(_ =>
+        {
+            if (!_disposed) SessionCommandFinished?.Invoke(result);
+        }, null);
     }
 
     public void SetDoubleClickClose(bool enabled)
@@ -175,6 +245,8 @@ public sealed class HookManager : IDisposable
 
         _disposed = true;
         System.Windows.Application.Current.SessionEnding -= _sessionEndingHandler;
+        try { _sessionShortcuts.Dispose(); }
+        catch (Exception exception) { ReportHookStatus("Session shortcuts", exception.Message); }
         _wheelSwitchHook.Dispose();
         _middleClickHook.Dispose();
         _doubleClickHook.Dispose();

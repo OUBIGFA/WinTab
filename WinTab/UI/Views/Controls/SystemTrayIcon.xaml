@@ -10,6 +10,10 @@
             <ContextMenu>
                 <MenuItem x:Name="OpenSettingsMenu" Header="Open WinTab" />
                 <Separator />
+                <MenuItem x:Name="RestoreGroupMenu" Header="Restore last tab group" />
+                <MenuItem x:Name="ReopenTabMenu" Header="Reopen last closed tab" />
+                <MenuItem x:Name="RecordClosedTabsMenu" Header="Remember recently closed tabs" IsCheckable="True" StaysOpenOnClick="True" />
+                <Separator />
                 <MenuItem x:Name="WindowHookMenu" Header="Merge new windows" IsCheckable="True" StaysOpenOnClick="True" />
                 <MenuItem x:Name="ReuseTabsMenu" Header="Reuse opened tabs" IsCheckable="True" StaysOpenOnClick="True" />
                 <MenuItem x:Name="MiddleClickForegroundMenu" Header="Open middle-clicked tabs in foreground" IsCheckable="True" StaysOpenOnClick="True" />

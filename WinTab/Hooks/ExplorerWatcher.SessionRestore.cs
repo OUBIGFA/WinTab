@@ -15,6 +15,8 @@ public partial class ExplorerWatcher
     /// <summary>
     /// The native half of restoration. A linked operation protects every command, including waits inside
     /// the existing tab-creation helpers. No foreground calls and no navigation of the initial tab occur.
+    /// A requested restore runs in a window WinTab opened for it: other windows may be open, the user may
+    /// still hold the modifiers of its shortcut, and the automatic-restore toggle and generation do not apply.
     /// </summary>
     private sealed class NativeSessionRestore : IExplorerSessionRestoreEnvironment, IDisposable
     {
@@ -27,6 +29,7 @@ public partial class ExplorerWatcher
         private readonly int _generation;
         private readonly List<WindowIdentity> _expected;
         private readonly string _initialUiId;
+        private readonly bool _requested;
         private Func<bool> _closeSelectedTab;
         private nint _expectedActive;
         private bool _creating;
@@ -36,9 +39,11 @@ public partial class ExplorerWatcher
         private bool _awaitingSuccessor;
 
         public NativeSessionRestore(ExplorerWatcher owner, InternetExplorer window, WindowInfo info,
-            string initialLocation, string initialUiId, int generation, CancellationToken cancellationToken)
+            string initialLocation, string initialUiId, int generation, CancellationToken cancellationToken,
+            bool requested = false)
         {
             _owner = owner;
+            _requested = requested;
             _initialWindow = window;
             _initialInfo = info;
             _frame = info.Identity;
@@ -60,10 +65,11 @@ public partial class ExplorerWatcher
         private bool IsCurrent()
         {
             var foreground = ExplorerNavigationAccess.ForegroundFrame();
-            if (!_owner._restoreTabs || _owner._disposed || _generation != _owner._sessionGeneration || !_frame.IsCurrent ||
+            var enabled = _requested ? _owner._captureSessions : _owner._restoreTabs && _generation == _owner._sessionGeneration;
+            if (!enabled || _owner._disposed || !_frame.IsCurrent ||
                 !WinApi.IsWindowVisible(_frame.Handle) || foreground != _frame.Handle)
             {
-                ExplorerDebugLog.Write($"Session native guard: frame or foreground changed hwnd={_frame.Handle} foreground={foreground} enabled={_owner._restoreTabs} generation={_generation}/{_owner._sessionGeneration}");
+                ExplorerDebugLog.Write($"Session native guard: frame or foreground changed hwnd={_frame.Handle} foreground={foreground} enabled={enabled} requested={_requested} generation={_generation}/{_owner._sessionGeneration}");
                 return false;
             }
             var active = GetActiveTabHandle(_frame.Handle);
@@ -99,7 +105,7 @@ public partial class ExplorerWatcher
         public void EnsureUnchanged()
         {
             Operation.ThrowIfInvalid();
-            if (_owner.HasOtherShownSessionWindow(_frame.Handle) || Helper.IsCtrlShiftDown() ||
+            if (!_requested && (_owner.HasOtherShownSessionWindow(_frame.Handle) || Helper.IsCtrlShiftDown()) ||
                 !_closingInitial && (!IsSessionWindowIdle(_initialWindow) ||
                 !ExplorerSessionRestorePlan.SameLocation(TryGetLocation(_initialWindow), _initialLocation)))
                 throw new OperationCanceledException("The user changed the restoration window.");
@@ -194,6 +200,7 @@ public partial class ExplorerWatcher
             // would block that callback and can stall for UIA's minute-long timeout even after the tab closed.
             // The MTA worker still targets the exact initial tab's close button, never a queued Ctrl+W.
             ExplorerDebugLog.Write($"Session restore closing initial tab={InitialTab} hwnd={_frame.Handle}");
+            _owner._closedTabs.Ignore(_initial);
             if (!await Task.Run(_closeSelectedTab).ConfigureAwait(true))
                 return false;
             ExplorerDebugLog.Write($"Session restore initial close invoked tab={InitialTab} hwnd={_frame.Handle}");

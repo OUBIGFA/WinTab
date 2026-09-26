@@ -42,6 +42,24 @@ public static class SettingsManager
         set => SetProperty(settings => settings with { RestoreTabs = value });
     }
 
+    public static bool ReopenClosedTab
+    {
+        get => Store.Snapshot.ReopenClosedTab;
+        set => SetProperty(settings => settings with { ReopenClosedTab = value });
+    }
+
+    public static bool RestoreGroupShortcutEnabled => Store.Snapshot.RestoreGroupShortcutEnabled;
+    public static string RestoreGroupShortcut => Store.Snapshot.RestoreGroupShortcut;
+    public static bool ReopenTabShortcutEnabled => Store.Snapshot.ReopenTabShortcutEnabled;
+    public static string ReopenTabShortcut => Store.Snapshot.ReopenTabShortcut;
+
+    internal static void SetSessionShortcuts(bool groupEnabled, string group, bool tabEnabled, string tab) =>
+        SetProperty(settings => settings with
+        {
+            RestoreGroupShortcutEnabled = groupEnabled, RestoreGroupShortcut = group,
+            ReopenTabShortcutEnabled = tabEnabled, ReopenTabShortcut = tab
+        });
+
     public static bool RestoreOnAnyFolder
     {
         get => Store.Snapshot.RestoreOnAnyFolder;

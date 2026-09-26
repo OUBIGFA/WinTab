@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using WinTab.Helpers;
+using WinTab.Hooks;
 using WinTab.Managers;
 using WinTab.UI.Localization;
 
@@ -37,6 +38,10 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         DoubleClickCloseMenu.Click += (_, _) => _hookManager.SetDoubleClickClose(DoubleClickCloseMenu.IsChecked);
         MiddleClickForegroundMenu.Click += (_, _) => _hookManager.SetMiddleClickForeground(MiddleClickForegroundMenu.IsChecked);
         WheelSwitchMenu.Click += (_, _) => _hookManager.SetWheelSwitch(WheelSwitchMenu.IsChecked);
+        RestoreGroupMenu.Click += async (_, _) => await _hookManager.ExecuteSessionCommandAsync(true);
+        ReopenTabMenu.Click += async (_, _) => await _hookManager.ExecuteSessionCommandAsync(false);
+        RecordClosedTabsMenu.Click += (_, _) => _hookManager.SetReopenClosedTab(RecordClosedTabsMenu.IsChecked);
+        _hookManager.SessionCommandFinished += SessionCommandFinished;
         StartupMenu.Click += StartupMenu_Click;
         AutoUpdateMenu.Click += (_, _) => SettingsManager.AutoUpdate = AutoUpdateMenu.IsChecked;
         ShowTrayIconMenu.Click += (_, _) => SettingsManager.ShowTrayIcon = ShowTrayIconMenu.IsChecked;
@@ -57,6 +62,9 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         DoubleClickCloseMenu.Header = UiStrings.TrayDoubleClickClose;
         MiddleClickForegroundMenu.Header = UiStrings.TrayMiddleClickForeground;
         WheelSwitchMenu.Header = UiStrings.TrayWheelSwitch;
+        RestoreGroupMenu.Header = UiStrings.RestoreGroupCommand;
+        ReopenTabMenu.Header = UiStrings.ReopenTabCommand;
+        RecordClosedTabsMenu.Header = UiStrings.RecordClosedTabs;
         StartupMenu.Header = UiStrings.TrayStartup;
         AutoUpdateMenu.Header = UiStrings.TrayAutoUpdate;
         ShowTrayIconMenu.Header = UiStrings.TrayShowTrayIcon;
@@ -71,10 +79,25 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         DoubleClickCloseMenu.IsChecked = SettingsManager.DoubleClickCloseTab;
         MiddleClickForegroundMenu.IsChecked = SettingsManager.MiddleClickForegroundTab;
         WheelSwitchMenu.IsChecked = SettingsManager.WheelSwitchTab;
+        RestoreGroupMenu.IsEnabled = _hookManager.IsShellReady;
+        ReopenTabMenu.IsEnabled = _hookManager.IsShellReady && SettingsManager.ReopenClosedTab;
+        RecordClosedTabsMenu.IsChecked = SettingsManager.ReopenClosedTab;
+        RestoreGroupMenu.InputGestureText = SettingsManager.RestoreGroupShortcutEnabled ? SettingsManager.RestoreGroupShortcut : string.Empty;
+        ReopenTabMenu.InputGestureText = SettingsManager.ReopenTabShortcutEnabled && SettingsManager.ReopenClosedTab ? SettingsManager.ReopenTabShortcut : string.Empty;
         StartupMenu.IsChecked = RegistryManager.IsStartupEnabled;
         AutoUpdateMenu.IsChecked = SettingsManager.AutoUpdate;
         ShowTrayIconMenu.IsChecked = SettingsManager.ShowTrayIcon;
         TrayIcon.Visibility = SettingsManager.ShowTrayIcon ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void SessionCommandFinished(SessionCommandResult result)
+    {
+        // Successful recovery is already visible in Explorer; avoid stealing focus with a success dialog.
+        if (_disposed || result == SessionCommandResult.Completed) return;
+        if (SettingsManager.ShowTrayIcon)
+            TrayIcon.ShowBalloonTip(UiStrings.RecoveryTitle, UiStrings.SessionResult(result), Hardcodet.Wpf.TaskbarNotification.BalloonIcon.Info);
+        else
+            MessageBox.Show(UiStrings.SessionResult(result), UiStrings.RecoveryTitle, MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void StartupMenu_Click(object sender, RoutedEventArgs e)
@@ -92,6 +115,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
             return;
 
         _disposed = true;
+        _hookManager.SessionCommandFinished -= SessionCommandFinished;
         _hookManager.StateChanged -= RefreshState;
         _hookManager.ShellInitialized -= RefreshState;
         TrayIcon.Dispose();

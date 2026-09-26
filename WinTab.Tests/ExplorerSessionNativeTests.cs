@@ -19,6 +19,7 @@ internal static class ExplorerSessionNativeTests
 
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("session native requested restore ignores automatic toggle and generation", RequestedRestoreIsIndependent);
         yield return ("session native restore remains active with merging and its lifetime disabled", IndependentFromMergeLifetime);
         yield return ("session native restore rejects a disabled restore toggle", () => GuardRejects((fixture, _) => Set(fixture.Watcher, "_restoreTabs", false)));
         yield return ("session native restore rejects a changed restore generation", () => GuardRejects((fixture, _) => Set(fixture.Watcher, "_sessionGeneration", 1)));
@@ -44,6 +45,16 @@ internal static class ExplorerSessionNativeTests
         yield return ("session watcher does not let a window closed before its restore replace the saved group", PendingRestoreIsNotHistory);
         yield return ("session watcher treats the configured Explorer start folder as a normal launch", ConfiguredStartFolderIsNormalLaunch);
     }
+
+    private static Task RequestedRestoreIsIndependent() => WithNative(async (fixture, environment, _) =>
+    {
+        Set(fixture.Watcher, "_restoreTabs", false);
+        Set(fixture.Watcher, "_sessionGeneration", 99);
+        environment.EnsureUnchanged();
+        Check.That(await environment.SelectTabAsync(environment.InitialTab), "A manual command is independent of auto-restore options.");
+        Set(fixture.Watcher, "_captureSessions", false);
+        Check.Throws<OperationCanceledException>(environment.EnsureUnchanged, "Stopping the watcher still cancels manual restoration.");
+    }, requested: true);
 
     private static Task IndependentFromMergeLifetime() => WithNative(async (fixture, environment, _) =>
     {
@@ -166,7 +177,7 @@ internal static class ExplorerSessionNativeTests
             Check.Equal(frame.Handle, foreground, "Only the owned remote test frame may receive native close commands.");
             var type = typeof(ExplorerWatcher).GetNestedType("NativeSessionRestore", BindingFlags.NonPublic)!;
             var environment = (IExplorerSessionRestoreEnvironment)Activator.CreateInstance(type,
-                [fixture.Watcher, browser, info, Fixture.Location, string.Empty, 0, CancellationToken.None])!;
+                [fixture.Watcher, browser, info, Fixture.Location, string.Empty, 0, CancellationToken.None, false])!;
             // Start at the native boundary after two successful appends; creation itself is covered separately.
             var expected = (List<WindowIdentity>)type.GetField("_expected", PrivateInstance)!.GetValue(environment)!;
             expected.AddRange([WindowIdentity.Capture(frame.TabAt(1)), WindowIdentity.Capture(frame.TabAt(2))]);
@@ -183,17 +194,18 @@ internal static class ExplorerSessionNativeTests
             }
         }, tabCount: 1);
 
-    private static Task WithNative(Func<Fixture, IExplorerSessionRestoreEnvironment, WindowInfo, Task> test) =>
+    private static Task WithNative(Func<Fixture, IExplorerSessionRestoreEnvironment, WindowInfo, Task> test, bool requested = false) =>
         ExplorerTabLifetimeTests.WithFixture(async fixture =>
         {
             var browser = fixture.AddBrowser(out var info, fixture.Window.FirstTab);
             Set(fixture.Watcher, "_restoreTabs", true);
+            Set(fixture.Watcher, "_captureSessions", true);
             fixture.Window.Show();
             Helper.RestoreWindowToForeground(fixture.Window.Handle);
             Check.Equal(fixture.Window.Handle, ExplorerNavigationAccess.ForegroundFrame(), "Only the owned test window may receive native session commands.");
             var type = typeof(ExplorerWatcher).GetNestedType("NativeSessionRestore", BindingFlags.NonPublic)!;
             var environment = (IExplorerSessionRestoreEnvironment)Activator.CreateInstance(type,
-                [fixture.Watcher, browser, info, Fixture.Location, string.Empty, 0, CancellationToken.None])!;
+                [fixture.Watcher, browser, info, Fixture.Location, string.Empty, 0, CancellationToken.None, requested])!;
             var context = (AsyncLocal<MergeOperation?>)typeof(ExplorerWatcher).GetField("_currentMerge", PrivateInstance)!.GetValue(fixture.Watcher)!;
             context.Value = (MergeOperation)type.GetProperty("Operation")!.GetValue(environment)!;
             try { await test(fixture, environment, info); }
@@ -217,7 +229,7 @@ internal static class ExplorerSessionNativeTests
         frame.Dispose();
         fixture.SetExplorerWindows();
         fixture.Invoke("NotifySessionWindowDestroyed", handle);
-        fixture.Invoke("CompleteClosedSessions");
+        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None)!;
         Check.Equal(@"C:\single-session", store.Snapshot!.Locations[0], "Closing a singleton must immediately publish its complete session in memory.");
         Check.That(await store.FlushAsync(), "The singleton must also persist successfully.");
     });
@@ -237,7 +249,7 @@ internal static class ExplorerSessionNativeTests
         frame.Dispose();
         fixture.SetExplorerWindows();
         fixture.Invoke("NotifySessionWindowDestroyed", handle);
-        fixture.Invoke("CompleteClosedSessions");
+        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None)!;
         Check.That(store.Snapshot!.Locations.SequenceEqual([@"C:\group-a", @"C:\group-b"]),
             "Closing a single-tab window must not replace the saved group while single-tab restore is off.");
     }, singleTab: false);
@@ -259,7 +271,7 @@ internal static class ExplorerSessionNativeTests
         first.Dispose();
         fixture.Invoke("NotifySessionWindowDestroyed", firstHandle);
         fixture.SetExplorerWindows();
-        fixture.Invoke("CompleteClosedSessions");
+        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None)!;
         Check.Equal(@"C:\closed-last", store.Snapshot!.Locations[0], "WinEvent close ordering, not frame registration/dictionary ordering, must select the last group.");
         Check.Equal(1, store.Snapshot.Locations.Length, "Independent windows must never be merged into one historical group.");
         Check.That(await store.FlushAsync(), "Only the last closed group must persist.");
@@ -275,7 +287,7 @@ internal static class ExplorerSessionNativeTests
         fixture.Invoke("CaptureExplorerSessions");
         source.Dispose();
         fixture.SetExplorerWindows();
-        fixture.Invoke("CompleteClosedSessions");
+        fixture.Invoke("CompleteClosedSessions", false);
         Check.That(store.Snapshot == null, "Closing a window consumed by automatic merging must not replace session history.");
         return Task.CompletedTask;
     });
@@ -311,7 +323,7 @@ internal static class ExplorerSessionNativeTests
             "A hidden preloaded frame must wait for an actual user-visible launch.");
         frame.Dispose();
         fixture.SetExplorerWindows();
-        fixture.Invoke("CompleteClosedSessions");
+        fixture.Invoke("CompleteClosedSessions", false);
         Check.That(store.Snapshot == null, "Discarding an unused hidden frame must never become session history.");
     });
 
@@ -378,7 +390,7 @@ internal static class ExplorerSessionNativeTests
         Check.That(closed, "The window must have been closed during the restore attempt.");
         fixture.SetExplorerWindows();
         fixture.Invoke("NotifySessionWindowDestroyed", handle);
-        fixture.Invoke("CompleteClosedSessions");
+        fixture.Invoke("CompleteClosedSessions", false);
         Check.That(store.Snapshot!.Locations.SequenceEqual([@"C:\saved-a", @"C:\saved-b"]),
             "A window that never finished its restore attempt must not become the last closed group.");
     });
@@ -395,7 +407,7 @@ internal static class ExplorerSessionNativeTests
         return Task.CompletedTask;
     }, tabCount: 1);
 
-    private static Task WithCapture(Func<Fixture, ExplorerSessionStore, Task> test, bool singleTab = true) =>
+    internal static Task WithCapture(Func<Fixture, ExplorerSessionStore, Task> test, bool singleTab = true) =>
         ExplorerTabLifetimeTests.WithFixture(async fixture =>
         {
             var directory = Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"));
@@ -414,6 +426,7 @@ internal static class ExplorerSessionNativeTests
             Set(fixture.Watcher, "_sessionStore", store);
             Set(fixture.Watcher, "_selectionWork", work);
             Set(fixture.Watcher, "_restoreSingleTab", singleTab);
+            Set(fixture.Watcher, "_captureSessions", true);
             Set(fixture.Watcher, "_restoreTabs", true);
             try { await test(fixture, store); }
             finally

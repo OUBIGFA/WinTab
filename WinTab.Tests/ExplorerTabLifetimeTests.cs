@@ -631,6 +631,14 @@ internal static class ExplorerTabLifetimeTests
             TearOffTracker = new ExplorerTabTearOffTracker(TearOffScreen);
             SetField("_tabTearOff", TearOffTracker);
             SetField("_tornOffTabReleaseWatches", new ConcurrentDictionary<nint, bool>());
+            foreach (var name in new[] { "_sessionTracker", "_sessionLocationPolicy", "_sessionWindows", "_sessionClosedAt", "_sessionCloseObservedAt",
+                "_sessionRestoreExclusions", "_restoringSessionWindows", "_preloadedSessionCandidates",
+                "_closedTabs", "_internalTabCloses" })
+            {
+                var field = typeof(ExplorerWatcher).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!;
+                field.SetValue(_watcher, name == "_closedTabs" ? new ExplorerClosedTabHistory() :
+                    name == "_sessionLocationPolicy" ? new ExplorerSessionLocationPolicy() : Activator.CreateInstance(field.FieldType));
+            }
         }
 
         public object AddBrowser(out WindowInfo info, nint? tab = null, bool unavailableLocation = false,

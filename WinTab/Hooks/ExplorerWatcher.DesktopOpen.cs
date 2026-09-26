@@ -13,7 +13,7 @@ public partial class ExplorerWatcher
     private ExplorerDesktopOpenObserver? _desktopOpenObserver;
 
     private bool CanReuseDesktopFolder => _isForcingTabs && _reuseTabs && !_disposed &&
-        _preExistingExplorerWindowsProtected && !_shellLifetime.IsCancellationRequested && !Helper.IsCtrlShiftDown();
+        _preExistingExplorerWindowsProtected && !_shellLifetime.IsCancellationRequested && !IsIndependentOpenRequested();
 
     /// <summary>
     /// When a folder is already the first tab of a window, Explorer does not open anything new: it only

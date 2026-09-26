@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private const string MoonGlyph = "\uE708";
     private const int WM_ENTERSIZEMOVE = 0x0231;
     private const int WM_EXITSIZEMOVE = 0x0232;
+    private const double MaxWindowHeight = 900;
 
     private readonly HookManager _hookManager;
     private readonly SystemTrayIcon _trayIcon;
@@ -55,6 +56,7 @@ public partial class MainWindow : Window
         Application.Current.Exit += OnApplicationExit;
         _hookManager.StateChanged += SyncSettingsIntoUi;
         _hookManager.ShellInitialized += SyncSettingsIntoUi;
+        _hookManager.SessionCommandFinished += SessionCommandFinished;
         _trayIcon.StartupChanged += (_, _) => SyncSettingsIntoUi();
         SettingsManager.StaticPropertyChanged += SettingsManager_StaticPropertyChanged;
 
@@ -81,8 +83,25 @@ public partial class MainWindow : Window
         AutoUpdateToggle.Click += (_, _) => SettingsManager.AutoUpdate = AutoUpdateToggle.IsChecked == true;
         StartupToggle.Click += StartupToggle_Click;
 
+        RestoreGroupButton.Click += async (_, _) => await _hookManager.ExecuteSessionCommandAsync(true);
+        ReopenTabButton.Click += async (_, _) => await _hookManager.ExecuteSessionCommandAsync(false);
+        RecordClosedTabsToggle.Click += (_, _) => _hookManager.SetReopenClosedTab(RecordClosedTabsToggle.IsChecked == true);
+        GroupShortcutToggle.Click += SaveShortcuts_Click;
+        TabShortcutToggle.Click += SaveShortcuts_Click;
+        SaveShortcutsButton.Click += SaveShortcuts_Click;
         Closing += MainWindow_Closing;
     }
+
+    private void SaveShortcuts_Click(object sender, RoutedEventArgs e)
+    {
+        if (_hookManager.ConfigureSessionShortcuts(GroupShortcutToggle.IsChecked == true, GroupShortcutText.Text,
+            TabShortcutToggle.IsChecked == true, TabShortcutText.Text))
+            SessionFeedbackText.Text = UiStrings.ShortcutSaved;
+        else
+            SessionFeedbackText.Text = _hookManager.ShortcutError;
+    }
+
+    private void SessionCommandFinished(SessionCommandResult result) => SessionFeedbackText.Text = UiStrings.SessionResult(result);
 
     private void StartupToggle_Click(object sender, RoutedEventArgs e)
     {
@@ -117,7 +136,16 @@ public partial class MainWindow : Window
         RestoreSingleTabToggle.IsChecked = SettingsManager.RestoreSingleTab;
         RestoreNormalLaunchOnly.IsChecked = !SettingsManager.RestoreOnAnyFolder;
         RestoreAnyFolder.IsChecked = SettingsManager.RestoreOnAnyFolder;
-        RestoreModePanel.IsEnabled = SettingsManager.RestoreTabs;
+        RestoreNormalLaunchOnly.IsEnabled = SettingsManager.RestoreTabs;
+        RestoreAnyFolder.IsEnabled = SettingsManager.RestoreTabs;
+        RecordClosedTabsToggle.IsChecked = SettingsManager.ReopenClosedTab;
+        GroupShortcutToggle.IsChecked = SettingsManager.RestoreGroupShortcutEnabled;
+        TabShortcutToggle.IsChecked = SettingsManager.ReopenTabShortcutEnabled;
+        if (!GroupShortcutText.IsKeyboardFocusWithin) GroupShortcutText.Text = SettingsManager.RestoreGroupShortcut;
+        if (!TabShortcutText.IsKeyboardFocusWithin) TabShortcutText.Text = SettingsManager.ReopenTabShortcut;
+        RestoreGroupButton.IsEnabled = _hookManager.IsShellReady;
+        ReopenTabButton.IsEnabled = _hookManager.IsShellReady && SettingsManager.ReopenClosedTab;
+        if (_hookManager.ShortcutError != null) SessionFeedbackText.Text = _hookManager.ShortcutError;
         RestoreModeHintText.Text = UiStrings.RestoreModeHint(SettingsManager.RestoreOnAnyFolder);
         DoubleClickCloseToggle.IsChecked = SettingsManager.DoubleClickCloseTab;
         MiddleClickForegroundToggle.IsChecked = SettingsManager.MiddleClickForegroundTab;
@@ -181,6 +209,17 @@ public partial class MainWindow : Window
         RestoreNormalLaunchOnly.Content = UiStrings.RestoreNormalLaunchOnly;
         RestoreAnyFolder.Content = UiStrings.RestoreAnyFolder;
         RestoreModeHintText.Text = UiStrings.RestoreModeHint(SettingsManager.RestoreOnAnyFolder);
+        RecoveryTitleText.Text = UiStrings.RecoveryTitle;
+        RecoveryDescriptionText.Text = UiStrings.RecoveryDescription;
+        RestoreGroupTitleText.Text = UiStrings.RestoreGroupCommand;
+        ReopenTabTitleText.Text = UiStrings.ReopenTabCommand;
+        RestoreGroupButton.Content = UiStrings.RestoreNow;
+        ReopenTabButton.Content = UiStrings.RestoreNow;
+        RecordClosedTabsToggle.ToolTip = UiStrings.RecordClosedTabs;
+        GroupShortcutToggle.Content = UiStrings.ShortcutEnabled;
+        TabShortcutToggle.Content = UiStrings.ShortcutEnabled;
+        SaveShortcutsButton.Content = UiStrings.ShortcutSave;
+        ShortcutHintText.Text = UiStrings.ShortcutHint;
         RestoreExclusionsText.Text = UiStrings.RestoreExclusions;
         DoubleClickTitleText.Text = UiStrings.DoubleClickTitle;
         DoubleClickDescText.Text = UiStrings.DoubleClickDescription;
@@ -351,6 +390,9 @@ public partial class MainWindow : Window
         Application.Current.Exit -= OnApplicationExit;
         SettingsManager.StaticPropertyChanged -= SettingsManager_StaticPropertyChanged;
         var settingsSaveTask = SettingsManager.FlushSettingsAsync(TimeSpan.FromSeconds(1));
+        _hookManager.SessionCommandFinished -= SessionCommandFinished;
+        _hookManager.StateChanged -= SyncSettingsIntoUi;
+        _hookManager.ShellInitialized -= SyncSettingsIntoUi;
         _trayIcon.Dispose();
         _hookManager.Dispose();
         if (!settingsSaveTask.GetAwaiter().GetResult())
@@ -358,39 +400,25 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Restores a size the user chose; otherwise measures the content so every section is visible
-    /// without scrolling. The fit runs on each launch, so settings added later never start hidden.
+    /// Restores a size the user chose; otherwise measures the content up to the maximum window height.
+    /// Content beyond that limit remains available through the scroll viewer.
     /// </summary>
     private void ApplyInitialSize()
     {
+        var workArea = SystemParameters.WorkArea;
+        MaxHeight = Math.Min(MaxWindowHeight, workArea.Height);
+
         if (SettingsManager.FormSize is { } saved)
         {
             Width = saved.Width;
-            Height = saved.Height;
+            Height = Math.Min(saved.Height, MaxHeight);
             return;
         }
 
-        var workArea = SystemParameters.WorkArea;
         Width = Math.Min(Width, workArea.Width);
         var root = (FrameworkElement)Content;
         root.Measure(new Size(Width, double.PositiveInfinity));
-        Height = Math.Min(Math.Max(Math.Ceiling(root.DesiredSize.Height), MinHeight), workArea.Height);
-        Loaded += ExpandPastRemainingScroll;
-    }
-
-    // Measuring before the window has a monitor DPI can round a few pixels short; grow by whatever
-    // still scrolls once real layout has run, keeping the window centred on the same spot.
-    private void ExpandPastRemainingScroll(object sender, RoutedEventArgs e)
-    {
-        Loaded -= ExpandPastRemainingScroll;
-        var remaining = ContentScrollViewer.ScrollableHeight;
-        if (remaining <= 0)
-            return;
-
-        var workArea = SystemParameters.WorkArea;
-        var height = Math.Min(Height + Math.Ceiling(remaining), workArea.Height);
-        Top = Math.Clamp(Top - (height - Height) / 2, workArea.Top, workArea.Bottom - height);
-        Height = height;
+        Height = Math.Min(Math.Max(Math.Ceiling(root.DesiredSize.Height), MinHeight), MaxHeight);
     }
 
     // Only a drag of the window frame is a size choice worth keeping. Layout-driven sizes, including

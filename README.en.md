@@ -22,7 +22,7 @@ WinTab is a Windows 11 utility that brings a single-window, multi-tab experience
 
 - One window, multiple tabs: automatically merge new File Explorer windows into active tabs
 - Reuse opened tabs instead of opening duplicates
-- Optionally restore the last closed window's tab group, with a separate opt-in for single-tab windows (off by default)
+- Continuously save tab groups for shutdown/crash recovery, with manual group and closed-tab recovery
 - Open middle-clicked folders in the foreground, whether clicked in the navigation pane, the file list or Home
 - Double-click tab titles to close tabs
 - Hold `Ctrl + Shift` while opening folders to keep a separate window
@@ -30,9 +30,18 @@ WinTab is a Windows 11 utility that brings a single-window, multi-tab experience
 
 ## Restore last tab group
 
-Enable **Restore last tab group** in settings (off by default). WinTab saves the last closed window's tab group, not every previously closed window. **Restore single-tab windows** is a separate option and is off by default: only windows with two or more tabs are saved and restored, and closing a single-tab window does not replace the saved group. Enable it to save and restore single-tab windows too.
+While running, WinTab records groups by default, independently of automatic restoration. Normal closure saves the last closed window; shutdown or an Explorer crash retains the latest complete snapshot of the last-used window that was still open. Only one window is restored, not all historical windows. **Restore single-tab windows** remains off by default: groups need at least two tabs, and closing a single-tab window does not replace the saved group.
 
-Restoration can only trigger in a newly opened window when no other File Explorer windows are open. It works independently of **Merge new windows**:
+The tray's separate recovery section and the settings page provide:
+
+- **Restore last tab group**: restore into a new independent window, keeping available tabs in order and selecting the saved active tab. Default shortcut: `Ctrl+Shift+E`.
+- **Reopen last closed tab**: reopen the most recently closed tab, preferring the current Explorer window. Enabled by default; default shortcut: `Ctrl+Shift+T`. Up to 25 closures are kept for the current WinTab run only; disabling this feature clears them. With tab reuse enabled, an already open location is selected instead.
+
+Both shortcuts can be disabled separately or customized in settings. They only intercept input when Explorer is in the foreground, leaving browser shortcuts alone. Folder records are stored in `%APPDATA%\WinTab\session.json` and `session-live.json` (and their backups); treat these files as personal folder information.
+
+### Automatic restoration (optional)
+
+**Auto-restore last tab group** remains off by default. When enabled, restoration can only trigger in a newly opened window when no other File Explorer windows are open. It works independently of **Merge new windows**:
 
 - **Normal launch only (default)**: restore on a normal launch to Home, This PC or the start folder chosen in File Explorer's options. Opening a specific folder does not trigger restoration.
 - **Any folder**: always keep the initial tab active and append the saved tabs after it. Home, This PC and custom start locations opened from the taskbar are kept too, never closed.

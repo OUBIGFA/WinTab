@@ -70,6 +70,16 @@
             <Setter Property="Margin" Value="4,8,4,0" />
         </Style>
 
+        <Style x:Key="ShortcutTextStyle" TargetType="TextBox">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Width" Value="170" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
         <Style x:Key="SegmentStyle" TargetType="RadioButton">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="Background" Value="Transparent" />
@@ -271,6 +281,44 @@
                 <TextBlock x:Name="BypassHintText"
                            Text="Hold Ctrl + Shift while opening folders to keep a separate window"
                            Style="{StaticResource FootnoteStyle}" />
+
+                <TextBlock x:Name="RecoveryTitleText" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,8" />
+                <Border Style="{StaticResource SettingsGroupStyle}">
+                    <StackPanel>
+                        <Border Style="{StaticResource SettingRowStyle}">
+                            <StackPanel>
+                                <TextBlock x:Name="RecoveryDescriptionText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,0,0,10" />
+                                <DockPanel>
+                                    <Button x:Name="RestoreGroupButton" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
+                                    <TextBlock x:Name="RestoreGroupTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <CheckBox x:Name="GroupShortcutToggle" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" />
+                                    <TextBox x:Name="GroupShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=RestoreGroupTitleText}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource LastSettingRowStyle}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button x:Name="ReopenTabButton" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
+                                    <CheckBox x:Name="RecordClosedTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
+                                              AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" Margin="12,0,16,0" />
+                                    <TextBlock x:Name="ReopenTabTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <CheckBox x:Name="TabShortcutToggle" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" />
+                                    <TextBox x:Name="TabShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" />
+                                </StackPanel>
+                                <DockPanel Margin="0,10,0,0">
+                                    <Button x:Name="SaveShortcutsButton" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" Margin="16,0,0,0" />
+                                    <TextBlock x:Name="ShortcutHintText" Style="{StaticResource SettingDescriptionStyle}" />
+                                </DockPanel>
+                                <TextBlock x:Name="SessionFeedbackText" Style="{StaticResource SettingDescriptionStyle}" AutomationProperties.LiveSetting="Polite" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
 
                 <TextBlock x:Name="SystemSectionTitleText" Text="System" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,8" />
                 <Border Style="{StaticResource SettingsGroupStyle}">

@@ -53,6 +53,24 @@ internal sealed record ExplorerSessionRestorePlan(SessionRestoreTab[] Tabs, bool
             active, skipped);
     }
 
+    /// <summary>
+    /// A requested restore opens a window of its own at the first available saved tab, so no placeholder is
+    /// involved. The other available tabs follow in saved order and the saved active tab, or the first
+    /// surviving one, is selected. Null when no saved tab is available.
+    /// </summary>
+    public static (ExplorerSessionRestorePlan Plan, int FirstSavedIndex)? CreateForNewWindow(ExplorerSession session,
+        IReadOnlySet<int> availableIndices)
+    {
+        var present = Enumerable.Range(0, session.Locations.Length).Where(availableIndices.Contains).ToArray();
+        if (present.Length == 0)
+            return null;
+        var first = present[0];
+        var active = Array.IndexOf(present, session.ActiveTabIndex) >= 0 ? session.ActiveTabIndex : first;
+        var tabs = present.Skip(1).Select(index => new SessionRestoreTab(session.Locations[index], index)).ToArray();
+        return (new ExplorerSessionRestorePlan(tabs, ActivateInitialTab: active == first, CloseInitialTab: false,
+            active, session.Locations.Length - present.Length), first);
+    }
+
     internal static bool SameLocation(string left, string right) =>
         StringComparer.OrdinalIgnoreCase.Equals(Helper.NormalizeLocation(left), Helper.NormalizeLocation(right));
 }

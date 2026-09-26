@@ -19,9 +19,11 @@ internal sealed class ExplorerSessionTracker
     internal const int CloseSettleMs = 750;
     private readonly object _gate = new();
     private readonly Dictionary<WindowIdentity, Frame> _frames = new();
+    private long _observationOrder;
 
+    /// <param name="inForeground">The window is in front now; the most recently used window is the live one.</param>
     public void Observe(WindowIdentity identity, SessionTab[] tabs, nint activeTab,
-        SessionVisualTab[]? visualTabs, long now)
+        SessionVisualTab[]? visualTabs, long now, bool inForeground = false)
     {
         if (tabs.Length > ExplorerSession.MaxTabs)
         {
@@ -46,8 +48,37 @@ internal sealed class ExplorerSessionTracker
         lock (_gate)
         {
             if (!_frames.TryGetValue(identity, out var frame))
-                _frames.Add(identity, frame = new Frame());
+                _frames.Add(identity, frame = new Frame(++_observationOrder));
+            if (inForeground)
+                frame.LastUsed = now;
             frame.Observe(tabs, activeTab, visualTabs, now);
+        }
+    }
+
+    /// <summary>The window came to the front; it may not have been captured yet.</summary>
+    public void MarkUsed(WindowIdentity identity, long now)
+    {
+        lock (_gate)
+            if (_frames.TryGetValue(identity, out var frame))
+                frame.LastUsed = now;
+    }
+
+    /// <summary>
+    /// The complete group of the most recently used window that <paramref name="qualifies"/>. A window never
+    /// brought to the front ranks below every used one; among those the first tracked comes first.
+    /// </summary>
+    public (WindowIdentity Identity, ExplorerSession Session)? MostRecent(Func<ExplorerSession, bool> qualifies,
+        Func<WindowIdentity, bool>? includeWindow = null)
+    {
+        lock (_gate)
+        {
+            foreach (var (identity, frame) in _frames.OrderByDescending(pair => pair.Value.LastUsed)
+                .ThenBy(pair => pair.Value.Order))
+            {
+                if ((includeWindow == null || includeWindow(identity)) && frame.Snapshot(null) is { } session && qualifies(session))
+                    return (identity, session);
+            }
+            return null;
         }
     }
 
@@ -79,6 +110,13 @@ internal sealed class ExplorerSessionTracker
             return _frames.Remove(identity, out var frame) ? frame.Snapshot(movedTabs) : null;
     }
 
+    /// <summary>The window's settled tabs, with their identities and last locations.</summary>
+    public SessionTab[] TabsOf(WindowIdentity identity)
+    {
+        lock (_gate)
+            return _frames.TryGetValue(identity, out var frame) ? (SessionTab[])frame.Tabs.Clone() : [];
+    }
+
     public void Forget(WindowIdentity identity)
     {
         lock (_gate) _frames.Remove(identity);
@@ -89,11 +127,13 @@ internal sealed class ExplorerSessionTracker
         lock (_gate) _frames.Clear();
     }
 
-    private sealed class Frame
+    private sealed class Frame(long order)
     {
         private readonly Dictionary<string, WindowIdentity> _visualOwners = new(StringComparer.Ordinal);
+        public readonly long Order = order;
         public SessionTab[] Tabs = [];
         public long? RemovalAt;
+        public long LastUsed;
         private WindowIdentity _active;
         private bool _orderVerified;
         private HashSet<WindowIdentity> _pendingSurvivors = [];
