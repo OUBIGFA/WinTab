@@ -64,21 +64,24 @@ public partial class ExplorerWatcher
         private readonly object _gate = new();
         private bool _sawForeground;
         private bool _watchNavigation;
+        private bool _disposed;
 
         public SessionRestoreAttempt(CancellationToken lifetime, bool inForeground, WindowIdentity initialTab)
         {
             _cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
+            Token = _cancellation.Token;
             _sawForeground = inForeground;
             InitialTab = initialTab;
         }
 
         public WindowIdentity InitialTab { get; }
-        public CancellationToken Token => _cancellation.Token;
+        public CancellationToken Token { get; }
 
         public void ObserveForeground(bool isTarget)
         {
             lock (_gate)
             {
+                if (_disposed) return;
                 if (isTarget)
                     _sawForeground = true;
                 else if (_sawForeground && !_cancellation.IsCancellationRequested)
@@ -91,13 +94,14 @@ public partial class ExplorerWatcher
 
         public void ArmNavigation()
         {
-            lock (_gate) _watchNavigation = true;
+            lock (_gate)
+                if (!_disposed) _watchNavigation = true;
         }
 
         public void InitialTabNavigated()
         {
             lock (_gate)
-                if (_watchNavigation && !_cancellation.IsCancellationRequested)
+                if (!_disposed && _watchNavigation && !_cancellation.IsCancellationRequested)
                 {
                     ExplorerDebugLog.Write("Session restore cancelled: initial tab navigated");
                     _cancellation.Cancel();
@@ -106,7 +110,12 @@ public partial class ExplorerWatcher
 
         public void Dispose()
         {
-            lock (_gate) _cancellation.Dispose();
+            lock (_gate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _cancellation.Dispose();
+            }
         }
     }
 

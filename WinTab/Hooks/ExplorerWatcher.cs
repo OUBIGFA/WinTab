@@ -26,9 +26,20 @@ public partial class ExplorerWatcher : IHook
     private ShellWindows _shellWindows = null!;
     private ShellPathComparer _shellPathComparer = null!;
     private readonly StaTaskScheduler _staTaskScheduler;
-    private nint _mainWindowHandle;
+    private sealed record MainWindowReference(WindowIdentity Identity);
+    private MainWindowReference? _mainWindow;
+    private nint MainWindowHandle
+    {
+        get
+        {
+            var window = Volatile.Read(ref _mainWindow);
+            return window != null && window.Identity.IsCurrent ? window.Identity.Handle : 0;
+        }
+        set => Volatile.Write(ref _mainWindow,
+            value == 0 ? null : new MainWindowReference(WindowIdentity.Capture(value)));
+    }
     private readonly ConcurrentDictionary<nint, WindowIdentity> _processedHWnds = new();
-    private readonly ConcurrentDictionary<nint, int> _hookedTopLevelUseCounts = new();
+    private readonly ConcurrentDictionary<WindowIdentity, int> _hookedTopLevelUseCounts = new();
     private readonly ConcurrentDictionary<string, bool> _startupLocationCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly DualKeyDictionary<InternetExplorer, nint?, WindowInfo> _windowEntryDict = [];
     private readonly List<WindowRecord> _closedWindows = new();
@@ -75,7 +86,9 @@ public partial class ExplorerWatcher : IHook
         _staTaskScheduler = new StaTaskScheduler();
         _registrationWork = new CoalescingAsyncWork(() => RunShellWorkAsync(ProcessRegisteredShellWindowsAsync));
         _selectionWork = new CoalescingAsyncWork(() => RunShellWorkAsync(ObserveExplorerStateAsync));
-        _mergeSafetyTimer = new Timer(RecoverExpiredMergeSources, null, Timeout.Infinite, Timeout.Infinite);
+        // Keep recovery periodic; restarting its due time on every re-hide can starve it indefinitely.
+        _mergeSafetyTimer = new Timer(RecoverExpiredMergeSources, null, 250, 250);
+        _frameWatchdogTimer = new Timer(MaintainExplorerFrameConcealment, null, 250, 250);
         _selectionTimer = new Timer(state => _selectionWork.Request(), null, Timeout.Infinite, Timeout.Infinite);
         _getDefaultExplorerLaunchId = getDefaultExplorerLaunchId ?? (static () => 1);
         _tabTearOff = new ExplorerTabTearOffTracker(new ExplorerTabTearOffEnvironment(TabStrip, () => _isForcingTabs));
@@ -190,6 +203,7 @@ public partial class ExplorerWatcher : IHook
         _explorerCheckTimer?.Dispose();
         _hookLifetime.Cancel();
         _mergeSafetyTimer.Dispose();
+        _frameWatchdogTimer.Dispose();
         _selectionTimer.Dispose();
         _sessionLifetime.Cancel();
         _sessionVisuals?.Dispose();

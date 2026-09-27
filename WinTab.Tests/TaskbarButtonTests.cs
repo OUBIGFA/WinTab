@@ -15,30 +15,131 @@ using WinTab.WinAPI;
 /// </summary>
 internal static class TaskbarButtonTests
 {
-    private const string AppId = "WinTab.Tests.TaskbarButton";
+    private static readonly string AppId = "WinTab.Tests.TaskbarButton." + Guid.NewGuid().ToString("N");
 
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("taskbar operations work when HrInit is not implemented", () => InitializationResult(unchecked((int)0x80004001), 0, true));
+        yield return ("taskbar operations follow successful initialization", () => InitializationResult(0, 0, true));
+        yield return ("taskbar operations follow nonzero successful initialization", () => InitializationResult(1, 0, true));
+        yield return ("taskbar initialization failure prevents the operation", () => InitializationResult(unchecked((int)0x80070005), 0, false));
+        yield return ("taskbar operation failure is not hidden by HrInit compatibility", () => InitializationResult(unchecked((int)0x80004001), unchecked((int)0x80004005), true));
         yield return ("taskbar removal failure is retried on the next conceal pulse", RemovalFailureIsRetried);
+        yield return ("busy taskbar removal cannot block native concealment or its next pulse", BusyRemovalDoesNotBlockConcealment);
+        yield return ("taskbar recovery follows in-flight removal without blocking native concealment", RecoveryFollowsPendingRemoval);
         yield return ("taskbar restoration failure retains the recovery record until retry succeeds", RestorationFailureIsRetried);
         yield return ("taskbar restoration failure survives shell identity retirement", RestorationFailureSurvivesShellRetirement);
         yield return ("shell identity retirement releases windows without recovery records", ShellRetirementReleasesUntrackedIdentity);
+        yield return ("taskbar recovery retains minimized placement and does not activate the window", RecoveryPreservesPlacement);
         yield return ("a concealed window has no taskbar button until it is restored", ConcealedWindowHasNoButton);
         yield return ("a frame concealed before it is shown gets no taskbar button when Explorer shows it", ConcealedFrameShownLaterHasNoButton);
     }
 
-    private static Task RemovalFailureIsRetried() => WithTaskbarWindow((window, _) =>
+    private static Task InitializationResult(int initialization, int operation, bool expectedCall)
+    {
+        var called = false;
+        var result = TaskbarButton.InitializeAndInvoke(() => initialization, () =>
+        {
+            called = true;
+            return operation;
+        });
+        Check.Equal(expectedCall, called, "Only success or E_NOTIMPL from HrInit permits the operation.");
+        Check.Equal(expectedCall ? operation : initialization, result, "The actual operation's failure must remain observable.");
+        return Task.CompletedTask;
+    }
+
+    private static Task RemovalFailureIsRetried() => WithTaskbarWindow(async (window, _) =>
     {
         var identity = WindowIdentity.Capture(window.Handle);
         var attempts = 0;
         bool Remove(nint _) => ++attempts > 1;
-        ExplorerWindowVisibility.Hide(identity, Remove);
-        ExplorerWindowVisibility.Hide(identity, Remove);
-        ExplorerWindowVisibility.Hide(identity, Remove);
+        await ExplorerWindowVisibility.Hide(identity, Remove);
+        await ExplorerWindowVisibility.Hide(identity, Remove);
+        await ExplorerWindowVisibility.Hide(identity, Remove);
         Check.Equal(2, attempts, "Removal must retry failures but stop repeating after success.");
         Check.That(ExplorerWindowVisibility.Restore(identity, true, _ => true), "Test concealment must be restored.");
-        return Task.CompletedTask;
     });
+
+    private static async Task BusyRemovalDoesNotBlockConcealment()
+    {
+        using var window = new RemoteExplorerFrame(visible: false);
+        var identity = WindowIdentity.Capture(window.Handle);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var calls = 0;
+        var removal = ExplorerWindowVisibility.Hide(identity, _ =>
+        {
+            Interlocked.Increment(ref calls);
+            entered.Set();
+            return release.Wait(5_000);
+        });
+        try
+        {
+            Check.That(entered.Wait(2_000), "The removal worker must enter the simulated busy taskbar.");
+            Check.That(!removal.IsCompleted, "Taskbar COM must still be busy when Hide returns.");
+            Check.That(WinApi.GetLayeredWindowAttributes(window.Handle, out _, out var firstAlpha, out _) && firstAlpha == 0,
+                "Native opacity must already be zero before the taskbar answers.");
+            WinApi.SetLayeredWindowAttributes(window.Handle, 0, 255, WinApi.LWA_ALPHA);
+            var pulse = Task.Run(() =>
+            {
+                ExplorerWindowVisibility.Hide(identity, _ => throw new InvalidOperationException("Duplicate taskbar call"));
+            });
+            await pulse.WaitAsync(TimeSpan.FromSeconds(1));
+            Check.That(WinApi.GetLayeredWindowAttributes(window.Handle, out _, out var alpha, out _) && alpha == 0,
+                "An in-flight taskbar operation must not hold the opacity lock against another conceal pulse.");
+            Check.Equal(1, calls, "Repeated pulses must not accumulate pending COM requests.");
+        }
+        finally
+        {
+            release.Set();
+            await removal;
+            ExplorerWindowVisibility.Restore(identity, true, _ => true);
+        }
+    }
+
+    private static async Task RecoveryFollowsPendingRemoval()
+    {
+        using var window = new RemoteExplorerFrame(visible: false);
+        var identity = WindowIdentity.Capture(window.Handle);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var sequence = new List<string>();
+        var removal = ExplorerWindowVisibility.Hide(identity, _ =>
+        {
+            entered.Set();
+            release.Wait(5_000);
+            lock (sequence) sequence.Add("delete");
+            return true;
+        });
+        Task<bool>? recovery = null;
+        try
+        {
+            Check.That(entered.Wait(2_000), "The simulated DeleteTab must be in flight.");
+            recovery = Task.Run(() => ExplorerWindowVisibility.Restore(identity, true, _ =>
+            {
+                lock (sequence) sequence.Add("add");
+                return true;
+            }));
+            var deadline = Environment.TickCount64 + 1_000;
+            while ((WinApi.GetWindowLong(window.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) != 0 &&
+                   Environment.TickCount64 < deadline)
+                await Task.Delay(10);
+            Check.That((WinApi.GetWindowLong(window.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+                "Recovery must restore native opacity before waiting for busy taskbar COM.");
+            await ExplorerWindowVisibility.Hide(identity, _ => throw new InvalidOperationException("Late delete after recovery"))
+                .WaitAsync(TimeSpan.FromSeconds(1));
+            Check.That(!recovery.IsCompleted, "AddTab must wait until the in-flight DeleteTab has finished.");
+        }
+        finally
+        {
+            release.Set();
+            await removal;
+            if (recovery != null)
+                Check.That(await recovery, "Recovery must finish once the taskbar answers.");
+        }
+        Check.Equal("delete,add", string.Join(',', sequence), "A late delete must never remove the restored taskbar button.");
+        Check.That(!ExplorerWindowVisibility.Contains(window.Handle), "Ordered recovery must release its state.");
+    }
 
     private static Task RestorationFailureIsRetried() => WithTaskbarWindow((window, _) =>
     {
@@ -96,14 +197,24 @@ internal static class TaskbarButtonTests
         return Task.CompletedTask;
     });
 
+    private static Task RecoveryPreservesPlacement() => WithTaskbarWindow(async (window, _) =>
+    {
+        WinApi.ShowWindow(window.Handle, 7); // SW_SHOWMINNOACTIVE
+        Check.That(WinApi.IsIconic(window.Handle), "The owned test window must start minimized.");
+        var foreground = WinApi.GetForegroundWindow();
+        var identity = WindowIdentity.Capture(window.Handle);
+        await ExplorerWindowVisibility.Hide(identity, _ => true);
+        Check.That(ExplorerWindowVisibility.Restore(identity, true, _ => true), "Recover the taskbar style.");
+        Check.That(WinApi.IsIconic(window.Handle), "Re-registration must not unminimize the window.");
+        Check.Equal(foreground, WinApi.GetForegroundWindow(), "Recovery must not steal foreground.");
+    });
+
     private static Task ConcealedWindowHasNoButton() => WithTaskbarWindow(async (window, title) =>
     {
+        if (!TaskbarPresent())
+            throw new TestSkippedException("No taskbar is available in this desktop session");
         window.Show();
-        if (!await WaitForButtonAsync(title, present: true))
-        {
-            Console.WriteLine("    note: the taskbar does not expose this window's button here; the check cannot run.");
-            return;
-        }
+        Check.That(await WaitForButtonAsync(title, present: true), "The owned test window must first appear on the available taskbar.");
 
         ExplorerWindowVisibility.Hide(window.Handle);
         Check.That(await WaitForButtonAsync(title, present: false), "A concealed window must not keep a taskbar button.");
@@ -118,10 +229,7 @@ internal static class TaskbarButtonTests
     private static Task ConcealedFrameShownLaterHasNoButton() => WithTaskbarWindow(async (window, title) =>
     {
         if (!TaskbarPresent())
-        {
-            Console.WriteLine("    note: no taskbar in this session; the check cannot run.");
-            return;
-        }
+            throw new TestSkippedException("No taskbar is available in this desktop session");
 
         // Windows 11 preloads a hidden frame; WinTab conceals it before Explorer shows it for a folder.
         ExplorerWindowVisibility.Hide(window.Handle);
@@ -130,10 +238,8 @@ internal static class TaskbarButtonTests
         Check.That(!HasButton(title), "Showing a concealed frame must not add a taskbar button.");
 
         Check.That(ExplorerWindowVisibility.Restore(window.Handle), "The owned window must be restored.");
-        if (!await WaitForButtonAsync(title, present: true))
-        {
-            Console.WriteLine("    note: the taskbar does not expose this window's button here; the restore check cannot run.");
-        }
+        Check.That(await WaitForButtonAsync(title, present: true),
+            "A frame first shown while concealed must gain its taskbar button when restored.");
     });
 
     private static async Task WithTaskbarWindow(Func<TaskbarWindow, string, Task> body)

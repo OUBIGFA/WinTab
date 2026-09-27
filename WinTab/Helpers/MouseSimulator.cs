@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using WinTab.WinAPI;
@@ -30,12 +31,13 @@ public static class MouseSimulator
     /// Sends a middle-button click at the specified screen-space point.
     /// Windows 11 File Explorer's tab strip closes the tab under the cursor on a middle-click,
     /// so this is used as the close-tab primitive — it is dramatically faster than walking the
-    /// UI Automation tree to find and invoke the close button. The synthesized events are flagged
-    /// as injected and use absolute virtual-desktop coordinates so they reach the correct
-    /// monitor without moving the visible cursor.
+    /// UI Automation tree to find and invoke the close button. Button-only SendInput ignores coordinates,
+    /// so the pointer must still be at the requested point; this helper never moves it to replay a stale click.
     /// </summary>
     public static void SendMiddleClick(Point screenPoint)
     {
+        if (!WinApi.GetCursorPos(out var current) || current != screenPoint)
+            throw new OperationCanceledException("The pointer moved before the tab close could be delivered.");
         var (absX, absY) = ToAbsoluteVirtual(screenPoint);
 
         var inputs = new[]
@@ -44,7 +46,8 @@ public static class MouseSimulator
             CreateMouseInput(absX, absY, MOUSEEVENTF_MIDDLEUP   | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK),
         };
 
-        WinApi.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        if (WinApi.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>()) != inputs.Length)
+            throw new Win32Exception(Marshal.GetLastWin32Error(), "The tab-close mouse input was not fully delivered.");
     }
 
     private static (int absX, int absY) ToAbsoluteVirtual(Point screenPoint)

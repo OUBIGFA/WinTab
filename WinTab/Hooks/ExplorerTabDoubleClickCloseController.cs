@@ -138,6 +138,14 @@ internal sealed class ExplorerTabDoubleClickCloseController(IExplorerTabDoubleCl
                Math.Abs(currentPoint.Y - previousPoint.Y) <= maxY;
     }
 
+    public void Reset()
+    {
+        _lastClickCandidate = null;
+        _pendingNativeClose = null;
+        _recentNativeClose = null;
+        _suppressNextLeftUp = false;
+    }
+
     private void ResetClickState()
     {
         _lastClickCandidate = null;

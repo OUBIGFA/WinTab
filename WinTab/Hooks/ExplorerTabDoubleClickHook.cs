@@ -19,12 +19,15 @@ public sealed class ExplorerTabDoubleClickHook : IHook
     private readonly Func<bool> _isEnabled;
     private readonly object _closeQueueGate = new();
     private Task _closeQueueTail = Task.CompletedTask;
+    private int _generation;
+    private volatile bool _active;
+    private bool _disposed;
 
     public ExplorerTabDoubleClickHook(ExplorerWatcher explorerWatcher, Func<bool>? isEnabled = null)
     {
         _tabStrip = explorerWatcher.TabStrip;
         _isEnabled = isEnabled ?? (() => true);
-        _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(_tabStrip, _isEnabled));
+        _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(_tabStrip, () => _active && _isEnabled()));
         _lowLevelMouseHook = new LowLevelMouseHook
         {
             AddKeyboardKeys = true,
@@ -37,8 +40,21 @@ public sealed class ExplorerTabDoubleClickHook : IHook
     public event Action<string>? StatusChanged;
     public bool IsHookActive => _lowLevelMouseHook.IsStarted;
 
-    public void StartHook() => _lowLevelMouseHook.Start();
-    public void StopHook() => _lowLevelMouseHook.Stop();
+    public void StartHook()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _controller.Reset();
+        _lowLevelMouseHook.Start();
+        _active = true;
+    }
+
+    public void StopHook()
+    {
+        _active = false;
+        Interlocked.Increment(ref _generation);
+        _lowLevelMouseHook.Stop();
+        _controller.Reset();
+    }
 
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
@@ -69,30 +85,45 @@ public sealed class ExplorerTabDoubleClickHook : IHook
 
     private void QueueClose(ExplorerTabCloseRequest closeRequest)
     {
+        var identity = WindowIdentity.Capture(closeRequest.ExplorerWindow);
+        if (!identity.IsCurrent || !WinApi.GetWindowRect(identity.Handle, out var initialRect)) return;
+        var generation = Volatile.Read(ref _generation);
+        var queuedAt = Environment.TickCount64;
+        bool IsCurrent() => _active && _isEnabled() && generation == Volatile.Read(ref _generation) &&
+            Environment.TickCount64 - queuedAt <= 500 && identity.IsCurrent &&
+            WinApi.GetWindowRect(identity.Handle, out var rect) && rect.Equals(initialRect) &&
+            WinApi.GetCursorPos(out var point) && point == closeRequest.Point &&
+            GetExplorerWindowForPoint(point) == identity.Handle;
         lock (_closeQueueGate)
         {
             // Preserve the order of rapid double-clicks. Independent thread-pool work items can otherwise
             // inject middle-clicks out of order while Explorer is still rebuilding the tab strip.
             _closeQueueTail = _closeQueueTail
-                .ContinueWith(_ => ExecuteCloseAsync(closeRequest), CancellationToken.None,
+                .ContinueWith(_ => ExecuteCloseAsync(closeRequest, IsCurrent), CancellationToken.None,
                     TaskContinuationOptions.None, TaskScheduler.Default)
                 .Unwrap();
         }
     }
 
-    private async Task ExecuteCloseAsync(ExplorerTabCloseRequest closeRequest)
+    internal static async Task<bool> ExecuteCloseWhenCurrentAsync(Func<bool> isCurrent, Action close)
     {
-        // Let the suppressed mouse-up drain before synthesizing the middle-click; without this small delay,
-        // the injected click can race with the original left-up sequence on slower systems.
+        // Let the suppressed left-up drain, then recheck ownership immediately before synthesizing input.
         await Task.Delay(10).ConfigureAwait(false);
+        if (!isCurrent()) return false;
+        close();
+        return true;
+    }
+
+    private async Task ExecuteCloseAsync(ExplorerTabCloseRequest closeRequest, Func<bool> isCurrent)
+    {
         try
         {
-            MouseSimulator.SendMiddleClick(closeRequest.Point);
-            StatusChanged?.Invoke("Closed Explorer tab via middle-click.");
+            if (await ExecuteCloseWhenCurrentAsync(isCurrent, () => MouseSimulator.SendMiddleClick(closeRequest.Point)))
+                StatusChanged?.Invoke("Closed Explorer tab via middle-click.");
         }
-        catch
+        catch (Exception exception)
         {
-            // 忽略关闭请求失败，避免后台任务影响钩子线程。
+            ExplorerDebugLog.Write($"Double-click close not delivered: {exception.GetType().Name}:{exception.Message}");
         }
         finally
         {
@@ -119,7 +150,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
                 return root;
         }
 
-        return ExplorerWindowDiscovery.IsFileExplorerForeground(out var foreground) && foreground != 0 ? foreground : 0;
+        return 0;
     }
 
     private sealed class HookEnvironment(TabStripHitTester tabStrip, Func<bool> isEnabled) : IExplorerTabDoubleClickEnvironment
@@ -135,6 +166,8 @@ public sealed class ExplorerTabDoubleClickHook : IHook
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         StopHook();
         _lowLevelMouseHook.Dispose();
     }

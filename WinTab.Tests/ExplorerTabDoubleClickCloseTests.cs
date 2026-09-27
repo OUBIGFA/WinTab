@@ -12,6 +12,8 @@ internal static class ExplorerTabDoubleClickCloseTests
         yield return ("double-click close chain ignores points outside the double-click geometry", CloseChainFallbackIgnoresDifferentPoints);
         yield return ("double-click close is inert while the feature is disabled", DisabledEnvironmentNeverSwallowsClicks);
         yield return ("disabling double-click close cancels an already pending close", DisablingCancelsPendingClose);
+        yield return ("double-click restart discards the previous click and pending release", RestartDiscardsClickState);
+        yield return ("queued double-click close rechecks ownership after its delay", QueuedCloseRechecksOwnership);
     }
 
     private static Task ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick()
@@ -120,6 +122,38 @@ internal static class ExplorerTabDoubleClickCloseTests
         Check.That(controller.HandleLeftMouseUp(1_100).CloseRequest is null,
             "Disabling the feature must cancel the close, even after the second mouse-down.");
         return Task.CompletedTask;
+    }
+
+    private static Task RestartDiscardsClickState()
+    {
+        var environment = new FakeDoubleClickEnvironment();
+        var controller = new ExplorerTabDoubleClickCloseController(environment);
+        var point = new Point(240, 48);
+        environment.HitTestResults.Enqueue(true);
+        controller.HandleLeftMouseDown(point, 1_000);
+        controller.HandleLeftMouseUp(1_020);
+        controller.Reset();
+        environment.HitTestResults.Enqueue(true);
+        Check.That(!controller.HandleLeftMouseDown(point, 1_080).Handled, "A new hook lifetime must require a new double-click pair.");
+        environment.HitTestResults.Enqueue(true);
+        controller.HandleLeftMouseDown(point, 1_100);
+        controller.Reset();
+        Check.That(!controller.HandleLeftMouseUp(1_120).Handled, "A retired pending release must not close a tab in the new lifetime.");
+        return Task.CompletedTask;
+    }
+
+    private static async Task QueuedCloseRechecksOwnership()
+    {
+        var current = true;
+        var clicks = 0;
+        var pending = ExplorerTabDoubleClickHook.ExecuteCloseWhenCurrentAsync(() => current, () => clicks++);
+        current = false;
+        Check.That(!await pending, "A disabled, moved, covered or retired request must not inject a late click.");
+        Check.Equal(0, clicks, "Cancelled work must emit no input.");
+        current = true;
+        Check.That(await ExplorerTabDoubleClickHook.ExecuteCloseWhenCurrentAsync(() => current, () => clicks++),
+            "A current close must still execute.");
+        Check.Equal(1, clicks, "A current request must emit exactly one click.");
     }
 
     private sealed class FakeDoubleClickEnvironment : IExplorerTabDoubleClickEnvironment

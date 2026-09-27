@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+internal sealed class TestSkippedException(string message) : Exception(message);
+
 internal static class Check
 {
     public static void That(bool condition, string message)

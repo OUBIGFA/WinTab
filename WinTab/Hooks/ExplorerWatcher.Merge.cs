@@ -2,6 +2,7 @@ using SHDocVw;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using WinTab.Helpers;
 using WinTab.WinAPI;
@@ -41,8 +42,10 @@ public partial class ExplorerWatcher
 
         if (IsWindowProtected(hWnd)) return false;
         if (IsIndependentOpenRequested()) return false;
-        if (_hookedTopLevelUseCounts.ContainsKey(hWnd)) return false;
-        if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle) return false;
+        // A recycled HWND must not inherit the previous frame's registration or main-window exemption.
+        var identity = WindowIdentity.Read(hWnd);
+        if (identity.IsCurrent && _hookedTopLevelUseCounts.ContainsKey(identity)) return false;
+        if (hWnd == MainWindowHandle) return false;
         if (ExplorerWindowDiscovery.GetAllExplorerTabs(hWnd).Take(2).Count() > 1) return false;
         if (ReleaseTornOffTabWindow(hWnd)) return false;
 
@@ -139,7 +142,7 @@ public partial class ExplorerWatcher
         if (!_isForcingTabs || hWnd == 0) return;
         if (IsWindowProtected(hWnd)) return;
         if (IsIndependentOpenRequested()) return;
-        if (_mainWindowHandle != 0 && hWnd == _mainWindowHandle) return;
+        if (hWnd == MainWindowHandle) return;
         if (ExplorerWindowDiscovery.GetAllExplorerTabs(hWnd).Take(2).Count() > 1) return;
 
         var targetWindow = GetMainWindowHWnd(hWnd);
@@ -176,7 +179,6 @@ public partial class ExplorerWatcher
             windowHandle => new ConcealedWindow(WindowIdentity.Capture(windowHandle), _hookGeneration));
         StartMergeBudgetIfShown(concealed);
         ConcealMergeSourceWindow(concealed);
-        _mergeSafetyTimer.Change(250, 250);
     }
 
     private async Task RestoreMergeSourceWindowAsync(nint handle)
@@ -231,12 +233,23 @@ public partial class ExplorerWatcher
 
     private void ConcealMergeSourceWindow(ConcealedWindow concealed)
     {
-        lock (concealed)
+        // Recovery can be waiting for Explorer's taskbar COM while holding the lifecycle lock. Never
+        // queue the WinEvent thread behind it: a recovering source no longer needs another hide.
+        if (!Monitor.TryEnter(concealed))
+            return;
+        try
         {
+            // The watchdog may be the first observer after Explorer shows a preloaded frame. Start its
+            // budget before re-concealing it, even when the create/show notification was missed.
+            StartMergeBudgetIfShown(concealed);
             if (!_disposed && !concealed.Recovering && _isForcingTabs &&
                 concealed.Generation == _hookGeneration && concealed.Identity.IsCurrent &&
-                Environment.TickCount64 < concealed.ExpiresAt)
+                (concealed.ClosePending || Environment.TickCount64 < concealed.ExpiresAt))
                 ExplorerWindowVisibility.Hide(concealed.Identity);
+        }
+        finally
+        {
+            Monitor.Exit(concealed);
         }
     }
 
@@ -249,12 +262,12 @@ public partial class ExplorerWatcher
         if (ExplorerWindowDiscovery.IsFileExplorerForeground(out var foregroundWindow) &&
             IsPreferredMergeTargetWindow(foregroundWindow, otherThan, targetLocation))
         {
-            _mainWindowHandle = foregroundWindow;
-            return _mainWindowHandle;
+            MainWindowHandle = foregroundWindow;
+            return MainWindowHandle;
         }
 
-        if (IsPreferredMergeTargetWindow(_mainWindowHandle, otherThan, targetLocation))
-            return _mainWindowHandle;
+        if (IsPreferredMergeTargetWindow(MainWindowHandle, otherThan, targetLocation))
+            return MainWindowHandle;
 
         var allWindows = _getExplorerWindows().ToArray();
         var tabCounts = new Dictionary<nint, int>();
@@ -293,20 +306,20 @@ public partial class ExplorerWatcher
         }
 
         // Get another handle other than the newly created one. (In case if it is still alive.)
-        _mainWindowHandle = SelectBestMergeTarget(h => IsPreferredMergeTargetWindow(h, otherThan, targetLocation));
+        MainWindowHandle = SelectBestMergeTarget(h => IsPreferredMergeTargetWindow(h, otherThan, targetLocation));
 
-        if (_mainWindowHandle != 0) return _mainWindowHandle;
+        if (MainWindowHandle != 0) return MainWindowHandle;
 
         if (preferNonStartupTarget)
         {
-            _mainWindowHandle = SelectBestMergeTarget(h => IsStableMergeTargetWindow(h, otherThan));
+            MainWindowHandle = SelectBestMergeTarget(h => IsStableMergeTargetWindow(h, otherThan));
 
-            if (_mainWindowHandle != 0) return _mainWindowHandle;
+            if (MainWindowHandle != 0) return MainWindowHandle;
         }
 
-        _mainWindowHandle = SelectBestMergeTarget(h => IsFallbackMergeTargetWindow(h, otherThan));
+        MainWindowHandle = SelectBestMergeTarget(h => IsFallbackMergeTargetWindow(h, otherThan));
 
-        return _mainWindowHandle;
+        return MainWindowHandle;
     }
     private bool IsPreferredMergeTargetWindow(nint hWnd, nint otherThan, string? targetLocation)
     {

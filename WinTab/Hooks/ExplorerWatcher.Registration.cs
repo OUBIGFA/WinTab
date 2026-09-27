@@ -107,6 +107,10 @@ public partial class ExplorerWatcher
                         continue;
                     }
                     hWnd = windowInfo.Identity.Handle;
+                    // ShellWindows can publish a preload before the shell shows it. Registering it as
+                    // an independent window would remove its concealment and protect a later launch.
+                    if (ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd) && !WinAPI.WinApi.IsWindowVisible(hWnd))
+                        continue;
                     wasTrackedTopLevel = HasTrackedTopLevelWindow(hWnd);
                     var tabCount = ExplorerWindowDiscovery.GetAllExplorerTabs(hWnd).Take(2).Count();
                     if (tabCount <= 1 &&
@@ -117,7 +121,7 @@ public partial class ExplorerWatcher
                         !IsWindowProtected(hWnd) &&
                         _isForcingTabs &&
                         !IsIndependentOpenRequested() &&
-                        _mainWindowHandle != hWnd &&
+                        MainWindowHandle != hWnd &&
                         !ReleaseTornOffTabWindow(hWnd))
                     {
                         HideMergeSourceWindow(hWnd);
@@ -125,7 +129,7 @@ public partial class ExplorerWatcher
 
                     _windowEntryDict.Add(window, windowInfo);
                     if (_windowEntryDict.Count == 1)
-                        _mainWindowHandle = hWnd;
+                        MainWindowHandle = hWnd;
                 }
 
                 if (!wasTrackedTopLevel)
@@ -432,33 +436,32 @@ public partial class ExplorerWatcher
         if (hookedTopLevelHWnd != 0)
         {
             windowInfo.HookedTopLevelHWnd = hookedTopLevelHWnd;
-            _hookedTopLevelUseCounts.AddOrUpdate(hookedTopLevelHWnd, 1, (_, count) => count + 1);
+            _hookedTopLevelUseCounts.AddOrUpdate(windowInfo.Identity, 1, (_, count) => count + 1);
         }
 
         // Create a strongly-typed handler so we can remove it later
         windowInfo.OnQuitHandler = () =>
         {
+            if (windowInfo.Closed || !IsRegisteredWindow(window, windowInfo))
+                return;
+            // Explorer waits for this callback. Retire the tab immediately, but do not call back into
+            // its dying view or connection point while its UI thread is waiting for our response.
+            windowInfo.Closed = true;
             if (_captureSessions)
             {
                 _sessionTracker.TabClosing(windowInfo.Identity, windowInfo.TabIdentity, Environment.TickCount64);
                 RecordClosedTab(windowInfo);
                 _selectionWork.Request();
             }
-            try
-            {
-                windowInfo.RefreshSelection(() => TryGetSelectedItems(window), () => IsCurrentWindow(window, windowInfo));
-            }
-            catch (Exception exception) when (IsDisconnectedShell(exception))
-            {
-                ExplorerDebugLog.Write($"Closing tab selection already disconnected error={exception.HResult:X8}");
-            }
-            // Remember real folders so a quick re-open of the same folder can restore its selection.
+            // Use the selection captured while the view was alive, never read Document during OnQuit.
             // Home, This PC, etc. carry nothing worth restoring.
             var location = windowInfo.Location;
             if (!string.IsNullOrWhiteSpace(location) && location != _defaultLocation)
                 RememberClosedWindow(new WindowRecord(location, windowInfo.Identity.Handle, windowInfo.SelectedItems));
 
-            RemoveWindowAndUnhookEvents(window, windowInfo);
+            // The coalesced registration worker removes closed records on the owning STA after we
+            // return. A burst of closes shares one queued pass, rather than one COM task per tab.
+            ScheduleShellWindowRegistration();
         };
         windowInfo.OnNavigateHandler = (object _, ref object url) =>
         {
@@ -533,9 +536,10 @@ public partial class ExplorerWatcher
         if (hWnd == 0)
             return;
 
-        _hookedTopLevelUseCounts.AddOrUpdate(hWnd, 0, (_, count) => Math.Max(0, count - 1));
-        if (_hookedTopLevelUseCounts.TryGetValue(hWnd, out var remaining) && remaining <= 0)
-            _hookedTopLevelUseCounts.TryRemove(hWnd, out _);
+        var identity = windowInfo.Identity;
+        var remaining = _hookedTopLevelUseCounts.AddOrUpdate(identity, 0, (_, count) => Math.Max(0, count - 1));
+        if (remaining == 0)
+            _hookedTopLevelUseCounts.TryRemove(new KeyValuePair<WindowIdentity, int>(identity, 0));
 
         windowInfo.HookedTopLevelHWnd = 0;
     }
@@ -571,8 +575,8 @@ public partial class ExplorerWatcher
             _processedHWnds.TryRemove(new KeyValuePair<nint, WindowIdentity>(hWnd, windowInfo.Identity));
             ReleaseTopLevelTrackingIfUnused(hWnd);
             TabStrip.Forget(hWnd);
-            if (_mainWindowHandle == hWnd && !ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
-                _mainWindowHandle = 0;
+            if (MainWindowHandle == hWnd && !ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
+                MainWindowHandle = 0;
         }
         catch
         {

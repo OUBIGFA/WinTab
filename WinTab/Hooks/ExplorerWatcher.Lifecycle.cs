@@ -22,6 +22,8 @@ public partial class ExplorerWatcher
     /// </summary>
     private const long MergeBudgetNotStarted = long.MaxValue;
     private readonly Timer _mergeSafetyTimer;
+    private readonly Timer _frameWatchdogTimer;
+    private int _maintainingFrameConcealment;
     private readonly Timer _selectionTimer;
     private CancellationTokenSource _shellLifetime = new();
     private CancellationTokenSource _hookLifetime = new();
@@ -104,7 +106,6 @@ public partial class ExplorerWatcher
                 return false;
             concealed.ClosePending = true;
         }
-        _mergeSafetyTimer.Change(250, 250);
         return true;
     }
 
@@ -186,6 +187,31 @@ public partial class ExplorerWatcher
         info.RefreshSelection(() => TryGetSelectedItems(window),
             () => IsCurrentWindow(window, info) && GetActiveTabHandle(handle) == tab);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Native-only maintenance is independent of the Shell STA and of the short event pulse. Explorer
+    /// can create a replacement preload or reset its layered style long after the last show event.
+    /// Discover and re-conceal those frames while they are still hidden, not on the next folder open.
+    /// </summary>
+    private void MaintainExplorerFrameConcealment(object? state)
+    {
+        if (!_isForcingTabs || !_preExistingExplorerWindowsProtected || _disposed ||
+            Interlocked.Exchange(ref _maintainingFrameConcealment, 1) != 0)
+            return;
+        try
+        {
+            ConcealPreloadedExplorerFrames();
+            ConcealMergeSourceWindowsOnce();
+        }
+        catch (Exception exception)
+        {
+            ExplorerDebugLog.Write($"Explorer frame concealment maintenance failed: {exception.GetType().Name}:{exception.Message}");
+        }
+        finally
+        {
+            Volatile.Write(ref _maintainingFrameConcealment, 0);
+        }
     }
 
     private void RecoverExpiredMergeSources(object? state)

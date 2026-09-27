@@ -56,6 +56,8 @@ internal static class ExplorerTabLifetimeTests
         yield return ("completed merge cleanup leaves a source with extra tabs open", () => CompletedMergeFinishesSafely(false, 2));
         yield return ("retrying an existing window registration never conceals it", RetryingRegistrationLeavesExistingWindowVisible);
         yield return ("a closing tab with an unavailable selection still unregisters normally", ClosingTabDoesNotRequireItsDisconnectedSelection);
+        yield return ("a close callback returns before any outgoing shell calls", () => CloseCallbackDoesNotCallShell(false));
+        yield return ("a close callback stays nonblocking when later event detachment fails", () => CloseCallbackDoesNotCallShell(true));
         yield return ("a live selection disconnect triggers recovery before the next folder open", LiveSelectionDisconnectRetiresConnection);
         yield return ("a concealed merge source is not offered for tab reuse", ConcealedSourceIsNotReused);
         yield return ("a merge source being closed is not offered for tab reuse", ClosingSourceIsNotReused);
@@ -527,10 +529,12 @@ internal static class ExplorerTabLifetimeTests
         Check.Equal(1, fixture.Count, "Registration retries must preserve the original window record.");
     }, tabCount: 1);
 
-    private static Task ClosingTabDoesNotRequireItsDisconnectedSelection() => WithFixture(fixture =>
+    private static Task ClosingTabDoesNotRequireItsDisconnectedSelection() => WithFixture(async fixture =>
     {
         var browser = fixture.AddBrowser(out var info, fixture.Window.FirstTab,
             documentFailure: new COMException("The closing view has disconnected", unchecked((int)0x80010108)));
+        fixture.SetCatalog();
+        fixture.MarkShellConnected();
         fixture.Invoke("HookWindowEvents", browser, info);
         var closeHandler = (Delegate?)typeof(WindowInfo).GetProperty("OnQuitHandler")!.GetValue(info);
         Check.That(closeHandler != null, "The test must deliver the real close event handler.");
@@ -539,8 +543,56 @@ internal static class ExplorerTabLifetimeTests
         {
             ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
         }
+        await fixture.RegistrationIdle;
         Check.Equal(0, fixture.Count, "A closing tab must unregister even when its optional selection is no longer readable.");
-        return Task.CompletedTask;
+    });
+
+    private static Task CloseCallbackDoesNotCallShell(bool failDetach) => WithFixture(async fixture =>
+    {
+        var insideCallback = false;
+        var callbackCalls = new List<string>();
+        var detachThreads = new List<int>();
+        var shellThread = Environment.CurrentManagedThreadId;
+        var browser = fixture.AddBrowser(out var info, fixture.Window.FirstTab, failDetach: failDetach,
+            onCall: method =>
+            {
+                if (insideCallback)
+                    callbackCalls.Add(method);
+                if (method.StartsWith("remove_", StringComparison.Ordinal))
+                    detachThreads.Add(Environment.CurrentManagedThreadId);
+            });
+        info.SelectedItems = ["remembered.txt"];
+        fixture.SetCatalog(); // Explorer has removed the closing tab from its catalog.
+        fixture.MarkShellConnected();
+        fixture.Invoke("HookWindowEvents", browser, info);
+        var callback = (Delegate)typeof(WindowInfo).GetProperty("OnQuitHandler")!.GetValue(info)!;
+        insideCallback = true;
+        try
+        {
+            callback.DynamicInvoke();
+            callback.DynamicInvoke(); // A duplicate close notification must not enqueue another teardown.
+        }
+        finally
+        {
+            insideCallback = false;
+        }
+        var closedBeforeCleanup = info.Closed;
+        await fixture.RegistrationIdle;
+
+        Check.Equal(0, callbackCalls.Count,
+            "Explorer must receive its close callback response without waiting for Document, Unadvise or other outgoing shell calls: " +
+            string.Join(", ", callbackCalls));
+        Check.That(closedBeforeCleanup, "A closing tab must stop being reusable before deferred cleanup runs.");
+        Check.Equal(0, fixture.Count, "Deferred cleanup must remove the closing tab even if event detachment fails.");
+        Check.That(!info.EventsHooked, "Deferred cleanup must retire the local event tracking.");
+        Check.Equal(2, detachThreads.Count, "Duplicate close notifications must detach each event only once.");
+        Check.That(detachThreads.All(thread => thread == shellThread), "COM cleanup must stay on the owning Shell STA.");
+        Check.That(info.SelectedItems is ["remembered.txt"], "Close handling must retain the last captured selection.");
+        var remembered = (List<WindowRecord>)typeof(ExplorerWatcher)
+            .GetField("_closedWindows", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Watcher)!;
+        Check.Equal(1, remembered.Count, "A duplicate close event must not record the same closed window twice.");
+        Check.That(remembered[0].SelectedItems is ["remembered.txt"],
+            "Reopening a just-closed folder must retain its cached selection without calling the destroyed view.");
     });
 
     private static Task LiveSelectionDisconnectRetiresConnection() => WithFixture(async fixture =>
@@ -572,7 +624,7 @@ internal static class ExplorerTabLifetimeTests
     {
         public const string Location = @"C:\WinTab-lifetime";
         private readonly CancellationTokenSource _lifetime = new();
-        private readonly ConcurrentDictionary<nint, int> _hookedTopLevels = new();
+        private readonly ConcurrentDictionary<WindowIdentity, int> _hookedTopLevels = new();
         private readonly object _mergeSources;
         private readonly SemaphoreSlim _openLock = new(1);
         private readonly TabStripHitTester _tabStrip = new();
@@ -592,6 +644,8 @@ internal static class ExplorerTabLifetimeTests
         public ExplorerTabTearOffTracker TearOffTracker { get; }
         public int Count => (int)_dictionaryType.GetProperty("Count")!.GetValue(_dictionary)!;
         public Action? OnCatalogRead { get; set; }
+        public Task RegistrationIdle => ((CoalescingAsyncWork)typeof(ExplorerWatcher)
+            .GetField("_registrationWork", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_watcher)!).WhenIdle;
         public bool ShellConnected => (int)typeof(ExplorerWatcher).GetField("_mainExplorerProcessId", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_watcher)! != 0;
         public bool ShellCancellationRequested => _lifetime.IsCancellationRequested;
         public List<string> Statuses { get; } = new();
@@ -611,6 +665,8 @@ internal static class ExplorerTabLifetimeTests
             SetField("_windowEntryDict", _dictionary);
             SetField("_windowEntryDictLock", new object());
             SetField("_staTaskScheduler", scheduler);
+            SetField("_registrationWork", new CoalescingAsyncWork(() => (Task)Invoke("RunShellWorkAsync",
+                (Func<Task>)(() => (Task)Invoke("ProcessRegisteredShellWindowsAsync")!))!));
             SetField("_shellPathComparer", _pathComparer);
             SetField("_hookLifetime", _lifetime);
             SetField("_mergeSafetyTimer", _mergeTimer);
@@ -643,11 +699,12 @@ internal static class ExplorerTabLifetimeTests
 
         public object AddBrowser(out WindowInfo info, nint? tab = null, bool unavailableLocation = false,
             bool failDetach = false, bool unreadableHandle = false, bool track = true, Action? readLocation = null,
-            Exception? documentFailure = null, nint? handle = null)
+            Exception? documentFailure = null, nint? handle = null, Action<string>? onCall = null)
         {
             var parentHandle = handle ?? Window.Handle;
             var browser = ShellDispatchStub.Create(_dictionaryType.GetGenericArguments()[0], (method, arguments) =>
             {
+                onCall?.Invoke(method);
                 if (failDetach && method.StartsWith("remove_", StringComparison.Ordinal))
                     throw new COMException("The Explorer connection has already closed.");
                 if (method == "get_LocationURL")
@@ -753,11 +810,25 @@ internal static class ExplorerTabLifetimeTests
         public object CreateBrowser(Func<string, object?[], object?> invoke) =>
             ShellDispatchStub.Create(_dictionaryType.GetGenericArguments()[0], invoke);
 
-        public void MarkHooked(nint handle) => _hookedTopLevels[handle] = 1;
+        public void MarkHooked(nint handle) => _hookedTopLevels[WindowIdentity.Capture(handle)] = 1;
+
+        public void CacheMainWindow(nint handle) => typeof(ExplorerWatcher)
+            .GetProperty("MainWindowHandle", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(_watcher, handle);
+
+        public void MaintainFrameConcealment() => Invoke("MaintainExplorerFrameConcealment", new object?[] { null });
+
+        public void DisableMerging() => SetField("_isForcingTabs", false);
 
         public int RemainingMergeTime(nint handle) => (int)Invoke("RemainingMergeTime", handle)!;
 
         public void RunMergeSafetyTimer() => Invoke("RecoverExpiredMergeSources", new object?[] { null });
+
+        public Timer StartMergeSafetyTimer()
+        {
+            var timer = new Timer(_ => RunMergeSafetyTimer(), null, 250, 250);
+            SetField("_mergeSafetyTimer", timer);
+            return timer;
+        }
 
         /// <param name="recover">Restore every concealed window afterwards; false lets a test observe deferred recovery.</param>
         public async Task<bool> CloseMergedSourceAsync(object browser, WindowInfo info, bool recover = true)

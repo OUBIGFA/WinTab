@@ -19,6 +19,8 @@ internal static class WindowSafetyTests
         yield return ("completed merges cannot perform late window operations", DisposedMergeCannotAct);
         yield return ("merge generations and deadlines invalidate pending work", MergeLifetimeIsBounded);
         yield return ("window recovery restores only the opacity it changed", RecoveryPreservesOpacity);
+        yield return ("window recovery preserves taskbar styles and unrelated later changes", RecoveryPreservesTaskbarStyles);
+        yield return ("window recovery can read legacy opacity-only recovery records", RecoveryReadsLegacySnapshot);
         yield return ("window recovery rejects a replacement with the same handle", RecoveryRejectsReplacement);
         yield return ("window recovery survives the hiding process exiting", () => RecoverySurvivesProcessExit(false, false));
         yield return ("window recovery preserves original opacity across process exits", () => RecoverySurvivesProcessExit(true, false));
@@ -112,6 +114,38 @@ internal static class WindowSafetyTests
         Check.That(!ExplorerWindowVisibility.Contains(handle), "Successful recovery must release its tracking entry.");
     });
 
+    private static async Task RecoveryPreservesTaskbarStyles()
+    {
+        foreach (var original in new[] { 0, 0x80, 0x40000, 0x40080 })
+            await WithVisibilityWindowAsync(async handle =>
+            {
+                WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, original);
+                var identity = WindowIdentity.Capture(handle);
+                await ExplorerWindowVisibility.Hide(identity, _ => true);
+                Check.Equal(0x80, WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WindowVisibilitySnapshot.TaskbarStyleMask,
+                    "A concealed window must be excluded even when taskbar COM is a no-op.");
+                WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) | 0x200);
+                Check.That(ExplorerWindowVisibility.Restore(identity, true, _ => true), "Restore the owned styles.");
+                var restored = WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE);
+                Check.Equal(original, restored & WindowVisibilitySnapshot.TaskbarStyleMask, "Both original taskbar style bits must return.");
+                Check.That((restored & 0x200) != 0, "Recovery must not replace unrelated style changes made while concealed.");
+            });
+    }
+
+    private static Task RecoveryReadsLegacySnapshot() => WithVisibilityWindow(handle =>
+    {
+        WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, 0x40000);
+        var snapshot = WindowVisibilitySnapshot.Capture(handle)!;
+        Check.That(snapshot.Save(handle), "Create the old ownership record.");
+        WinApi.RemoveProp(handle, "WinTab.HiddenWindow.TaskbarStyle.v1");
+        ExplorerWindowVisibility.UpdateLayeredStyle(handle, remove: false);
+        WinApi.SetLayeredWindowAttributes(handle, 0, 0, WinApi.LWA_ALPHA);
+        ExplorerWindowVisibility.Hide(handle);
+        Check.That(ExplorerWindowVisibility.Restore(handle), "An opacity-only record must still be recoverable after another hide.");
+        Check.Equal(0x40000, WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WindowVisibilitySnapshot.TaskbarStyleMask,
+            "Upgrading the recovery record must retain the original taskbar style.");
+    });
+
     private static Task RecoveryRejectsReplacement() => WithVisibilityWindow(handle =>
     {
         var original = WindowIdentity.Capture(handle);
@@ -142,6 +176,7 @@ internal static class WindowSafetyTests
         const uint originalColorKey = 0x563412;
         const byte originalAlpha = 137;
         const uint originalFlags = 3;
+        WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, 0x40000);
         if (wasLayered)
         {
             ExplorerWindowVisibility.UpdateLayeredStyle(handle, remove: false);
@@ -179,6 +214,8 @@ internal static class WindowSafetyTests
                 Check.That((WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
                     "Recovery must remove only the layered style introduced by WinTab.");
             }
+            Check.Equal(0x40000, WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WindowVisibilitySnapshot.TaskbarStyleMask,
+                "Recovery after process exit must restore the persisted original taskbar style.");
             Check.That(!WinApi.IsWindowVisible(handle), "Recovery must not show a previously hidden window.");
             Check.That(!ExplorerWindowVisibility.Restore(handle), "Successful recovery must clear its persistent ownership record.");
         }

@@ -287,7 +287,8 @@ public class DualKeyDictionary<TPrimaryKey, TOptionalKey, TValue> :
         _primaryDict.TryGetValue(item.Key, out var value) && EqualityComparer<TValue?>.Default.Equals(value.Value, item.Value);
     public void CopyTo(KeyValuePair<TPrimaryKey, TValue>[] array, int index)
     {
-        if (index > array.Length) throw new ArgumentOutOfRangeException(nameof(index));
+        ArgumentNullException.ThrowIfNull(array);
+        if (index < 0 || index > array.Length) throw new ArgumentOutOfRangeException(nameof(index));
 
         if (array.Length - index < Count) throw new ArgumentException("Not enough space in the array to copy the elements.");
 
@@ -320,7 +321,7 @@ public class DualKeyDictionary<TPrimaryKey, TOptionalKey, TValue> :
     public bool TryGetValue(TOptionalKey optionalKey, out TPrimaryKey? primaryKey) => _optionalDict.TryGetValue(optionalKey, out primaryKey);
     public void Add(TPrimaryKey primaryKey, TValue value) => Add(primaryKey, value, default);
     public void Add(KeyValuePair<TPrimaryKey, TValue> item) => Add(item.Key, item.Value);
-    public bool Remove(KeyValuePair<TPrimaryKey, TValue> item) => Remove(item.Key);
+    public bool Remove(KeyValuePair<TPrimaryKey, TValue> item) => Contains(item) && Remove(item.Key);
     public bool Remove(TPrimaryKey primaryKey) => RemoveByPrimary(primaryKey);
     public bool Remove(TOptionalKey optionalKey) => RemoveByOptional(optionalKey);
     public bool ContainsKey(TPrimaryKey primaryKey) => ContainsPrimary(primaryKey);

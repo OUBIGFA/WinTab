@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using WinTab.WinAPI;
 
 namespace WinTab.Helpers;
@@ -13,6 +14,11 @@ public static class ExplorerWindowVisibility
         public bool Recovering;
         /// <summary>The taskbar button was removed for this concealment; it is not requested again on every re-hide.</summary>
         public bool ButtonRemoved;
+        // Serializes only taskbar COM, never the immediate opacity change. Recovery marks Recovering
+        // first, then waits here so a late DeleteTab cannot remove the restored window's button.
+        public readonly object TaskbarGate = new();
+        public bool ButtonRemovalPending;
+        public Task ButtonRemoval = Task.CompletedTask;
     }
 
     private static readonly ConcurrentDictionary<nint, VisibilityState> HiddenWindows = new();
@@ -49,12 +55,12 @@ public static class ExplorerWindowVisibility
         Hide(WindowIdentity.Capture(hWnd));
     }
 
-    internal static void Hide(WindowIdentity identity) => Hide(identity, TaskbarButton.Remove);
+    internal static void Hide(WindowIdentity identity) => _ = Hide(identity, TaskbarButton.Remove);
 
-    internal static void Hide(WindowIdentity identity, System.Func<nint, bool> removeButton)
+    internal static Task Hide(WindowIdentity identity, System.Func<nint, bool> removeButton)
     {
         if (!identity.IsCurrent)
-            return;
+            return Task.CompletedTask;
         var hWnd = identity.Handle;
         if (HiddenWindows.TryGetValue(hWnd, out var stale) && !stale.Identity.IsCurrent)
             Forget(stale.Identity);
@@ -62,26 +68,56 @@ public static class ExplorerWindowVisibility
         {
             var snapshot = WindowVisibilitySnapshot.Read(hWnd) ?? WindowVisibilitySnapshot.Capture(hWnd);
             if (snapshot == null)
-                return;
+                return Task.CompletedTask;
             state = HiddenWindows.GetOrAdd(hWnd, new VisibilityState(identity, snapshot));
         }
         lock (state)
         {
             if (state.Recovering || state.Identity != identity || !identity.IsCurrent)
-                return;
+                return Task.CompletedTask;
             if (!state.Snapshot.Save(hWnd))
             {
                 Trace.TraceError($"Window recovery record could not be saved; the source was not hidden: {hWnd}");
-                return;
+                return Task.CompletedTask;
             }
             UpdateLayeredStyle(hWnd, remove: false);
             WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
-            // A concealed frame is still a shown window to the taskbar, which would count it as a second
-            // Explorer window until it is closed. Without a button the merge leaves no trace on the taskbar.
-            if (!state.ButtonRemoved)
+            // Newer taskbars may acknowledge DeleteTab without removing the button. Exclude the
+            // concealed frame natively as well; the persisted snapshot owns only these two style bits.
+            SetTaskbarStyle(hWnd, 0x80); // WS_EX_TOOLWINDOW, without WS_EX_APPWINDOW
+            // Never call Explorer's taskbar COM from the WinEvent thread, or hold the opacity lock
+            // across it. A busy taskbar must not delay concealing this frame or the next one.
+            if (!state.ButtonRemoved && !state.ButtonRemovalPending)
             {
-                state.ButtonRemoved = removeButton(hWnd);
+                state.ButtonRemovalPending = true;
+                state.ButtonRemoval = Task.Run(() => RemoveTaskbarButton(state, removeButton));
             }
+            return state.ButtonRemoval;
+        }
+    }
+
+    private static void RemoveTaskbarButton(VisibilityState state, System.Func<nint, bool> removeButton)
+    {
+        try
+        {
+            lock (state.TaskbarGate)
+            {
+                lock (state)
+                    if (state.Recovering || !state.Identity.IsCurrent)
+                        return;
+                var removed = removeButton(state.Identity.Handle);
+                lock (state)
+                    state.ButtonRemoved = removed;
+            }
+        }
+        catch (System.Exception exception)
+        {
+            Trace.TraceError($"Taskbar removal failed for {state.Identity.Handle}: {exception.GetType().Name}:{exception.Message}");
+        }
+        finally
+        {
+            lock (state)
+                state.ButtonRemovalPending = false;
         }
     }
 
@@ -130,6 +166,18 @@ public static class ExplorerWindowVisibility
             state.Recovering = true;
             bool restored;
             var snapshot = state.Snapshot;
+            var wasToolWindow = (WinApi.GetWindowLong(identity.Handle, WinApi.GWL_EXSTYLE) & 0x80) != 0;
+            if (!SetTaskbarStyle(identity.Handle, snapshot.TaskbarStyle))
+                return false;
+            if (wasToolWindow && (snapshot.TaskbarStyle & 0x80) == 0 && WinApi.IsWindowVisible(identity.Handle))
+            {
+                // A frame first shown as a tool window may never have entered the taskbar's catalog.
+                // Re-register it while still transparent, preserving its size/minimized state and never
+                // activating it. Merely clearing WS_EX_TOOLWINDOW (or AddTab on newer shells) is not enough.
+                WinApi.ShowWindow(identity.Handle, 0); // SW_HIDE
+                WinApi.ShowWindow(identity.Handle, 8); // SW_SHOWNA, keep current placement without activation
+                if (!WinApi.IsWindowVisible(identity.Handle)) return false;
+            }
             if (snapshot.WasLayered)
             {
                 UpdateLayeredStyle(identity.Handle, remove: false);
@@ -141,16 +189,33 @@ public static class ExplorerWindowVisibility
                 UpdateLayeredStyle(identity.Handle, remove: true);
                 restored = (WinApi.GetWindowLong(identity.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0;
             }
-            if (restored)
-            {
-                // The button is put back whether this process removed it or an earlier one did; the taskbar
-                // only shows it once the window is visible.
-                restored = addButton(identity.Handle);
-                if (restored && removeCache)
-                    Forget(identity);
-            }
-            return restored;
+            if (!restored)
+                return false;
         }
+
+        // The removal worker either sees Recovering and does nothing, or finishes DeleteTab before
+        // AddTab. No visibility lock is held while Explorer answers these COM calls.
+        lock (state.TaskbarGate)
+        {
+            // Another recovery may have completed while this one waited for COM. A newly concealed
+            // lifetime of this same live HWND owns its own taskbar ordering; never issue a stale AddTab.
+            if (!HiddenWindows.TryGetValue(identity.Handle, out var current))
+                return identity.IsCurrent;
+            if (!ReferenceEquals(current, state) || !identity.IsCurrent || !addButton(identity.Handle))
+                return false;
+            if (removeCache)
+                Forget(identity);
+            return true;
+        }
+    }
+
+    private static bool SetTaskbarStyle(nint handle, int taskbarStyle)
+    {
+        var style = WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE);
+        var restored = (style & ~WindowVisibilitySnapshot.TaskbarStyleMask) | taskbarStyle;
+        if (style != restored)
+            WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, restored);
+        return (WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WindowVisibilitySnapshot.TaskbarStyleMask) == taskbarStyle;
     }
 
     public static void UpdateLayeredStyle(nint hWnd, bool remove)

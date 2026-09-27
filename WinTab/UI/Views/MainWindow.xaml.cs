@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     private const string MoonGlyph = "\uE708";
     private const int WM_ENTERSIZEMOVE = 0x0231;
     private const int WM_EXITSIZEMOVE = 0x0232;
-    private const double MaxWindowHeight = 900;
+    private const double MaxInitialWindowHeight = 900;
 
     private readonly HookManager _hookManager;
     private readonly SystemTrayIcon _trayIcon;
@@ -44,7 +44,7 @@ public partial class MainWindow : Window
         SyncSettingsIntoUi();
         ApplyTheme();
         ApplyLanguage();
-        ApplyInitialSize();
+        ApplyInitialSize(this, SettingsManager.FormSize, SystemParameters.WorkArea.Size);
         _hookManager.ApplySettings();
 
         if (SettingsManager.AutoUpdate)
@@ -141,8 +141,8 @@ public partial class MainWindow : Window
         RecordClosedTabsToggle.IsChecked = SettingsManager.ReopenClosedTab;
         GroupShortcutToggle.IsChecked = SettingsManager.RestoreGroupShortcutEnabled;
         TabShortcutToggle.IsChecked = SettingsManager.ReopenTabShortcutEnabled;
-        if (!GroupShortcutText.IsKeyboardFocusWithin) GroupShortcutText.Text = SettingsManager.RestoreGroupShortcut;
-        if (!TabShortcutText.IsKeyboardFocusWithin) TabShortcutText.Text = SettingsManager.ReopenTabShortcut;
+        GroupShortcutText.SyncSavedShortcut(SettingsManager.RestoreGroupShortcut);
+        TabShortcutText.SyncSavedShortcut(SettingsManager.ReopenTabShortcut);
         RestoreGroupButton.IsEnabled = _hookManager.IsShellReady;
         ReopenTabButton.IsEnabled = _hookManager.IsShellReady && SettingsManager.ReopenClosedTab;
         if (_hookManager.ShortcutError != null) SessionFeedbackText.Text = _hookManager.ShortcutError;
@@ -403,25 +403,23 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Restores a size the user chose; otherwise measures the content up to the maximum window height.
-    /// Content beyond that limit remains available through the scroll viewer.
+    /// Restores a size the user chose; otherwise measures the content up to the initial height limit.
+    /// This only chooses the starting size: the frame stays freely resizable and excess content scrolls.
     /// </summary>
-    private void ApplyInitialSize()
+    internal static void ApplyInitialSize(Window window, Size? savedSize, Size workArea)
     {
-        var workArea = SystemParameters.WorkArea;
-        MaxHeight = Math.Min(MaxWindowHeight, workArea.Height);
-
-        if (SettingsManager.FormSize is { } saved)
+        if (savedSize is { } saved)
         {
-            Width = saved.Width;
-            Height = Math.Min(saved.Height, MaxHeight);
+            window.Width = saved.Width;
+            window.Height = Math.Min(saved.Height, workArea.Height);
             return;
         }
 
-        Width = Math.Min(Width, workArea.Width);
-        var root = (FrameworkElement)Content;
-        root.Measure(new Size(Width, double.PositiveInfinity));
-        Height = Math.Min(Math.Max(Math.Ceiling(root.DesiredSize.Height), MinHeight), MaxHeight);
+        window.Width = Math.Min(window.Width, workArea.Width);
+        var root = (FrameworkElement)window.Content;
+        root.Measure(new Size(window.Width, double.PositiveInfinity));
+        var initialHeightLimit = Math.Min(MaxInitialWindowHeight, workArea.Height);
+        window.Height = Math.Min(Math.Max(Math.Ceiling(root.DesiredSize.Height), window.MinHeight), initialHeightLimit);
     }
 
     // Only a drag of the window frame is a size choice worth keeping. Layout-driven sizes, including

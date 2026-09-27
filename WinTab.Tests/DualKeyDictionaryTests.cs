@@ -12,6 +12,8 @@ internal static class DualKeyDictionaryTests
         yield return ("DualKeyDictionary UpdateOptionalKey re-points the optional lookup", UpdateOptionalKeyRepointsLookup);
         yield return ("DualKeyDictionary Remove clears both lookups", RemoveClearsBothLookups);
         yield return ("DualKeyDictionary rejects duplicate keys on Add and tolerates them on TryAdd", RejectsDuplicates);
+        yield return ("DualKeyDictionary pair removal requires both key and value", PairRemovalMatchesValue);
+        yield return ("DualKeyDictionary CopyTo validates arguments before copying", CopyValidatesArguments);
         yield return ("DualKeyDictionary enumeration yields every entry with its optional key", EnumerationYieldsEntries);
     }
 
@@ -76,6 +78,31 @@ internal static class DualKeyDictionaryTests
         Check.That(!dict.TryAdd("a", 3), "TryAdd must report false for a duplicate primary key");
         Check.That(!dict.TryAdd("c", 3, 10), "TryAdd must report false for a duplicate optional key");
         Check.That(dict.TryGetValue("a", out int value) && value == 1, "failed inserts must not modify the existing entry");
+        return Task.CompletedTask;
+    }
+
+    private static Task PairRemovalMatchesValue()
+    {
+        var dict = new DualKeyDictionary<string, nint?, int>();
+        dict.Add("a", 1, 10);
+        ICollection<KeyValuePair<string, int>> collection = dict;
+        Check.That(!collection.Remove(new("a", 2)), "A stale value must not remove the current entry.");
+        Check.That(dict.ContainsPrimary("a") && dict.ContainsOptional(10), "A mismatch must retain both lookups.");
+        Check.That(collection.Remove(new("a", 1)), "The matching pair must be removed.");
+        Check.That(dict.Count == 0 && !dict.ContainsOptional(10), "Matching removal must clear both lookups.");
+        return Task.CompletedTask;
+    }
+
+    private static Task CopyValidatesArguments()
+    {
+        var dict = new DualKeyDictionary<string, nint?, int>();
+        var array = new KeyValuePair<string, int>[2];
+        Check.Throws<ArgumentNullException>(() => dict.CopyTo(null!, 0), "Null destinations must be rejected.");
+        Check.Throws<ArgumentOutOfRangeException>(() => dict.CopyTo(array, -1), "Even an empty dictionary must reject a negative index.");
+        dict.Add("a", 1, 10);
+        Check.Throws<ArgumentException>(() => dict.CopyTo(array, 2), "Insufficient space must be rejected before writing.");
+        dict.CopyTo(array, 1);
+        Check.Equal(new KeyValuePair<string, int>("a", 1), array[1], "Valid copying must respect the offset.");
         return Task.CompletedTask;
     }
 

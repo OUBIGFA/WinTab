@@ -4,8 +4,10 @@ using WinTab.WinAPI;
 
 namespace WinTab.Helpers;
 
-internal sealed record WindowVisibilitySnapshot(bool WasLayered, uint ColorKey, byte Alpha, uint Flags, nint Token)
+internal sealed record WindowVisibilitySnapshot(bool WasLayered, uint ColorKey, byte Alpha, uint Flags, nint Token, int TaskbarStyle)
 {
+    internal const int TaskbarStyleMask = 0x00040080; // WS_EX_APPWINDOW | WS_EX_TOOLWINDOW
+    private const string TaskbarStyleProperty = "WinTab.HiddenWindow.TaskbarStyle.v1";
     private const string StateProperty = "WinTab.HiddenWindow.State.v1";
     private const string ColorKeyProperty = "WinTab.HiddenWindow.ColorKey.v1";
     private const string TokenProperty = "WinTab.HiddenWindow.Token.v1";
@@ -22,7 +24,8 @@ internal sealed record WindowVisibilitySnapshot(bool WasLayered, uint ColorKey, 
             Trace.TraceError($"Could not capture window opacity: {handle}");
             return null;
         }
-        return new WindowVisibilitySnapshot(wasLayered, colorKey, alpha, flags, Random.Shared.Next(1, int.MaxValue));
+        return new WindowVisibilitySnapshot(wasLayered, colorKey, alpha, flags, Random.Shared.Next(1, int.MaxValue),
+            WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & TaskbarStyleMask);
     }
 
     public static WindowVisibilitySnapshot? Read(nint handle)
@@ -33,22 +36,30 @@ internal sealed record WindowVisibilitySnapshot(bool WasLayered, uint ColorKey, 
             return null;
         var colorKey = unchecked((uint)WinApi.GetProp(handle, ColorKeyProperty).ToInt64());
         var flags = (uint)(state >> 9) & 3;
-        if (flags == 0 || WinApi.GetProp(handle, TokenProperty) != token)
+        if (flags == 0)
             return null;
-        return new WindowVisibilitySnapshot((state & 1) != 0, colorKey, (byte)((state >> 1) & 255), flags, token);
+        var savedStyle = WinApi.GetProp(handle, TaskbarStyleProperty).ToInt64();
+        // Older concealments did not alter these style bits, so their current bits are the original ones.
+        var taskbarStyle = (savedStyle & ~TaskbarStyleMask) == 1
+            ? (int)savedStyle & TaskbarStyleMask : WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & TaskbarStyleMask;
+        if (WinApi.GetProp(handle, TokenProperty) != token)
+            return null;
+        return new WindowVisibilitySnapshot((state & 1) != 0, colorKey, (byte)((state >> 1) & 255), flags, token, taskbarStyle);
     }
 
     public bool Save(nint handle)
     {
         var existingToken = WinApi.GetProp(handle, TokenProperty);
         if (existingToken != 0)
-            return existingToken == Token;
+            return existingToken == Token && WinApi.SetProp(handle, TaskbarStyleProperty, TaskbarStyle | 1);
         var state = StateMarker | (WasLayered ? 1 : 0) | (Alpha << 1) | ((int)Flags << 9);
-        if (WinApi.SetProp(handle, ColorKeyProperty, unchecked((nint)(int)ColorKey)) &&
+        if (WinApi.SetProp(handle, TaskbarStyleProperty, TaskbarStyle | 1) &&
+            WinApi.SetProp(handle, ColorKeyProperty, unchecked((nint)(int)ColorKey)) &&
             WinApi.SetProp(handle, StateProperty, state) && WinApi.SetProp(handle, TokenProperty, Token))
             return true;
         WinApi.RemoveProp(handle, StateProperty);
         WinApi.RemoveProp(handle, ColorKeyProperty);
+        WinApi.RemoveProp(handle, TaskbarStyleProperty);
         return false;
     }
 
@@ -59,5 +70,6 @@ internal sealed record WindowVisibilitySnapshot(bool WasLayered, uint ColorKey, 
         WinApi.RemoveProp(handle, TokenProperty);
         WinApi.RemoveProp(handle, StateProperty);
         WinApi.RemoveProp(handle, ColorKeyProperty);
+        WinApi.RemoveProp(handle, TaskbarStyleProperty);
     }
 }

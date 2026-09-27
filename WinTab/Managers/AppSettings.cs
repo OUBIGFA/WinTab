@@ -9,9 +9,9 @@ internal sealed record AppSettings
     public bool RestoreTabs { get; init; } = false;
     public bool ReopenClosedTab { get; init; } = true;
     public bool RestoreGroupShortcutEnabled { get; init; } = true;
-    public string RestoreGroupShortcut { get; init; } = "Ctrl+Shift+E";
+    public string RestoreGroupShortcut { get; init; } = "Alt+E";
     public bool ReopenTabShortcutEnabled { get; init; } = true;
-    public string ReopenTabShortcut { get; init; } = "Ctrl+Shift+T";
+    public string ReopenTabShortcut { get; init; } = "Alt+W";
     public bool RestoreOnAnyFolder { get; init; } = false;
     /// <summary>Off: a window with a single tab is neither saved nor restored as a tab group.</summary>
     public bool RestoreSingleTab { get; init; } = false;

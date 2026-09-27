@@ -397,10 +397,15 @@ public partial class ExplorerWatcher
     private bool RequestTabAtLocation(InternetExplorer browser, WindowIdentity mainWindowIdentity, string location)
     {
         EnsureWindowIdentity(mainWindowIdentity);
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        void LogStage(string stage) => ExplorerDebugLog.Write(
+            $"OpenTab direct request stage={stage} main={mainWindowIdentity.Handle} target={location} elapsedMs={System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0}");
+        LogStage("service-provider");
         // ReSharper disable once SuspiciousTypeConversion.Global
         if (browser is not Interop.IServiceProvider serviceProvider)
             return false;
 
+        LogStage("resolve-pidl");
         var pidl = _shellPathComparer.GetPidlFromPath(location);
         if (pidl == 0)
         {
@@ -410,13 +415,16 @@ public partial class ExplorerWatcher
 
         try
         {
+            LogStage("query-browser");
             serviceProvider.QueryService(ref _shellBrowserGuid, ref _shellBrowserGuid, out var shellBrowser);
             if (shellBrowser == null)
                 return false;
             try
             {
                 EnsureWindowIdentity(mainWindowIdentity);
+                LogStage("browse-object");
                 var result = shellBrowser.BrowseObject(pidl, NewTabBrowseFlags);
+                LogStage($"browse-returned-{result:X8}");
                 if (result == 0)
                     return true;
                 ExplorerDebugLog.Write($"OpenTab direct rejected hr={result:X8} target={location}");
@@ -435,6 +443,7 @@ public partial class ExplorerWatcher
         finally
         {
             Marshal.FreeCoTaskMem(pidl);
+            LogStage("finished");
         }
     }
 

@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 
 Console.InputEncoding = new UTF8Encoding(false);
 Console.OutputEncoding = new UTF8Encoding(false);
+if (Environment.GetEnvironmentVariable("WINTAB_TEST_TRACE") == "1")
+    System.Diagnostics.Trace.Listeners.Add(new System.Diagnostics.TextWriterTraceListener(Console.Error));
 // WinTab always logs, by default into the user's own log folder. The tests' hooks write to a file of their own
 // instead; the stress tests hand the WinTab they start its own log explicitly.
 Environment.SetEnvironmentVariable(WinTab.Hooks.ExplorerDebugLog.FileOverrideVariable,
@@ -62,6 +64,8 @@ internal static class UnitTestRunner
             .Concat(ExplorerSessionCommandTests.All())
             .Concat(ExplorerSessionJournalTests.All())
             .Concat(ExplorerShortcutTests.All())
+            .Concat(ShortcutTextBoxTests.All())
+            .Concat(MainWindowSizingTests.All())
             .Concat(RegistryManagerTests.All())
             .Concat(ThemeManagerTests.All())
             .Concat(HookManagerTests.All())
@@ -108,12 +112,18 @@ internal static class UnitTestRunner
         }
 
         var failed = 0;
+        var unavailable = 0;
         foreach (var (name, body) in tests)
         {
             try
             {
                 await body();
                 Console.WriteLine($"PASS {name}");
+            }
+            catch (TestSkippedException ex)
+            {
+                unavailable++;
+                Console.WriteLine($"SKIP {name}: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -127,7 +137,8 @@ internal static class UnitTestRunner
             }
         }
 
-        Console.WriteLine($"{tests.Count - failed}/{tests.Count} passed");
+        Console.WriteLine($"{tests.Count - failed - unavailable}/{tests.Count - unavailable} passed" +
+            (skipped + unavailable > 0 ? $" ({skipped + unavailable} skipped)" : string.Empty));
         return failed == 0 ? 0 : 1;
     }
 

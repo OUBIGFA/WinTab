@@ -30,23 +30,23 @@ WinTab is a Windows 11 utility that brings a single-window, multi-tab experience
 
 ## Restore last tab group
 
-While running, WinTab records groups by default, independently of automatic restoration. Normal closure saves the last closed window; shutdown or an Explorer crash retains the latest complete snapshot of the last-used window that was still open. Only one window is restored, not all historical windows. **Restore single-tab windows** remains off by default: groups need at least two tabs, and closing a single-tab window does not replace the saved group.
+WinTab records tab groups while running and restores only the last-used window: normal closure saves the last closed window, while shutdown or a crash restores the latest record of the last-used window. **Restore single-tab windows** is off by default: only windows with two or more tabs are recorded, and closing a single-tab window does not replace the saved group.
 
-The tray's separate recovery section and the settings page provide:
+The tray's recovery section and the settings page provide:
 
-- **Restore last tab group**: restore into a new independent window, keeping available tabs in order and selecting the saved active tab. Default shortcut: `Ctrl+Shift+E`.
-- **Reopen last closed tab**: reopen the most recently closed tab, preferring the current Explorer window. Enabled by default; default shortcut: `Ctrl+Shift+T`. Up to 25 closures are kept for the current WinTab run only; disabling this feature clears them. With tab reuse enabled, an already open location is selected instead.
+- **Restore last tab group**: restore the group in a new window, keeping tab order and the saved active tab. Shortcut `Alt+E`, works globally.
+- **Reopen last closed tab**: reopen the most recently closed tab, preferring the current window. Enabled by default; shortcut `Alt+W`, works only while Explorer is in the foreground. Up to 25 closures are kept until WinTab exits.
 
-Both shortcuts can be disabled separately or customized in settings. They only intercept input when Explorer is in the foreground, leaving browser shortcuts alone. Folder records are stored in `%APPDATA%\WinTab\session.json` and `session-live.json` (and their backups); treat these files as personal folder information.
+Both can be disabled or re-bound in settings. Folder records live in `%APPDATA%\WinTab\session.json` and its backups; treat them as personal folder information.
 
 ### Automatic restoration (optional)
 
-**Auto-restore last tab group** remains off by default. When enabled, restoration can only trigger in a newly opened window when no other File Explorer windows are open. It works independently of **Merge new windows**:
+**Auto-restore last tab group** is off by default. When enabled, only a newly opened window can trigger it, and only when no other File Explorer windows are open:
 
-- **Normal launch only (default)**: restore on a normal launch to Home, This PC or the start folder chosen in File Explorer's options. Opening a specific folder does not trigger restoration.
-- **Any folder**: always keep the initial tab active and append the saved tabs after it. Home, This PC and custom start locations opened from the taskbar are kept too, never closed.
+- **Normal launch only (default)**: restore on launch to Home, This PC or the configured start folder.
+- **Any folder**: keep the initial tab and append the saved tabs after it.
 
-Torn-off windows, separate windows opened with `Ctrl + Shift`, and windows already open when the feature is enabled or WinTab starts do not trigger restoration. Folders that no longer exist, network locations and unsupported locations are skipped; built-in pages such as Recycle Bin and Gallery are restored. Switching windows, switching tabs or browsing elsewhere during restoration stops it immediately, and so does a system that cannot create tabs in the background; the folder you opened is never affected.
+Torn-off windows, `Ctrl + Shift` windows and windows already open when the feature is enabled do not trigger restoration; missing or unsupported locations are skipped. Switching windows or tabs stops the restoration.
 
 ## Diagnostic logs
 

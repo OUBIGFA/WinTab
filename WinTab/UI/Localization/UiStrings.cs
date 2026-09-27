@@ -87,7 +87,7 @@ internal static class UiStrings
     public static string RestoreNow => Pick("立即恢复", "Restore now");
     public static string ShortcutEnabled => Pick("启用快捷键", "Enable shortcut");
     public static string ShortcutSave => Pick("应用快捷键", "Apply shortcuts");
-    public static string ShortcutHint => Pick("快捷键仅在资源管理器中生效，不影响浏览器；支持 Ctrl / Alt 与字母、数字、F1–F24，可加 Shift", "Shortcuts work only in Explorer, not browsers; use Ctrl / Alt with a letter, digit or F1–F24; Shift is optional");
+    public static string ShortcutHint => Pick("标签组恢复快捷键全局生效，单标签恢复快捷键仅在资源管理器中生效；支持 Ctrl / Alt 与字母、主键盘数字、F1–F24，可加 Shift", "Group recovery shortcuts work globally; closed-tab recovery shortcuts work only in Explorer; use Ctrl / Alt with a letter, top-row digit or F1–F24; Shift is optional");
     public static string ShortcutInvalid => Pick("快捷键无效，请使用 Ctrl / Alt + 字母、数字或 F1–F24", "Invalid shortcut; use Ctrl / Alt + a letter, digit or F1–F24");
     public static string ShortcutDuplicate => Pick("两个恢复功能不能使用相同快捷键", "The two recovery commands must use different shortcuts");
     public static string ShortcutUnavailable => Pick("快捷键未能启用；仍可使用恢复按钮", "Shortcuts could not be enabled; recovery buttons remain available");

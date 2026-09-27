@@ -1,13 +1,15 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Threading;
 using WinTab.Helpers;
 using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
-/// <summary>Explorer-only shortcuts; no RegisterHotKey reservation that would steal browser shortcuts.</summary>
+/// <summary>Global group recovery and Explorer-only tab recovery, without reserving unrelated browser shortcuts.</summary>
 internal sealed class ExplorerSessionShortcutHook : IDisposable
 {
     private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
@@ -52,19 +54,15 @@ internal sealed class ExplorerSessionShortcutHook : IDisposable
             var foreground = WinApi.GetForegroundWindow();
             var explorer = ExplorerWindowDiscovery.IsFileExplorerWindow(foreground);
             var modifiers = (Down(0x11) ? ShortcutModifiers.Control : 0) |
-                (Down(0x10) ? ShortcutModifiers.Shift : 0) | (Down(0x12) ? ShortcutModifiers.Alt : 0);
-            // Win-modified keys belong to Windows, not these shortcuts.
-            explorer &= !Down(0x5B) && !Down(0x5C);
-            var consumed = _dispatch.Handle((int)key.Key, down, modifiers, explorer, (key.Flags & 0x12) != 0, out var action);
-            if (action is { } command)
-            {
-                var identity = WindowIdentity.Capture(foreground);
-                _dispatcher.BeginInvoke(() =>
-                {
-                    if (!_disposed && identity.IsCurrent && WinApi.GetForegroundWindow() == identity.Handle)
-                        _execute(command);
-                }, DispatcherPriority.Background);
-            }
+                (Down(0x10) ? ShortcutModifiers.Shift : 0) | (Down(0x12) ? ShortcutModifiers.Alt : 0) |
+                (Down(0x5B) || Down(0x5C) ? ShortcutModifiers.Windows : 0);
+            // A shortcut field must receive the chord being entered, including the currently saved one.
+            WinApi.GetWindowThreadProcessId(foreground, out var processId);
+            var editing = processId == (uint)Environment.ProcessId &&
+                Keyboard.FocusedElement is TextBoxBase { IsKeyboardFocusWithin: true };
+            var consumed = _dispatch.Handle((int)key.Key, down, modifiers, explorer, (key.Flags & 0x12) != 0,
+                out var action, suppressCommands: editing);
+            if (action is { } command) QueueCommand(command, foreground);
             if (consumed) return 1;
         }
         catch (Exception exception)
@@ -73,6 +71,17 @@ internal sealed class ExplorerSessionShortcutHook : IDisposable
             _dispatcher.BeginInvoke(() => Failed?.Invoke(exception.Message));
         }
         return CallNextHookEx(_hook, code, message, data);
+    }
+
+    internal void QueueCommand(SessionAction command, nint foreground)
+    {
+        var identity = command == SessionAction.ReopenTab ? WindowIdentity.Capture(foreground) : default;
+        _dispatcher.BeginInvoke(() =>
+        {
+            if (!_disposed && (command == SessionAction.RestoreGroup ||
+                identity.IsCurrent && WinApi.GetForegroundWindow() == identity.Handle))
+                _execute(command);
+        }, DispatcherPriority.Background);
     }
 
     private static bool Down(int key) => (WinApi.GetAsyncKeyState(key) & 0x8000) != 0;

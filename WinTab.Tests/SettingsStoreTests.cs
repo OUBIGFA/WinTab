@@ -28,6 +28,7 @@ internal static class SettingsStoreTests
         yield return ("settings writes coalesce changes without concurrent file access", WritesLatestSnapshot);
         yield return ("settings save failure is reported without losing in-memory state", ReportsWriteFailure);
         yield return ("an unexpected settings save failure still completes and a later save succeeds", RecoversFromUnexpectedWriteFailure);
+        yield return ("settings save notifications cannot strand pending saves", NotificationFailureDoesNotStrandSaves);
         yield return ("settings retain a valid backup and recover from a damaged primary file", RecoversBackup);
         yield return ("settings recover a backup after a negative width", () => RecoversInvalidValues("""{"FormSize":{"Width":-1,"Height":720}}"""));
         yield return ("settings recover a backup after a negative height", () => RecoversInvalidValues("""{"FormSize":{"Width":1020,"Height":-1}}"""));
@@ -242,6 +243,28 @@ internal static class SettingsStoreTests
         Check.That(await store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5)), "A later save must run once the failure has passed.");
         Check.That(written is { AutoUpdate: false, ShowTrayIcon: false }, "The later save must write every pending change.");
         Check.That(store.LastError is null, "A successful save must clear the earlier error.");
+    }
+
+    private static async Task NotificationFailureDoesNotStrandSaves()
+    {
+        var fail = true;
+        AppSettings? written = null;
+        using var store = new SettingsStore(NewPath(), settings =>
+        {
+            if (fail) throw new IOException("Disk unavailable");
+            written = settings;
+        });
+        store.ErrorChanged += () => throw new InvalidOperationException("Status subscriber failed");
+        store.Update(settings => settings with { AutoUpdate = false }, deferred: true);
+        Check.That(!await store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(2)),
+            "A throwing error subscriber must not keep the failed save pending forever.");
+        Check.That(store.LastError is IOException, "The storage failure, not the notification failure, must be retained.");
+        fail = false;
+        store.Update(settings => settings with { ShowTrayIcon = false }, deferred: true);
+        Check.That(await store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(2)),
+            "A throwing recovery subscriber must not strand a successful retry.");
+        Check.That(written is { AutoUpdate: false, ShowTrayIcon: false } && store.LastError == null,
+            "All pending edits must save and clear the storage error after recovery.");
     }
 
     private static async Task ReportsWriteFailure()

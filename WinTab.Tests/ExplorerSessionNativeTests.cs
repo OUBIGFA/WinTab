@@ -19,6 +19,8 @@ internal static class ExplorerSessionNativeTests
 
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("session restore tolerates a late foreground callback after disposal", () => RetiredAttemptIgnoresCallbacks(false));
+        yield return ("session restore tolerates a late navigation callback after disposal", () => RetiredAttemptIgnoresCallbacks(true));
         yield return ("session native requested restore ignores automatic toggle and generation", RequestedRestoreIsIndependent);
         yield return ("session native restore remains active with merging and its lifetime disabled", IndependentFromMergeLifetime);
         yield return ("session native restore rejects a disabled restore toggle", () => GuardRejects((fixture, _) => Set(fixture.Watcher, "_restoreTabs", false)));
@@ -44,6 +46,23 @@ internal static class ExplorerSessionNativeTests
         yield return ("session watcher cancels a restore when foreground leaves and returns during resolution", ForegroundRoundTripCancelsRestore);
         yield return ("session watcher does not let a window closed before its restore replace the saved group", PendingRestoreIsNotHistory);
         yield return ("session watcher treats the configured Explorer start folder as a normal launch", ConfiguredStartFolderIsNormalLaunch);
+    }
+
+    private static Task RetiredAttemptIgnoresCallbacks(bool navigation)
+    {
+        var type = typeof(ExplorerWatcher).GetNestedType("SessionRestoreAttempt", BindingFlags.NonPublic)!;
+        using var attempt = (IDisposable)Activator.CreateInstance(type,
+            [CancellationToken.None, true, default(WindowIdentity)])!;
+        type.GetMethod("ArmNavigation")!.Invoke(attempt, null);
+        var token = (CancellationToken)type.GetProperty("Token")!.GetValue(attempt)!;
+        attempt.Dispose();
+        // A concurrent dictionary enumerator can retain this attempt after its owner removes and disposes it.
+        if (navigation)
+            type.GetMethod("InitialTabNavigated")!.Invoke(attempt, null);
+        else
+            type.GetMethod("ObserveForeground")!.Invoke(attempt, [false]);
+        Check.That(!token.IsCancellationRequested, "Retired callbacks must be inert rather than touch the disposed source.");
+        return Task.CompletedTask;
     }
 
     private static Task RequestedRestoreIsIndependent() => WithNative(async (fixture, environment, _) =>

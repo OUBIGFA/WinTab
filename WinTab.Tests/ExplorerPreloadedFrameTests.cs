@@ -23,6 +23,14 @@ internal static class ExplorerPreloadedFrameTests
         yield return ("a preloaded frame shown after the old budget stays an unprotected merge source", ShownPreloadedFrameStaysMergeable);
         yield return ("a hidden Explorer frame is never chosen as a merge target", HiddenFrameIsNotAMergeTarget);
         yield return ("hidden Explorer frames are concealed when merging starts", HiddenFramesAreConcealedOnStart);
+        yield return ("frame maintenance conceals preloads created after the last event pulse", LatePreloadIsConcealed);
+        yield return ("frame maintenance repairs opacity resets throughout preload lifetime", PreloadOpacityIsMaintained);
+        yield return ("hidden catalog frames wait for their first show before registration", HiddenCatalogFrameWaitsForShow);
+        yield return ("recycled frames do not inherit an old registration hiding exemption", RecycledFrameDoesNotInheritRegistration);
+        yield return ("recycled frames do not inherit the old main window hiding exemption", RecycledFrameDoesNotInheritMainWindow);
+        yield return ("native frame maintenance leaves current user windows and stopped hooks alone", MaintenancePreservesUserWindows);
+        yield return ("frame maintenance keeps pending closes concealed past the merge deadline", PendingCloseMaintenanceOutlivesDeadline);
+        yield return ("continuous preload maintenance cannot postpone expired source recovery", MaintenanceCannotStarveRecovery);
         yield return ("a hidden Explorer frame does not cause periodic COM scans", HiddenFrameDoesNotRescanCatalog);
         yield return ("a source that closes after a slow close acknowledgement counts as merged", SlowCloseAcknowledgementStillCounts);
         yield return ("a source that stays open after the close request is restored", UnclosedSourceIsRestored);
@@ -117,6 +125,154 @@ internal static class ExplorerPreloadedFrameTests
         fixture.Invoke("RecoverHiddenExplorerWindows", "test-start-cleanup");
         return Task.CompletedTask;
     }, tabCount: 1);
+
+    private static Task LatePreloadIsConcealed() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        fixture.EnableMerging();
+        fixture.SetExplorerWindows();
+        fixture.MaintainFrameConcealment();
+        await Task.Delay(1_600); // No running event pulse when Explorer creates this replacement preload.
+        using var frame = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        fixture.SetExplorerWindows(frame.Handle);
+        fixture.MaintainFrameConcealment();
+        CheckConcealed(frame.Handle, "A missed create event must not leave a late preload unprotected until SHOW.");
+        Check.Equal(Fixture.MergeTimeoutMs, fixture.RemainingMergeTime(frame.Handle), "Maintenance must not spend the hidden frame's merge budget.");
+        fixture.Invoke("RecoverHiddenExplorerWindows", "test-late-preload-cleanup");
+    }, tabCount: 1);
+
+    private static Task PreloadOpacityIsMaintained() => ExplorerTabLifetimeTests.WithFixture(fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        fixture.EnableMerging();
+        fixture.SetExplorerWindows(frame.Handle);
+        fixture.MaintainFrameConcealment();
+        for (var cycle = 0; cycle < 100; cycle++)
+        {
+            // Explorer can rewrite the style or alpha without another create/show notification.
+            if (cycle % 2 == 0)
+                ExplorerWindowVisibility.UpdateLayeredStyle(frame.Handle, remove: true);
+            else
+                WinApi.SetLayeredWindowAttributes(frame.Handle, 0, 255, WinApi.LWA_ALPHA);
+            fixture.MaintainFrameConcealment();
+            CheckConcealed(frame.Handle, $"Preload opacity must remain maintained on cycle {cycle}.");
+            Check.Equal(Fixture.MergeTimeoutMs, fixture.RemainingMergeTime(frame.Handle), "Idle maintenance must not start a merge.");
+        }
+        fixture.Invoke("RecoverHiddenExplorerWindows", "test-preload-opacity-cleanup");
+        Check.That((WinApi.GetWindowLong(frame.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+            "Maintenance must retain the original recovery snapshot rather than the intermediate transparent style.");
+        return Task.CompletedTask;
+    }, tabCount: 1);
+
+    private static Task HiddenCatalogFrameWaitsForShow() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        fixture.EnableMerging();
+        fixture.SetExplorerWindows(frame.Handle);
+        fixture.MaintainFrameConcealment();
+        var locationReads = 0;
+        var browser = fixture.AddBrowser(out _, track: false, handle: frame.Handle, readLocation: () => locationReads++);
+        fixture.SetCatalog(browser);
+        await (Task)fixture.Invoke("ProcessRegisteredShellWindowsAsync")!;
+        await Task.Delay(Fixture.MergeTimeoutMs + 100);
+        fixture.RunMergeSafetyTimer();
+        Check.Equal(0, fixture.Count, "A hidden catalog frame is not an independent window or an active merge.");
+        Check.Equal(0, locationReads, "Preloading must not resolve or open a folder before the user opens it.");
+        CheckConcealed(frame.Handle, "Catalog publication must not undo the preload's concealment.");
+        Check.That(!(bool)fixture.Invoke("IsWindowProtected", frame.Handle)!, "The later folder launch must not inherit a protection grace period.");
+
+        WinApi.ShowWindow(frame.Handle, WinApi.SW_SHOWNOACTIVATE);
+        fixture.MaintainFrameConcealment();
+        fixture.Invoke("AdoptNewShellWindows");
+        Check.Equal(1, fixture.Count, "The first show makes the catalog frame eligible for registration.");
+        CheckConcealed(frame.Handle, "The first show must remain concealed while registration catches up.");
+        fixture.Invoke("RecoverHiddenExplorerWindows", "test-hidden-catalog-cleanup");
+    }, tabCount: 1);
+
+    private static Task RecycledFrameDoesNotInheritRegistration() => ExplorerTabLifetimeTests.WithFixture(fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        fixture.EnableMerging();
+        var oldBrowser = fixture.AddBrowser(out var oldInfo, frame.Tab, handle: frame.Handle);
+        fixture.Invoke("HookWindowEvents", oldBrowser, oldInfo);
+        Check.That(!(bool)fixture.Invoke("TryHideIncomingExplorerWindow", frame.Handle)!, "The live original registration must be protected.");
+        oldInfo.Identity.Release(); // Same HWND/thread/process but a different native lifetime token.
+        Check.That(WindowIdentity.Capture(frame.Handle).IsCurrent, "The replacement identity must be current.");
+        Check.That((bool)fixture.Invoke("TryHideIncomingExplorerWindow", frame.Handle)!,
+            "A stale registration must not exempt a replacement from early concealment.");
+        CheckConcealed(frame.Handle, "The replacement must be hidden before catalog cleanup.");
+        fixture.Invoke("RecoverHiddenExplorerWindows", "test-recycled-registration-cleanup");
+        return Task.CompletedTask;
+    }, tabCount: 1);
+
+    private static Task RecycledFrameDoesNotInheritMainWindow() => ExplorerTabLifetimeTests.WithFixture(fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        fixture.EnableMerging();
+        fixture.CacheMainWindow(frame.Handle);
+        Check.That(!(bool)fixture.Invoke("TryHideIncomingExplorerWindow", frame.Handle)!, "The live main window must be protected.");
+        WindowIdentity.Capture(frame.Handle).Release();
+        Check.That((bool)fixture.Invoke("TryHideIncomingExplorerWindow", frame.Handle)!,
+            "A main window's cached HWND must not protect a different window lifetime.");
+        CheckConcealed(frame.Handle, "A recycled main HWND must be concealed before registration.");
+        fixture.Invoke("RecoverHiddenExplorerWindows", "test-recycled-main-cleanup");
+        return Task.CompletedTask;
+    }, tabCount: 1);
+
+    private static Task MaintenancePreservesUserWindows() => ExplorerTabLifetimeTests.WithFixture(fixture =>
+    {
+        using var shown = new RemoteExplorerFrame(visible: true, explorerClass: true);
+        using var registered = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        using var preload = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        fixture.EnableMerging();
+        fixture.MarkHooked(registered.Handle);
+        fixture.SetExplorerWindows(shown.Handle, registered.Handle);
+        fixture.MaintainFrameConcealment();
+        Check.That(!ExplorerWindowVisibility.Contains(shown.Handle), "Maintenance must not claim existing shown windows.");
+        Check.That(!ExplorerWindowVisibility.Contains(registered.Handle), "A live registered window remains protected while natively hidden.");
+        fixture.DisableMerging();
+        fixture.SetExplorerWindows(preload.Handle);
+        fixture.MaintainFrameConcealment();
+        Check.That(!ExplorerWindowVisibility.Contains(preload.Handle), "A stopped hook must not conceal new preloads.");
+        return Task.CompletedTask;
+    }, tabCount: 1);
+
+    private static Task PendingCloseMaintenanceOutlivesDeadline() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: true, explorerClass: true);
+        fixture.EnableMerging();
+        fixture.Invoke("HideMergeSourceWindow", frame.Handle);
+        Check.That((bool)fixture.Invoke("MarkClosePending", frame.Handle)!, "The source must be marked as handling its close.");
+        await Task.Delay(Fixture.MergeTimeoutMs + 100);
+        WinApi.SetLayeredWindowAttributes(frame.Handle, 0, 255, WinApi.LWA_ALPHA);
+        fixture.MaintainFrameConcealment();
+        CheckConcealed(frame.Handle, "A pending close must remain concealed even after the original merge deadline.");
+        fixture.Invoke("RecoverHiddenExplorerWindows", "test-pending-deadline-cleanup");
+    }, tabCount: 1);
+
+    private static Task MaintenanceCannotStarveRecovery() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        using var preload = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        using var shown = new RemoteExplorerFrame(visible: true, explorerClass: true);
+        using var safetyTimer = fixture.StartMergeSafetyTimer();
+        fixture.EnableMerging();
+        fixture.SetExplorerWindows(preload.Handle);
+        fixture.Invoke("HideMergeSourceWindow", shown.Handle);
+        var until = Environment.TickCount64 + Fixture.MergeTimeoutMs + 750;
+        while (Environment.TickCount64 < until)
+        {
+            fixture.MaintainFrameConcealment();
+            await Task.Delay(20);
+        }
+        Check.That(!ExplorerWindowVisibility.Contains(shown.Handle),
+            "Frequent re-hides must not keep restarting the recovery timer before it can run.");
+        CheckConcealed(preload.Handle, "Recovering an expired source must leave the unused preload concealed.");
+        fixture.Invoke("RecoverHiddenExplorerWindows", "test-recovery-timer-cleanup");
+    }, tabCount: 1);
+
+    private static void CheckConcealed(nint handle, string message) => Check.That(
+        ExplorerWindowVisibility.Contains(handle) &&
+        WinApi.GetLayeredWindowAttributes(handle, out _, out var alpha, out var flags) &&
+        (flags & WinApi.LWA_ALPHA) != 0 && alpha == 0, message);
 
     private static Task HiddenFrameDoesNotRescanCatalog() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
     {

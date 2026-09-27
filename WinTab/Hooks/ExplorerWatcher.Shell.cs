@@ -101,7 +101,7 @@ public partial class ExplorerWatcher
         RecoverHiddenExplorerWindows("initialize-shell");
 
         if (ExplorerWindowDiscovery.IsFileExplorerForeground(out var foregroundWindow))
-            _mainWindowHandle = foregroundWindow;
+            MainWindowHandle = foregroundWindow;
 
         // Hook the global "WindowRegistered" event
         _windowRegisteredHandler = OnShellWindowRegistered;
@@ -129,6 +129,9 @@ public partial class ExplorerWatcher
                     continue;
 
                 windowInfo = CreateWindowInfo(window);
+                if (ExplorerWindowDiscovery.IsFileExplorerWindow(windowInfo.Identity.Handle) &&
+                    !WinAPI.WinApi.IsWindowVisible(windowInfo.Identity.Handle))
+                    continue;
                 _windowEntryDict.Add(window, windowInfo);
 
             }
@@ -137,8 +140,8 @@ public partial class ExplorerWatcher
                 _preloadedSessionCandidates.TryAdd(windowInfo.Identity, (window, windowInfo));
             PreventWindowHiding(new IntPtr(window.HWND));
 
-            if (_mainWindowHandle == 0)
-                _mainWindowHandle = new IntPtr(window.HWND);
+            if (MainWindowHandle == 0)
+                MainWindowHandle = new IntPtr(window.HWND);
 
             registrations.Add(RegisterIndependentWindowAsync(window, windowInfo, windowInfo.Identity.Handle));
         }
@@ -223,7 +226,7 @@ public partial class ExplorerWatcher
             _closedWindows.Clear();
         ClearShellCaches();
         _processedHWnds.Clear();
-        _mainWindowHandle = 0;
+        MainWindowHandle = 0;
     }
 
     private void ClearShellCaches()

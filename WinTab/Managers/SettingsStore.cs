@@ -105,7 +105,13 @@ internal sealed class SettingsStore : IDisposable
 
             var previousError = Interlocked.Exchange(ref _lastError, error);
             if (error != null || previousError != null)
-                ErrorChanged?.Invoke();
+            {
+                try { ErrorChanged?.Invoke(); }
+                catch (Exception exception)
+                {
+                    System.Diagnostics.Trace.TraceError($"Settings storage status notification failed: {exception}");
+                }
+            }
 
             lock (_gate)
             {
