@@ -96,8 +96,10 @@ internal sealed class SettingsStore : IDisposable
             {
                 _write(snapshot);
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+            catch (Exception exception)
             {
+                // Any failure must still complete the pending save; an escaped one would leave every later
+                // save waiting on a flush that never finishes.
                 error = exception;
             }
 

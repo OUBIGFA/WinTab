@@ -5,18 +5,48 @@ using System.Text.Json.Nodes;
 
 namespace WinTab.Managers;
 
+/// <param name="TagName">The release tag as published, such as v2.1.0.</param>
+/// <param name="Version">The tag as a version with every component present, comparable with the installed one.</param>
+/// <param name="DisplayVersion">The version as shown to the user, without an unused fourth component.</param>
+/// <param name="DownloadUrl">The installer for this process's architecture, or null when the release has none.</param>
+internal sealed record UpdateRelease(string TagName, Version Version, string DisplayVersion, string Changelog,
+    string ReleaseUrl, string? DownloadUrl);
+
+/// <summary>
+/// Reads GitHub's latest-release answer. The manual check and the automatic updater both read it here, so they
+/// agree on which tags are versions and which installer belongs to this process.
+/// </summary>
 internal static class UpdateReleaseParser
 {
+    /// <summary>False when the answer is not a release object or its tag is not a version.</summary>
+    public static bool TryParseRelease(JsonNode? releaseNode, Architecture architecture, out UpdateRelease release)
+    {
+        release = null!;
+        if (releaseNode is not JsonObject releaseObject ||
+            ReadString(releaseObject, "tag_name") is not { } tagName || string.IsNullOrWhiteSpace(tagName) ||
+            !TryNormalizeVersion(tagName, out var version))
+            return false;
+
+        release = new UpdateRelease(tagName, version,
+            version.Revision == 0 ? version.ToString(3) : version.ToString(),
+            ReadString(releaseObject, "body") ?? string.Empty,
+            ReadString(releaseObject, "html_url") ?? string.Empty,
+            FindMatchingAssetUrl(releaseObject, architecture));
+        return true;
+    }
+
     public static string? FindMatchingAssetUrl(JsonNode releaseNode, Architecture architecture)
     {
-        if (releaseNode["assets"] is not JsonArray assets)
+        if (releaseNode is not JsonObject releaseObject || releaseObject["assets"] is not JsonArray assets)
             return null;
 
         var setupAssets = new List<(string Name, string Url)>();
         foreach (var asset in assets)
         {
-            var assetName = asset?["name"]?.GetValue<string>();
-            var downloadUrl = asset?["browser_download_url"]?.GetValue<string>();
+            if (asset is not JsonObject assetObject)
+                continue;
+            var assetName = ReadString(assetObject, "name");
+            var downloadUrl = ReadString(assetObject, "browser_download_url");
 
             if (!string.IsNullOrWhiteSpace(assetName) &&
                 !string.IsNullOrWhiteSpace(downloadUrl) &&
@@ -69,6 +99,10 @@ internal static class UpdateReleaseParser
             Math.Max(0, version.Build),
             Math.Max(0, version.Revision));
     }
+
+    /// <summary>A text property, or null when it is missing or of another type.</summary>
+    private static string? ReadString(JsonObject node, string name) =>
+        node[name] is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 
     private static string? GetInstallerArchitectureSuffix(Architecture architecture)
     {

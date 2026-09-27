@@ -11,6 +11,25 @@ internal static class StaTaskSchedulerTests
     {
         yield return ("STA shutdown does not wait forever for an unresponsive operation", ShutdownIsBounded);
         yield return ("STA worker pumps shell notification messages while idle", PumpsMessages);
+        yield return ("a slow STA worker start is waited for instead of failing", SlowStartIsWaitedFor);
+        yield return ("a failed STA worker start reports its own error", FailedStartReportsError);
+    }
+
+    private static async Task SlowStartIsWaitedFor()
+    {
+        using var scheduler = new StaTaskScheduler(() => Thread.Sleep(2_600));
+        var ranOnWorker = await Task.Factory.StartNew(() => scheduler.IsCurrentThread,
+            CancellationToken.None, TaskCreationOptions.None, scheduler);
+        Check.That(ranOnWorker, "Work must run on the worker once its late start completes.");
+    }
+
+    private static Task FailedStartReportsError()
+    {
+        var error = Check.Throws<InvalidOperationException>(
+            () => new StaTaskScheduler(() => throw new InvalidOperationException("No message queue")),
+            "A worker that cannot start must fail its creation.");
+        Check.Equal("No message queue", error.Message, "The creation must report the worker's own failure.");
+        return Task.CompletedTask;
     }
 
     private static async Task PumpsMessages()

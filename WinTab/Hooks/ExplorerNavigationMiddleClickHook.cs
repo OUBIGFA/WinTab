@@ -30,7 +30,6 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
     internal ExplorerNavigationMiddleClickHook(Func<ExplorerNavigationMiddleClickHook, IDisposable> observeInput) =>
         _observeInput = observeInput;
 
-    public event Action<string>? StatusChanged;
     public bool IsHookActive => _active;
 
     public void StartHook()
@@ -224,8 +223,6 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
             ExplorerDebugLog.Write($"Navigation activation result={result} hwnd={click.Window.Handle} at {Elapsed()}");
             _clicks.Complete(lease);
         }
-        if (result == NavigationActivationResult.Activated)
-            StatusChanged?.Invoke("Activated Explorer tab opened by middle-click.");
         return result;
     }
 

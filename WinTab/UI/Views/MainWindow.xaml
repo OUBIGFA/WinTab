@@ -278,6 +278,11 @@
                         </Border>
                     </StackPanel>
                 </Border>
+                <TextBlock x:Name="HookErrorText"
+                           Style="{StaticResource FootnoteStyle}"
+                           Foreground="{DynamicResource TextPrimaryBrush}"
+                           Visibility="Collapsed"
+                           AutomationProperties.LiveSetting="Polite" />
                 <TextBlock x:Name="BypassHintText"
                            Text="Hold Ctrl + Shift while opening folders to keep a separate window"
                            Style="{StaticResource FootnoteStyle}" />

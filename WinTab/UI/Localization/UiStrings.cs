@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using WinTab.Managers;
 
 namespace WinTab.UI.Localization;
@@ -58,6 +60,23 @@ internal static class UiStrings
     public static string ShowTrayIconHiddenDescription => Pick("后台继续运行，再次启动 WinTab 可打开设置", "Runs in background; launch WinTab again to open settings");
     public static string AutoUpdateTitle => Pick("自动检查更新", "Check for updates automatically");
     public static string AutoUpdateDescription => Pick("有新版本时主动提醒", "Notify when updates are available");
+
+    public static string HookFeatureName(HookFeature feature) => feature switch
+    {
+        HookFeature.MergeWindows => WindowHookTitle,
+        HookFeature.DoubleClickClose => DoubleClickTitle,
+        HookFeature.MiddleClickForeground => MiddleClickTitle,
+        HookFeature.WheelSwitch => WheelSwitchTitle,
+        _ => throw new ArgumentOutOfRangeException(nameof(feature), feature, null)
+    };
+
+    public static string HookFeaturesMismatched(IEnumerable<HookFeature> features)
+    {
+        var names = features.Select(HookFeatureName).ToArray();
+        return IsChinese
+            ? $"以下功能未能按设置生效：{string.Join("、", names)}；可重新切换开关重试，或打开日志查看原因"
+            : $"Not applied as set: {string.Join(", ", names)}; switch the setting off and on to retry, or open the logs for details";
+    }
 
     // Manual recovery, independent of automatic restoration.
     public static string RecoveryTitle => Pick("标签恢复", "Tab recovery");

@@ -11,6 +11,8 @@ namespace WinTab.Helpers;
 
 public sealed class StaTaskScheduler : TaskScheduler, IDisposable
 {
+    private const int SlowStartMs = 2_000;
+    private readonly Action? _beforeReady;
     private readonly Thread _staThread;
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<int, Task> _tasks = new();
@@ -18,12 +20,20 @@ public sealed class StaTaskScheduler : TaskScheduler, IDisposable
     private readonly Dispatcher _dispatcher;
     private bool _disposed;
 
-    public StaTaskScheduler()
+    public StaTaskScheduler() : this(null) { }
+
+    /// <param name="beforeReady">Runs on the new thread before its dispatcher exists; tests use it to delay or fail the start.</param>
+    internal StaTaskScheduler(Action? beforeReady)
     {
+        _beforeReady = beforeReady;
         _staThread = new Thread(Run) { IsBackground = true, Name = "WinTab shell worker" };
         _staThread.SetApartmentState(ApartmentState.STA);
         _staThread.Start();
-        _dispatcher = _ready.Task.WaitAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+        // Creating a dispatcher waits on nothing outside this process, so a slow start (a busy system at
+        // sign-in) is only late, never stuck; a fixed deadline would fail WinTab's whole start instead.
+        if (!((IAsyncResult)_ready.Task).AsyncWaitHandle.WaitOne(SlowStartMs))
+            Trace.TraceWarning($"Shell worker has not started after {SlowStartMs} ms; still waiting.");
+        _dispatcher = _ready.Task.GetAwaiter().GetResult();
     }
 
     public override int MaximumConcurrencyLevel => 1;
@@ -32,8 +42,19 @@ public sealed class StaTaskScheduler : TaskScheduler, IDisposable
 
     private void Run()
     {
-        var dispatcher = Dispatcher.CurrentDispatcher;
-        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+        Dispatcher dispatcher;
+        try
+        {
+            _beforeReady?.Invoke();
+            dispatcher = Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+        }
+        catch (Exception exception)
+        {
+            // The constructor reports the real failure instead of waiting for a dispatcher that never comes.
+            _ready.TrySetException(exception);
+            return;
+        }
         _ready.TrySetResult(dispatcher);
         Dispatcher.Run();
     }

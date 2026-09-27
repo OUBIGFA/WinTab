@@ -14,6 +14,50 @@ internal static class UpdateReleaseParserTests
         yield return ("update asset selection rejects insecure download URLs", RejectsInsecureUrl);
         yield return ("update asset selection ignores non-installer assets", IgnoresNonInstallerAssets);
         yield return ("release tags normalize to comparable versions", NormalizesReleaseTags);
+        yield return ("release parsing reads the fields both update paths use", ParsesReleaseFields);
+        yield return ("release parsing rejects answers that are not a versioned release", RejectsInvalidReleases);
+        yield return ("release parsing skips assets with unexpected field types", SkipsMalformedAssets);
+    }
+
+    private static Task ParsesReleaseFields()
+    {
+        var release = JsonNode.Parse("""
+            {"tag_name":"V2.2.0-rc1","body":"notes","html_url":"https://github.com/r",
+             "assets":[{"name":"WinTab_v2.2.0_x64_Setup.exe","browser_download_url":"https://dl/x64"}]}
+            """);
+        Check.That(UpdateReleaseParser.TryParseRelease(release, Architecture.X64, out var parsed), "A tagged release must parse.");
+        Check.Equal("V2.2.0-rc1", parsed.TagName, "The tag must be kept as published.");
+        Check.Equal(new Version(2, 2, 0, 0), parsed.Version, "Case and suffix must not change the comparable version.");
+        Check.Equal("2.2.0", parsed.DisplayVersion, "An unused fourth component is not shown.");
+        Check.Equal("notes", parsed.Changelog, "The release notes must be read.");
+        Check.Equal("https://github.com/r", parsed.ReleaseUrl, "The release page must be read.");
+        Check.Equal("https://dl/x64", parsed.DownloadUrl, "The architecture's installer must be selected.");
+
+        Check.That(UpdateReleaseParser.TryParseRelease(JsonNode.Parse("""{"tag_name":"v2.1.3.4"}"""), Architecture.X64, out var fourPart),
+            "A four-part tag must parse.");
+        Check.Equal("2.1.3.4", fourPart.DisplayVersion, "A used fourth component is shown.");
+        Check.Equal<string?>(null, fourPart.DownloadUrl, "A release without assets has no installer.");
+        Check.Equal(string.Empty, fourPart.Changelog, "Missing notes read as empty.");
+        return Task.CompletedTask;
+    }
+
+    private static Task RejectsInvalidReleases()
+    {
+        foreach (var body in new[] { "[]", "{}", """{"tag_name":true}""", """{"tag_name":"latest"}""", """{"tag_name":" "}""" })
+            Check.That(!UpdateReleaseParser.TryParseRelease(JsonNode.Parse(body), Architecture.X64, out _), $"'{body}' is not a release.");
+        Check.That(!UpdateReleaseParser.TryParseRelease(null, Architecture.X64, out _), "An empty answer is not a release.");
+        return Task.CompletedTask;
+    }
+
+    private static Task SkipsMalformedAssets()
+    {
+        var release = JsonNode.Parse("""
+            {"tag_name":"v2.2.0","assets":[{"name":1,"browser_download_url":"https://dl/bad"},"text",
+             {"name":"WinTab_v2.2.0_x64_Setup.exe","browser_download_url":"https://dl/x64"}]}
+            """);
+        Check.That(UpdateReleaseParser.TryParseRelease(release, Architecture.X64, out var parsed), "Malformed assets must not reject the release.");
+        Check.Equal("https://dl/x64", parsed.DownloadUrl, "The valid installer must still be found.");
+        return Task.CompletedTask;
     }
 
     private static Task PrefersMatchingArchitectureInstaller()

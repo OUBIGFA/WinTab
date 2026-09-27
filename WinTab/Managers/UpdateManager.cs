@@ -46,19 +46,15 @@ internal static class UpdateManager
         {
             await using var stream = await client.GetStreamAsync(Constants.UpdateUrl, requestCancellation.Token).ConfigureAwait(false);
             var jsonNode = await JsonSerializer.DeserializeAsync<JsonNode>(stream, cancellationToken: requestCancellation.Token).ConfigureAwait(false);
-            if (jsonNode == null)
-                return UpdateCheckResult.Failed();
-
-            var tagName = jsonNode["tag_name"]?.GetValue<string>();
-            if (string.IsNullOrWhiteSpace(tagName) || !UpdateReleaseParser.TryNormalizeVersion(tagName, out var latestVersion))
+            if (!UpdateReleaseParser.TryParseRelease(jsonNode, RuntimeInformation.ProcessArchitecture, out var release))
                 return UpdateCheckResult.Failed();
 
             var installedVersion = UpdateReleaseParser.NormalizeVersion(Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0));
             return new UpdateCheckResult(
                 Completed: true,
-                UpdateAvailable: latestVersion.CompareTo(installedVersion) > 0,
-                LatestVersion: tagName,
-                DownloadUrl: UpdateReleaseParser.FindMatchingAssetUrl(jsonNode, RuntimeInformation.ProcessArchitecture),
+                UpdateAvailable: release.Version.CompareTo(installedVersion) > 0,
+                LatestVersion: release.TagName,
+                DownloadUrl: release.DownloadUrl,
                 ErrorMessage: null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -77,17 +73,15 @@ internal static class UpdateManager
         try
         {
             var jsonNode = JsonSerializer.Deserialize<JsonNode>(p.RemoteData);
-            if (jsonNode == null) return;
-
-            var tagName = jsonNode["tag_name"]?.GetValue<string>();
-            if (string.IsNullOrWhiteSpace(tagName)) return;
+            if (!UpdateReleaseParser.TryParseRelease(jsonNode, RuntimeInformation.ProcessArchitecture, out var release))
+                return;
 
             p.UpdateInfo = new UpdateInfoEventArgs
             {
-                CurrentVersion = tagName.TrimStart('v'),
-                ChangelogText = jsonNode["body"]?.GetValue<string>() ?? string.Empty,
-                ChangelogURL = jsonNode["html_url"]?.GetValue<string>() ?? string.Empty,
-                DownloadURL = UpdateReleaseParser.FindMatchingAssetUrl(jsonNode, RuntimeInformation.ProcessArchitecture)
+                CurrentVersion = release.DisplayVersion,
+                ChangelogText = release.Changelog,
+                ChangelogURL = release.ReleaseUrl,
+                DownloadURL = release.DownloadUrl
             };
         }
         catch (Exception ex)

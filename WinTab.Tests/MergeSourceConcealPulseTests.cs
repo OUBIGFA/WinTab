@@ -14,6 +14,28 @@ internal static class MergeSourceConcealPulseTests
         yield return ("MergeSourceConcealPulse sleep period is at least 25 ms", SleepIsAtLeast25Ms);
         yield return ("MergeSourceConcealPulse does not start when disabled", DoesNotStartWhenDisabled);
         yield return ("MergeSourceConcealPulse Stop ends the running pulse early", StopEndsPulseEarly);
+        yield return ("MergeSourceConcealPulse never loses a start that arrives while a pulse is ending", StartWhileEndingIsNotLost);
+    }
+
+    /// <summary>
+    /// Every start while enabled must be followed by a scan. Starts land at random points around the end of the
+    /// previous pulse, where the old worker reset the deadline after a start had already extended it.
+    /// </summary>
+    private static async Task StartWhileEndingIsNotLost()
+    {
+        var pulse = new MergeSourceConcealPulse(absoluteCeilingMs: 10_000, sleepMs: 1);
+        var callCount = 0;
+        var random = new Random(20260927);
+        for (var attempt = 0; attempt < 300; attempt++)
+        {
+            await Task.Delay(random.Next(0, 4));
+            var before = Volatile.Read(ref callCount);
+            pulse.Start(() => true, () => Interlocked.Increment(ref callCount), durationMs: 2);
+            var deadline = Environment.TickCount64 + 500;
+            while (Volatile.Read(ref callCount) == before && Environment.TickCount64 < deadline)
+                await Task.Delay(1);
+            Check.That(Volatile.Read(ref callCount) > before, $"Start {attempt} was not followed by a scan.");
+        }
     }
 
     private static async Task IsDurationBound()

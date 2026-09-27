@@ -159,6 +159,9 @@ public partial class MainWindow : Window
         ShowTrayIconToggle.IsChecked = SettingsManager.ShowTrayIcon;
         AutoUpdateToggle.IsChecked = SettingsManager.AutoUpdate;
         StartupToggle.IsChecked = RegistryManager.IsStartupEnabled;
+        var mismatched = _hookManager.MismatchedFeatures;
+        HookErrorText.Text = mismatched.Count == 0 ? string.Empty : UiStrings.HookFeaturesMismatched(mismatched);
+        HookErrorText.Visibility = mismatched.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         _trayIcon.RefreshState();
     }
 

@@ -63,10 +63,12 @@ internal sealed class NavigationInputObserver : IDisposable
         _thread = new Thread(Run) { IsBackground = true, Name = "WinTab navigation input observer", Priority = ThreadPriority.Highest };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
+        // Installing the observer waits on nothing outside this process and the thread always reports its
+        // outcome, so a busy system only makes it late; a fixed deadline would turn the feature off instead.
         if (!_started.Wait(2_000))
         {
-            Dispose();
-            throw new TimeoutException("Navigation input observer did not start.");
+            ExplorerDebugLog.Write("Navigation input observer has not started after 2000 ms; still waiting.");
+            _started.Wait();
         }
         if (_startError != null)
         {

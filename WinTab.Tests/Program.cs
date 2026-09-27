@@ -64,6 +64,7 @@ internal static class UnitTestRunner
             .Concat(ExplorerShortcutTests.All())
             .Concat(RegistryManagerTests.All())
             .Concat(ThemeManagerTests.All())
+            .Concat(HookManagerTests.All())
             .Concat(BackgroundWorkTests.All())
             .Concat(BufferedDiagnosticLogTests.All())
             .Concat(WindowSafetyTests.All())

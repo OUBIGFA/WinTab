@@ -1,10 +1,15 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using WinTab.Hooks;
 using WinTab.UI.Localization;
 
 namespace WinTab.Managers;
+
+/// <summary>A setting that is carried out by an input or window hook, which can fail to start or stop.</summary>
+public enum HookFeature { MergeWindows, DoubleClickClose, MiddleClickForeground, WheelSwitch }
 
 /// <summary>
 /// Single owner of the hook on/off state: every UI surface calls the Set* methods here, which
@@ -23,7 +28,6 @@ public sealed class HookManager : IDisposable
 
     public event Action? StateChanged;
     public event Action? ShellInitialized;
-    public event Action<string>? StatusChanged;
     public event Action<SessionCommandResult>? SessionCommandFinished;
     public string? ShortcutError { get; private set; }
 
@@ -38,23 +42,34 @@ public sealed class HookManager : IDisposable
         _sessionShortcuts = new ExplorerSessionShortcutHook(action => _ = ExecuteSessionCommandAsync(action == SessionAction.RestoreGroup));
         _sessionShortcuts.Failed += message =>
         {
-            ShortcutError = UiStrings.ShortcutUnavailable + " " + message;
+            ShortcutError = ShortcutUnavailable(message);
             RaiseStateChanged();
         };
 
         _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
-        _explorerWatcher.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
         _doubleClickHook.StatusChanged += message => ReportHookStatus("Double-click close", message);
         _wheelSwitchHook.StatusChanged += message => ReportHookStatus("Wheel switch", message);
-        _middleClickHook.StatusChanged += message => _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
 
         _sessionEndingHandler = (_, _) => Dispose();
         System.Windows.Application.Current.SessionEnding += _sessionEndingHandler;
     }
 
     public bool IsShellReady => _explorerWatcher.IsShellReady;
-    public bool IsWindowHookActive => _explorerWatcher.IsHookActive;
-    public bool IsDoubleClickCloseActive => _doubleClickHook.IsHookActive;
+
+    /// <summary>
+    /// Features whose hook is not in the state the user chose: turned on but not started, or turned off but
+    /// still running. Toggling the setting again retries the change.
+    /// </summary>
+    public IReadOnlyList<HookFeature> MismatchedFeatures => FindMismatched(
+    [
+        (HookFeature.MergeWindows, SettingsManager.IsWindowHookActive, _explorerWatcher),
+        (HookFeature.DoubleClickClose, SettingsManager.DoubleClickCloseTab, _doubleClickHook),
+        (HookFeature.MiddleClickForeground, SettingsManager.MiddleClickForegroundTab, _middleClickHook),
+        (HookFeature.WheelSwitch, SettingsManager.WheelSwitchTab, _wheelSwitchHook)
+    ]);
+
+    internal static IReadOnlyList<HookFeature> FindMismatched(IEnumerable<(HookFeature Feature, bool Enabled, IHook Hook)> features) =>
+        features.Where(feature => feature.Enabled != feature.Hook.IsHookActive).Select(feature => feature.Feature).ToArray();
 
     public void ApplySettings()
     {
@@ -74,7 +89,7 @@ public sealed class HookManager : IDisposable
     public void SetWindowHook(bool enabled)
     {
         SettingsManager.IsWindowHookActive = enabled;
-        ChangeHookStatus(_explorerWatcher, enabled);
+        TryChangeHookStatus(_explorerWatcher, enabled);
 
         if (!enabled && SettingsManager.ReuseTabs)
         {
@@ -94,7 +109,7 @@ public sealed class HookManager : IDisposable
         if (enabled && !SettingsManager.IsWindowHookActive)
         {
             SettingsManager.IsWindowHookActive = true;
-            ChangeHookStatus(_explorerWatcher, true);
+            TryChangeHookStatus(_explorerWatcher, true);
         }
 
         RaiseStateChanged();
@@ -165,7 +180,7 @@ public sealed class HookManager : IDisposable
         }
         catch (Exception exception)
         {
-            ShortcutError = UiStrings.ShortcutUnavailable + " " + exception.Message;
+            ShortcutError = ShortcutUnavailable(exception.Message);
             ReportHookStatus("Session shortcuts", exception.Message);
         }
     }
@@ -183,21 +198,21 @@ public sealed class HookManager : IDisposable
     public void SetDoubleClickClose(bool enabled)
     {
         SettingsManager.DoubleClickCloseTab = enabled;
-        ChangeHookStatus(_doubleClickHook, enabled);
+        TryChangeHookStatus(_doubleClickHook, enabled);
         RaiseStateChanged();
     }
 
     public void SetMiddleClickForeground(bool enabled)
     {
         SettingsManager.MiddleClickForegroundTab = enabled;
-        ChangeHookStatus(_middleClickHook, enabled);
+        TryChangeHookStatus(_middleClickHook, enabled);
         RaiseStateChanged();
     }
 
     public void SetWheelSwitch(bool enabled)
     {
         SettingsManager.WheelSwitchTab = enabled;
-        ChangeHookStatus(_wheelSwitchHook, enabled);
+        TryChangeHookStatus(_wheelSwitchHook, enabled);
         RaiseStateChanged();
     }
 
@@ -207,10 +222,15 @@ public sealed class HookManager : IDisposable
         RaiseStateChanged();
     }
 
-    private static void ChangeHookStatus(IHook hook, bool isActive)
+    /// <summary>
+    /// A feature whose hook cannot be installed stays off until it is toggled again or WinTab restarts, and is
+    /// listed in <see cref="MismatchedFeatures"/>. It must not take the other features, the settings window or
+    /// WinTab itself down with it.
+    /// </summary>
+    internal static bool TryChangeHookStatus(IHook hook, bool isActive)
     {
         if (hook.IsHookActive == isActive)
-            return;
+            return true;
 
         ExplorerDebugLog.Write($"{hook.GetType().Name} {(isActive ? "starting" : "stopping")}");
         try
@@ -219,19 +239,20 @@ public sealed class HookManager : IDisposable
                 hook.StartHook();
             else
                 hook.StopHook();
+            return true;
         }
         catch (Exception exception)
         {
             ExplorerDebugLog.Write($"{hook.GetType().Name} could not be {(isActive ? "started" : "stopped")}: {exception}");
-            throw;
+            return false;
         }
     }
 
-    private void ReportHookStatus(string source, string message)
-    {
-        ExplorerDebugLog.Write($"{source}: {message}");
-        _syncContext.Post(_ => StatusChanged?.Invoke(message), null);
-    }
+    /// <summary>System messages end in a full stop, which the interface's copy never shows.</summary>
+    private static string ShortcutUnavailable(string reason) =>
+        UiStrings.ShortcutUnavailable + " " + reason.Trim().TrimEnd('.', '。', '…');
+
+    private static void ReportHookStatus(string source, string message) => ExplorerDebugLog.Write($"{source}: {message}");
 
     private void RaiseStateChanged()
     {

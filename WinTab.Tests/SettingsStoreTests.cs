@@ -27,6 +27,7 @@ internal static class SettingsStoreTests
         yield return ("settings reads and changes do not wait for a blocked disk write", BlockedWriteDoesNotBlockSettings);
         yield return ("settings writes coalesce changes without concurrent file access", WritesLatestSnapshot);
         yield return ("settings save failure is reported without losing in-memory state", ReportsWriteFailure);
+        yield return ("an unexpected settings save failure still completes and a later save succeeds", RecoversFromUnexpectedWriteFailure);
         yield return ("settings retain a valid backup and recover from a damaged primary file", RecoversBackup);
         yield return ("settings recover a backup after a negative width", () => RecoversInvalidValues("""{"FormSize":{"Width":-1,"Height":720}}"""));
         yield return ("settings recover a backup after a negative height", () => RecoversInvalidValues("""{"FormSize":{"Width":1020,"Height":-1}}"""));
@@ -220,6 +221,27 @@ internal static class SettingsStoreTests
         Check.That(writes.Count <= 2, "Only the current write and the newest pending snapshot should reach disk.");
         Check.Equal("999", writes[^1].Language);
         Check.Equal("Dark", writes[^1].Theme);
+    }
+
+    private static async Task RecoversFromUnexpectedWriteFailure()
+    {
+        var writes = 0;
+        AppSettings? written = null;
+        using var store = new SettingsStore(NewPath(), settings =>
+        {
+            if (Interlocked.Increment(ref writes) == 1)
+                throw new InvalidOperationException("Unexpected serializer failure");
+            written = settings;
+        });
+        store.Update(settings => settings with { AutoUpdate = false });
+        var first = store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Check.That(!await first, "An unexpected save failure must complete the save as failed instead of leaving it pending.");
+        Check.That(store.LastError is InvalidOperationException, "The unexpected save error must be available to the interface.");
+
+        store.Update(settings => settings with { ShowTrayIcon = false });
+        Check.That(await store.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5)), "A later save must run once the failure has passed.");
+        Check.That(written is { AutoUpdate: false, ShowTrayIcon: false }, "The later save must write every pending change.");
+        Check.That(store.LastError is null, "A successful save must clear the earlier error.");
     }
 
     private static async Task ReportsWriteFailure()

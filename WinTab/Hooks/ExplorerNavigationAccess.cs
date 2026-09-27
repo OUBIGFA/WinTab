@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 using WinTab.Helpers;
 using WinTab.WinAPI;
 

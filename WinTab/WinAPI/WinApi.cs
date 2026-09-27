@@ -257,7 +257,8 @@ public static class WinApi
     }
     public static bool IsWindowHasClassName(nint hWnd, string className, StringComparison comparison = StringComparison.OrdinalIgnoreCase)
     {
-        var currentClassName = GetWindowClassName(hWnd, className.Length);
+        // One character more than expected, so a longer class that only starts with the name does not match.
+        var currentClassName = GetWindowClassName(hWnd, className.Length + 1);
 
         return string.Equals(currentClassName, className, comparison);
     }

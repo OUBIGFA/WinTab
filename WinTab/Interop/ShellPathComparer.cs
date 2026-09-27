@@ -160,11 +160,5 @@ public sealed class ShellPathComparer : IDisposable
         _desktopFolder = null!;
 
         _disposed = true;
-        GC.SuppressFinalize(this);
-    }
-
-    ~ShellPathComparer()
-    {
-        Dispose();
     }
 }

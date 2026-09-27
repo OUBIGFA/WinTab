@@ -1,19 +1,28 @@
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace WinTab.Hooks;
 
+/// <summary>
+/// Re-conceals merge sources for a short while after Explorer touched a window, because Explorer can show a
+/// concealed frame again at any time during a merge. Every start is followed by at least one scan and asks
+/// for its duration; a stream of starts cannot keep one pulse running past its absolute ceiling. Whether the
+/// pulse continues and whether a start extends it are decided under one lock, so a start that arrives while
+/// the pulse is ending either extends it or starts the next one; it is never lost.
+/// </summary>
 internal sealed class MergeSourceConcealPulse
 {
     private const int DefaultAbsoluteCeilingMs = 1_500;
     private const int DefaultSleepMs = 25;
 
+    private readonly object _gate = new();
     private readonly int _absoluteCeilingMs;
     private readonly int _sleepMs;
-    private int _running;
-    private long _untilTicks;
-    private long _firstStartTicks;
+    private bool _running;
+    /// <summary>A start has not been followed by a scan yet.</summary>
+    private bool _scanPending;
+    private long _startedAt;
+    private long _until;
 
     public MergeSourceConcealPulse()
         : this(DefaultAbsoluteCeilingMs, DefaultSleepMs)
@@ -28,57 +37,58 @@ internal sealed class MergeSourceConcealPulse
 
     public void Start(Func<bool> isEnabled, Action concealOnce, int durationMs = 1_200)
     {
-        if (!isEnabled())
-            return;
-
-        var requestedUntilTicks = DateTime.UtcNow.AddMilliseconds(Math.Max(1, durationMs)).Ticks;
-        Interlocked.CompareExchange(ref _firstStartTicks, DateTime.UtcNow.Ticks, 0);
-        var firstStart = Volatile.Read(ref _firstStartTicks);
-        var ceilingTicks = firstStart + _absoluteCeilingMs * TimeSpan.TicksPerMillisecond;
-        var untilTicks = Math.Min(requestedUntilTicks, ceilingTicks);
-
-        var currentTicks = Volatile.Read(ref _untilTicks);
-        while (untilTicks > currentTicks)
+        lock (_gate)
         {
-            var previousTicks = Interlocked.CompareExchange(ref _untilTicks, untilTicks, currentTicks);
-            if (previousTicks == currentTicks)
-                break;
+            if (!isEnabled())
+                return;
 
-            currentTicks = previousTicks;
+            var now = Environment.TickCount64;
+            if (!_running)
+                _startedAt = now;
+            _until = Math.Max(_until, Math.Min(now + Math.Max(1, durationMs), _startedAt + _absoluteCeilingMs));
+            _scanPending = true;
+            if (_running)
+                return;
+            _running = true;
         }
 
-        if (Interlocked.Exchange(ref _running, 1) == 1)
-            return;
+        _ = Task.Run(() => RunAsync(isEnabled, concealOnce));
+    }
 
-        _ = Task.Run(async () =>
+    private async Task RunAsync(Func<bool> isEnabled, Action concealOnce)
+    {
+        while (true)
         {
+            lock (_gate)
+            {
+                if (!isEnabled() || (!_scanPending && Environment.TickCount64 >= _until))
+                {
+                    _running = false;
+                    _until = 0;
+                    return;
+                }
+                _scanPending = false;
+            }
+
             try
             {
-                while (isEnabled() && DateTime.UtcNow.Ticks < Volatile.Read(ref _untilTicks))
-                {
-                    try
-                    {
-                        concealOnce();
-                    }
-                    catch
-                    {
-                        // Keep the pulse bounded even if one scan fails.
-                    }
-
-                    await Task.Delay(_sleepMs);
-                }
+                concealOnce();
             }
-            finally
+            catch
             {
-                Interlocked.Exchange(ref _running, 0);
-                Interlocked.Exchange(ref _firstStartTicks, 0);
-                Interlocked.Exchange(ref _untilTicks, 0);
+                // Keep the pulse bounded even if one scan fails.
             }
-        });
+
+            await Task.Delay(_sleepMs);
+        }
     }
 
     public void Stop()
     {
-        Interlocked.Exchange(ref _untilTicks, 0);
+        lock (_gate)
+        {
+            _until = 0;
+            _scanPending = false;
+        }
     }
 }

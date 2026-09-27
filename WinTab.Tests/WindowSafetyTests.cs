@@ -24,6 +24,26 @@ internal static class WindowSafetyTests
         yield return ("window recovery preserves original opacity across process exits", () => RecoverySurvivesProcessExit(true, false));
         yield return ("hiding again after restart preserves the original recovery record", () => RecoverySurvivesProcessExit(true, true));
         yield return ("window recovery leaves unowned transparent windows unchanged", RecoveryLeavesUnownedWindowAlone);
+        yield return ("window class checks reject a longer class that shares the expected prefix", ClassCheckRejectsLongerClass);
+    }
+
+    private static async Task ClassCheckRejectsLongerClass()
+    {
+        using var scheduler = new StaTaskScheduler();
+        await Task.Factory.StartNew(() =>
+        {
+            var handle = CreateTestWindow();
+            try
+            {
+                Check.That(WinApi.IsWindowHasClassName(handle, "static"), "The exact class must match regardless of case.");
+                Check.That(!WinApi.IsWindowHasClassName(handle, "Stat"),
+                    "A class whose name only starts with the expected one must not be mistaken for it.");
+            }
+            finally
+            {
+                DestroyWindow(handle);
+            }
+        }, CancellationToken.None, TaskCreationOptions.None, scheduler);
     }
 
     private static async Task RejectsOldIdentity()
