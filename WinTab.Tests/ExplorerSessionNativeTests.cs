@@ -46,6 +46,7 @@ internal static class ExplorerSessionNativeTests
         yield return ("session watcher cancels a restore when foreground leaves and returns during resolution", ForegroundRoundTripCancelsRestore);
         yield return ("session watcher does not let a window closed before its restore replace the saved group", PendingRestoreIsNotHistory);
         yield return ("session watcher treats the configured Explorer start folder as a normal launch", ConfiguredStartFolderIsNormalLaunch);
+        yield return ("session watcher leaves a group Windows reopens at sign-in to Windows", WindowsRestoredGroupIsLeftToWindows);
     }
 
     private static Task RetiredAttemptIgnoresCallbacks(bool navigation)
@@ -425,6 +426,36 @@ internal static class ExplorerSessionNativeTests
             "Another folder is an explicit open.");
         return Task.CompletedTask;
     }, tabCount: 1);
+
+    private static async Task WindowsRestoredGroupIsLeftToWindows()
+    {
+        Check.Equal(0, await LaunchReadsAfterEndedExplorer(windowsRestoresFolders: true),
+            "A group Windows reopens itself must not also be restored into a new window.");
+        Check.That(await LaunchReadsAfterEndedExplorer(windowsRestoresFolders: false) > 0,
+            "Without Windows' own folder restore the same group remains eligible.");
+    }
+
+    /// <summary>How often a new window's launch location is read when the saved group was open as Explorer ended.</summary>
+    private static async Task<int> LaunchReadsAfterEndedExplorer(bool windowsRestoresFolders)
+    {
+        var reads = 0;
+        await WithCapture(async (fixture, store) =>
+        {
+            Check.That(await store.SaveAsync(new ExplorerSession
+            {
+                Locations = [@"C:\saved-a", @"C:\saved-b"], ActiveTabIndex = 1, OrderVerified = true, EndedWithExplorer = true
+            }), "The group recovered from the ended Explorer must be stored first.");
+            Set(fixture.Watcher, "_restoresFolderWindowsAtSignIn", (Func<bool>)(() => windowsRestoresFolders));
+            using var frame = new RemoteExplorerFrame(visible: true, explorerClass: true);
+            var browser = fixture.AddBrowser(out var info, frame.Tab, handle: frame.Handle, readLocation: () => reads++);
+            fixture.SetExplorerWindows(frame.Handle);
+            Check.That(await (Task<bool>)fixture.Invoke("TryRestoreNewExplorerWindowAsync", browser, info, false)!,
+                "The new window's single restore attempt is consumed either way.");
+            Check.Equal(1, ExplorerWindowDiscovery.GetAllExplorerTabs(frame.Handle).Count(), "No tab is added to the new window.");
+            Check.That(store.Snapshot!.EndedWithExplorer, "The group stays saved for a requested restore.");
+        });
+        return reads;
+    }
 
     internal static Task WithCapture(Func<Fixture, ExplorerSessionStore, Task> test, bool singleTab = true) =>
         ExplorerTabLifetimeTests.WithFixture(async fixture =>

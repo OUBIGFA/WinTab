@@ -24,6 +24,7 @@ internal static class ExplorerSessionLocationTests
         yield return ("session locations never follow links to shares, volumes or process-relative paths", RemoteLinkTargetsAreRejected);
         yield return ("session locations keep paths confirmed before a stalled probe", ConfirmedPathsSurviveStall);
         yield return ("session locations bound a stalled device probe without queuing more work", SlowProbeIsBounded);
+        yield return ("session locations decide a single location or report that its check did not finish", SingleLocationDecision);
         yield return ("session locations honour cancellation before starting filesystem work", CancelledProbeDoesNotStart);
         yield return ("session locations can cancel a pending probe without blocking the caller", PendingProbeCanBeCancelled);
     }
@@ -189,6 +190,37 @@ internal static class ExplorerSessionLocationTests
                 Check.That((await policy.FindAvailableAsync(session, CancellationToken.None, 40)).SetEquals([1]),
                     "Subsequent launches may use only known shell pages while the probe is still blocked.");
             Check.Equal(1, reads, "A timeout must not spawn an unbounded number of blocked filesystem calls.");
+        }
+        finally { gate.Set(); await exited.Task.WaitAsync(TimeSpan.FromSeconds(2)); }
+    }
+
+    private static async Task SingleLocationDecision()
+    {
+        using var gate = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = new List<string>();
+        var policy = new ExplorerSessionLocationPolicy(location =>
+        {
+            lock (reads) reads.Add(location);
+            if (location != @"C:\slow")
+                return location == @"C:\present";
+            entered.TrySetResult();
+            gate.Wait();
+            exited.TrySetResult();
+            return true;
+        });
+        try
+        {
+            Check.Equal<bool?>(true, await policy.IsAvailableAsync(@"C:\present", CancellationToken.None), "An existing local folder can be opened.");
+            Check.Equal<bool?>(false, await policy.IsAvailableAsync(@"C:\missing", CancellationToken.None), "A missing local folder is decided, not left unknown.");
+            Check.Equal<bool?>(null, await policy.IsAvailableAsync(@"C:\slow", CancellationToken.None, 40), "A folder whose drive does not answer in time is undecided.");
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Check.Equal<bool?>(null, await policy.IsAvailableAsync(@"C:\present", CancellationToken.None, 40), "While that probe is blocked, no other folder is decided.");
+            Check.Equal<bool?>(true, await policy.IsAvailableAsync(ThisPc, CancellationToken.None, 40), "A built-in page needs no probe.");
+            Check.Equal<bool?>(false, await policy.IsAvailableAsync(@"\\server\share", CancellationToken.None, 40), "A share is never admitted, blocked probe or not.");
+            lock (reads)
+                Check.That(reads.SequenceEqual([@"C:\present", @"C:\missing", @"C:\slow"]), "Only local folders reach the probe, each once.");
         }
         finally { gate.Set(); await exited.Task.WaitAsync(TimeSpan.FromSeconds(2)); }
     }

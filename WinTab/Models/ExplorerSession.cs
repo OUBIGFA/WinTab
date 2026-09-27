@@ -25,6 +25,11 @@ internal sealed record ExplorerSession
     public long SavedAt { get; init; }
     /// <summary>Set only on the live journal: the Explorer process that still showed the window.</summary>
     public ExplorerSessionOwner? Owner { get; init; }
+    /// <summary>
+    /// The group was still open when its Explorer process ended (sign-out, shutdown or a crash) instead of being
+    /// closed by the user. Windows reopens such windows itself when it restores folder windows at sign-in.
+    /// </summary>
+    public bool EndedWithExplorer { get; init; }
 
     public ExplorerSession Copy() => this with { Locations = (string[])Locations.Clone() };
 

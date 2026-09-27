@@ -15,7 +15,22 @@ internal static class RegistryManagerTests
         yield return ("startup reads do not create missing registry keys", MissingKeysStayMissingOnRead);
         yield return ("startup can be enabled and disabled when registry keys do not exist", MissingKeysAreCreatedOnEnable);
         yield return ("startup re-enables an existing disabled approval entry", DisabledApprovalIsEnabled);
+        yield return ("Windows' folder-window restore setting is read without creating keys", FolderWindowRestoreSetting);
     }
+
+    private static Task FolderWindowRestoreSetting() => WithRoot(root =>
+    {
+        const string advanced = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
+        Check.That(!RegistryManager.RestoresFolderWindowsAtSignInUnder(root), "The option is off in a new profile.");
+        Check.Equal(0, root.SubKeyCount, "Reading the option must not create Explorer's keys.");
+        using var key = root.CreateSubKey(advanced);
+        key.SetValue("PersistBrowsers", 1, RegistryValueKind.DWord);
+        Check.That(RegistryManager.RestoresFolderWindowsAtSignInUnder(root), "Folder Options stores the enabled option as 1.");
+        key.SetValue("PersistBrowsers", 0, RegistryValueKind.DWord);
+        Check.That(!RegistryManager.RestoresFolderWindowsAtSignInUnder(root), "0 turns the option off.");
+        key.SetValue("PersistBrowsers", "1", RegistryValueKind.String);
+        Check.That(!RegistryManager.RestoresFolderWindowsAtSignInUnder(root), "Only Explorer's DWORD value counts.");
+    });
 
     private static Task MissingKeysStayMissingOnRead() => WithRoot(root =>
     {

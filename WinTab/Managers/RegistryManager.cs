@@ -80,5 +80,14 @@ public static class RegistryManager
         return key.GetValue("LaunchTo") as int? ?? 1;
     }
 
+    /// <summary>Folder Options' "Restore previous folder windows at logon"; Windows then also restores their tabs.</summary>
+    public static bool RestoresFolderWindowsAtSignIn() => RestoresFolderWindowsAtSignInUnder(Registry.CurrentUser);
+
+    internal static bool RestoresFolderWindowsAtSignInUnder(RegistryKey root)
+    {
+        using var key = root.OpenSubKey(ExplorerAdvancedKeyPath, false);
+        return key?.GetValue("PersistBrowsers") is int value && value != 0;
+    }
+
     private static RegistryKey? OpenCurrentUserKey(string name, bool writable) => Registry.CurrentUser.OpenSubKey(name, writable);
 }

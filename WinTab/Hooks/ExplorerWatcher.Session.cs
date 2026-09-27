@@ -165,7 +165,7 @@ public partial class ExplorerWatcher
             return;
         try
         {
-            _ = _sessionStore!.SaveAsync(live with { Owner = null });
+            _ = _sessionStore!.SaveAsync(live with { Owner = null, EndedWithExplorer = true });
             ExplorerDebugLog.Write($"Session promoted from the journal of an ended Explorer tabs={live.Locations.Length}");
         }
         catch (Exception exception) when (exception is System.Text.Json.JsonException or ObjectDisposedException)
@@ -605,6 +605,14 @@ public partial class ExplorerWatcher
             if (session.Locations.Length < 2 && !_restoreSingleTab)
             {
                 ExplorerDebugLog.Write($"Session not restored: the saved window has a single tab hwnd={handle}");
+                return true;
+            }
+            // With "Restore previous folder windows at logon" on, Windows reopens every folder window that was open
+            // when Explorer ended, tabs included; adding the same group to a window it reopens would duplicate it.
+            // The group can still be restored on request.
+            if (session.EndedWithExplorer && _restoresFolderWindowsAtSignIn())
+            {
+                ExplorerDebugLog.Write($"Session not restored: Windows restores the folder windows open when Explorer ended hwnd={handle}");
                 return true;
             }
             ExplorerDebugLog.Write($"Session restore candidate hwnd={handle} saved={session.Locations.Length} registered at {Elapsed()}");

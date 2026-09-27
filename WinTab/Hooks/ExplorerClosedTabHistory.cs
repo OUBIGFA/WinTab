@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using WinTab.Helpers;
 
 namespace WinTab.Hooks;
@@ -67,21 +68,38 @@ internal sealed class ExplorerClosedTabHistory
             _seen.Remove(_seenOrder.Dequeue());
     }
 
-    public bool TryPop(out ClosedTab tab)
+    /// <summary>The remembered closes, newest first. A tab still alive elsewhere was moved, not closed, and is dropped.</summary>
+    public ClosedTab[] Peek()
     {
         lock (_gate)
         {
-            while (_tabs.Last is { } last)
+            for (var node = _tabs.First; node != null;)
             {
-                _tabs.RemoveLast();
-                if (last.Value.Tab.IsCurrent)
+                var next = node.Next;
+                if (node.Value.Tab.IsCurrent)
+                    _tabs.Remove(node);
+                node = next;
+            }
+            return _tabs.Reverse().ToArray();
+        }
+    }
+
+    /// <summary>Removes this entry of <see cref="Peek"/>; false when it was reopened, trimmed or forgotten meanwhile.</summary>
+    public bool TryTake(ClosedTab tab)
+    {
+        lock (_gate)
+        {
+            if (tab.Generation != _generation)
+                return false;
+            for (var node = _tabs.Last; node != null; node = node.Previous)
+            {
+                if (node.Value.Sequence != tab.Sequence)
                     continue;
-                tab = last.Value;
+                _tabs.Remove(node);
                 return true;
             }
+            return false;
         }
-        tab = default;
-        return false;
     }
 
     /// <summary>A failed restore retains its original order, behind tabs closed while it was pending.</summary>

@@ -81,7 +81,9 @@ internal static class UpdateManager
                 CurrentVersion = release.DisplayVersion,
                 ChangelogText = release.Changelog,
                 ChangelogURL = release.ReleaseUrl,
-                DownloadURL = release.DownloadUrl
+                DownloadURL = release.DownloadUrl,
+                // The download is checked against the digest GitHub published before the installer is run.
+                CheckSum = release.DownloadSha256 is { } hash ? new CheckSum { Value = hash, HashingAlgorithm = "SHA256" } : null
             };
         }
         catch (Exception ex)

@@ -35,7 +35,7 @@ WinTab records tab groups while running and restores only the last-used window: 
 The tray's recovery section and the settings page provide:
 
 - **Restore last tab group**: restore the group in a new window, keeping tab order and the saved active tab. Shortcut `Alt+E`, works globally.
-- **Reopen last closed tab**: reopen the most recently closed tab, preferring the current window. Enabled by default; shortcut `Alt+W`, works only while Explorer is in the foreground. Up to 25 closures are kept until WinTab exits.
+- **Reopen last closed tab**: reopen the most recently closed tab, preferring the current window. Enabled by default; shortcut `Alt+W`, works only while Explorer is in the foreground. Up to 25 closures are kept until WinTab exits. When the most recently closed location can no longer be opened (a network location or an unplugged drive, for example), the newest tab that can be opened is reopened instead and the skip is reported.
 
 Both can be disabled or re-bound in settings. Folder records live in `%APPDATA%\WinTab\session.json` and its backups; treat them as personal folder information.
 
@@ -47,6 +47,8 @@ Both can be disabled or re-bound in settings. Folder records live in `%APPDATA%\
 - **Any folder**: keep the initial tab and append the saved tabs after it.
 
 Torn-off windows, `Ctrl + Shift` windows and windows already open when the feature is enabled do not trigger restoration; missing or unsupported locations are skipped. Switching windows or tabs stops the restoration.
+
+With Windows' **Restore previous folder windows at logon** turned on in Folder Options, Windows itself reopens the windows, tabs included, that were still open at shutdown or when Explorer crashed; automatic restoration then does not add the same group again. It can still be restored from the tray or with the shortcut.
 
 ## Diagnostic logs
 
@@ -61,6 +63,8 @@ Pick the installer that matches your CPU architecture ([Releases](https://github
 - `WinTab_<version>_x64_Setup.exe` — 64-bit Intel/AMD (most users)
 - `WinTab_<version>_arm64_Setup.exe` — ARM64 Windows (Surface Pro X, Snapdragon laptops)
 - `WinTab_<version>_x86_Setup.exe` — 32-bit Windows
+
+In-app updates check the downloaded installer against the SHA-256 GitHub publishes for it and do not run an installer that does not match.
 
 ## Requirements
 

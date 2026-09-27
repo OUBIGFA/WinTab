@@ -48,6 +48,8 @@ public partial class ExplorerWatcher : IHook
     private readonly CoalescingAsyncWork _registrationWork;
     private readonly CoalescingAsyncWork _selectionWork;
     private readonly Func<int> _getDefaultExplorerLaunchId;
+    /// <summary>Windows' "Restore previous folder windows at logon" option, read when a restore needs it.</summary>
+    private readonly Func<bool> _restoresFolderWindowsAtSignIn;
     private readonly Func<IEnumerable<nint>> _getExplorerWindows = ExplorerWindowDiscovery.GetAllExplorerWindows;
     private readonly ExplorerLaunchLocationResolver _locationResolver = new();
     private readonly ProcessWatcher _processWatcher;
@@ -77,7 +79,7 @@ public partial class ExplorerWatcher : IHook
     public bool IsShellReady => _mainExplorerProcessId != 0 && _shellWindows != null;
     public event Action? OnShellInitialized;
 
-    public ExplorerWatcher(Func<int>? getDefaultExplorerLaunchId = null)
+    public ExplorerWatcher(Func<int>? getDefaultExplorerLaunchId = null, Func<bool>? restoresFolderWindowsAtSignIn = null)
     {
         if (_instanceRunning)
             throw new InvalidOperationException("Only one instance of ExplorerWatcher is allowed at a time.");
@@ -91,6 +93,7 @@ public partial class ExplorerWatcher : IHook
         _frameWatchdogTimer = new Timer(MaintainExplorerFrameConcealment, null, 250, 250);
         _selectionTimer = new Timer(state => _selectionWork.Request(), null, Timeout.Infinite, Timeout.Infinite);
         _getDefaultExplorerLaunchId = getDefaultExplorerLaunchId ?? (static () => 1);
+        _restoresFolderWindowsAtSignIn = restoresFolderWindowsAtSignIn ?? (static () => false);
         _tabTearOff = new ExplorerTabTearOffTracker(new ExplorerTabTearOffEnvironment(TabStrip, () => _isForcingTabs));
         _tabTearOffHook = new ExplorerTabTearOffHook(_tabTearOff);
         _processWatcher = new ProcessWatcher("explorer");

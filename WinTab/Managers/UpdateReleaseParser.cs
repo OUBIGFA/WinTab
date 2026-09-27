@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
@@ -9,8 +10,9 @@ namespace WinTab.Managers;
 /// <param name="Version">The tag as a version with every component present, comparable with the installed one.</param>
 /// <param name="DisplayVersion">The version as shown to the user, without an unused fourth component.</param>
 /// <param name="DownloadUrl">The installer for this process's architecture, or null when the release has none.</param>
+/// <param name="DownloadSha256">The SHA-256 GitHub published for that installer, in lowercase hex, or null when it has none.</param>
 internal sealed record UpdateRelease(string TagName, Version Version, string DisplayVersion, string Changelog,
-    string ReleaseUrl, string? DownloadUrl);
+    string ReleaseUrl, string? DownloadUrl, string? DownloadSha256);
 
 /// <summary>
 /// Reads GitHub's latest-release answer. The manual check and the automatic updater both read it here, so they
@@ -18,6 +20,8 @@ internal sealed record UpdateRelease(string TagName, Version Version, string Dis
 /// </summary>
 internal static class UpdateReleaseParser
 {
+    private const string Sha256DigestPrefix = "sha256:";
+
     /// <summary>False when the answer is not a release object or its tag is not a version.</summary>
     public static bool TryParseRelease(JsonNode? releaseNode, Architecture architecture, out UpdateRelease release)
     {
@@ -27,20 +31,24 @@ internal static class UpdateReleaseParser
             !TryNormalizeVersion(tagName, out var version))
             return false;
 
+        var installer = FindMatchingAsset(releaseObject, architecture);
         release = new UpdateRelease(tagName, version,
             version.Revision == 0 ? version.ToString(3) : version.ToString(),
             ReadString(releaseObject, "body") ?? string.Empty,
             ReadString(releaseObject, "html_url") ?? string.Empty,
-            FindMatchingAssetUrl(releaseObject, architecture));
+            installer?.Url, installer?.Sha256);
         return true;
     }
 
-    public static string? FindMatchingAssetUrl(JsonNode releaseNode, Architecture architecture)
+    public static string? FindMatchingAssetUrl(JsonNode releaseNode, Architecture architecture) =>
+        FindMatchingAsset(releaseNode, architecture)?.Url;
+
+    private static (string Url, string? Sha256)? FindMatchingAsset(JsonNode releaseNode, Architecture architecture)
     {
         if (releaseNode is not JsonObject releaseObject || releaseObject["assets"] is not JsonArray assets)
             return null;
 
-        var setupAssets = new List<(string Name, string Url)>();
+        var setupAssets = new List<(string Name, string Url, string? Sha256)>();
         foreach (var asset in assets)
         {
             if (asset is not JsonObject assetObject)
@@ -54,7 +62,7 @@ internal static class UpdateReleaseParser
                 downloadUri.Scheme == Uri.UriSchemeHttps &&
                 assetName.EndsWith("_Setup.exe", StringComparison.OrdinalIgnoreCase))
             {
-                setupAssets.Add((assetName, downloadUrl));
+                setupAssets.Add((assetName, downloadUrl, ReadSha256Digest(assetObject)));
             }
         }
 
@@ -67,11 +75,21 @@ internal static class UpdateReleaseParser
             foreach (var asset in setupAssets)
             {
                 if (asset.Name.EndsWith(architectureSuffix, StringComparison.OrdinalIgnoreCase))
-                    return asset.Url;
+                    return (asset.Url, asset.Sha256);
             }
         }
 
         return null;
+    }
+
+    /// <summary>GitHub's "sha256:&lt;hex&gt;" asset digest as lowercase hex; null when it is missing or malformed.</summary>
+    private static string? ReadSha256Digest(JsonObject asset)
+    {
+        if (ReadString(asset, "digest") is not { } digest ||
+            !digest.StartsWith(Sha256DigestPrefix, StringComparison.OrdinalIgnoreCase))
+            return null;
+        var hash = digest[Sha256DigestPrefix.Length..];
+        return hash.Length == 64 && hash.All(char.IsAsciiHexDigit) ? hash.ToLowerInvariant() : null;
     }
 
     public static bool TryNormalizeVersion(string value, out Version version)

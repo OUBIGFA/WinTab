@@ -46,11 +46,38 @@ internal sealed class ExplorerSessionLocationPolicy
         char.IsAsciiLetter(location[0]) && location[1] == ':' && location[2] == '\\' &&
         location.IndexOfAny(['\0', '*', '?']) < 0 && location.AsSpan(2).IndexOf(':') < 0;
 
+    /// <summary>
+    /// Whether the policy can ever admit the location: a built-in local page or a local drive path. A supported
+    /// path may still be unavailable right now; an unsupported one, such as a network share, never becomes available.
+    /// </summary>
+    internal static bool IsSupported(string location)
+    {
+        var normalized = Helper.NormalizeLocation(location);
+        return IsKnownShellPage(normalized) || IsLocalPath(normalized);
+    }
+
     public async Task<HashSet<int>> FindAvailableAsync(ExplorerSession session, CancellationToken cancellationToken,
-        int timeoutMs = 1_500)
+        int timeoutMs = 1_500) =>
+        (await CheckAsync(session.Locations, cancellationToken, timeoutMs).ConfigureAwait(false)).Available;
+
+    /// <summary>
+    /// Whether the location can be opened now, or null when that was not decided within the budget: its drive is
+    /// slow to answer, or an earlier abandoned probe is still blocked.
+    /// </summary>
+    public async Task<bool?> IsAvailableAsync(string location, CancellationToken cancellationToken, int timeoutMs = 1_500)
+    {
+        if (!IsSupported(location))
+            return false;
+        var (available, decided) = await CheckAsync([location], cancellationToken, timeoutMs).ConfigureAwait(false);
+        return available.Count > 0 ? true : decided ? false : null;
+    }
+
+    /// <returns>The available indexes, and whether the filesystem probe ran to completion within the budget.</returns>
+    private async Task<(HashSet<int> Available, bool Decided)> CheckAsync(string[] requested,
+        CancellationToken cancellationToken, int timeoutMs)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var locations = (string[])session.Locations.Clone();
+        var locations = (string[])requested.Clone();
         var available = new HashSet<int>();
         for (var index = 0; index < locations.Length; index++)
             if (IsKnownShellPage(locations[index]))
@@ -63,22 +90,24 @@ internal sealed class ExplorerSessionLocationPolicy
             // A timeout does not stop a synchronous filesystem call. Do not queue more calls behind it
             // or let repeated launches exhaust the thread pool while a device is unavailable.
             if (_probe is { IsCompleted: false })
-                return available;
+                return (available, false);
             _probe = probe = Task.Run(() => Probe(locations, confirmed, cancellationToken), cancellationToken);
         }
+        var decided = true;
         try
         {
             await probe.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), cancellationToken).ConfigureAwait(false);
         }
         catch (TimeoutException)
         {
+            decided = false;
             ExplorerDebugLog.Write("Session restore filesystem check timed out; unconfirmed paths were skipped.");
         }
         // Paths confirmed before the budget ended stay restorable; a blocked path skips only itself and later ones.
         for (var index = 0; index < confirmed.Length; index++)
             if (Volatile.Read(ref confirmed[index]))
                 available.Add(index);
-        return available;
+        return (available, decided);
     }
 
     private void Probe(string[] locations, bool[] confirmed, CancellationToken cancellationToken)

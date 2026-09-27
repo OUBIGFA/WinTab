@@ -36,7 +36,8 @@ internal static class UiStrings
     public static string RestoreModeHint(bool anyFolder) => anyFolder
         ? Pick("保留最初打开的标签并停留在它上面，包括主页／此电脑等启动页", "Keep the initial tab active, including start pages such as Home or This PC")
         : Pick("仅从主页／此电脑等默认位置普通启动时恢复；打开特定文件夹不恢复", "Restore only on a normal launch to a default location such as Home or This PC, not when opening a specific folder");
-    public static string RestoreExclusions => Pick("拖出的窗口和 Ctrl + Shift 独立窗口不触发恢复", "Torn-off windows and Ctrl + Shift separate windows do not trigger restoration");
+    public static string RestoreExclusions => Pick("拖出的窗口和 Ctrl + Shift 独立窗口不触发恢复；已开启系统「登录时还原上一个文件夹窗口」时，关机或资源管理器异常结束时仍打开的窗口交由系统还原",
+        "Torn-off windows and Ctrl + Shift separate windows do not trigger restoration; with Windows' \"Restore previous folder windows at logon\" on, windows still open at shutdown or an Explorer crash are left to Windows");
     public static string DoubleClickTitle => Pick("双击关闭标签页", "Double-click to close tabs");
     public static string DoubleClickDescription => Pick("双击标签页标题直接关闭", "Double-click any tab title to close it");
     public static string MiddleClickTitle => Pick("中键前台打开标签页", "Open middle-clicked tabs in foreground");

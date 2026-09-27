@@ -17,6 +17,32 @@ internal static class UpdateReleaseParserTests
         yield return ("release parsing reads the fields both update paths use", ParsesReleaseFields);
         yield return ("release parsing rejects answers that are not a versioned release", RejectsInvalidReleases);
         yield return ("release parsing skips assets with unexpected field types", SkipsMalformedAssets);
+        yield return ("release parsing reads the published SHA-256 of the selected installer", ReadsInstallerDigest);
+    }
+
+    private static Task ReadsInstallerDigest()
+    {
+        var x64 = new string('A', 63) + "f";
+        var release = JsonNode.Parse($$"""
+            {"tag_name":"v2.2.0","assets":[
+             {"name":"WinTab_v2.2.0_x86_Setup.exe","browser_download_url":"https://dl/x86","digest":"sha256:{{new string('b', 64)}}"},
+             {"name":"WinTab_v2.2.0_x64_Setup.exe","browser_download_url":"https://dl/x64","digest":"sha256:{{x64}}"}]}
+            """);
+        Check.That(UpdateReleaseParser.TryParseRelease(release, Architecture.X64, out var parsed), "A release with digests must parse.");
+        Check.Equal(x64.ToLowerInvariant(), parsed.DownloadSha256, "The digest of the selected installer, not another asset's, is used.");
+
+        foreach (var digest in new[] { "sha1:" + new string('a', 40), "sha256:" + new string('a', 63), "sha256:" + new string('g', 64), "" })
+        {
+            var malformed = JsonNode.Parse($$"""
+                {"tag_name":"v2.2.0","assets":[{"name":"WinTab_v2.2.0_x64_Setup.exe","browser_download_url":"https://dl/x64","digest":"{{digest}}"}]}
+                """);
+            Check.That(UpdateReleaseParser.TryParseRelease(malformed, Architecture.X64, out var withoutHash) &&
+                withoutHash.DownloadUrl == "https://dl/x64" && withoutHash.DownloadSha256 == null,
+                $"'{digest}' is not a SHA-256 digest; the installer is still offered, without a hash to check.");
+        }
+        Check.That(UpdateReleaseParser.TryParseRelease(BuildRelease(("WinTab_v1.2.0_x64_Setup.exe", "https://dl/x64")), Architecture.X64,
+            out var older) && older.DownloadSha256 == null, "Releases published before GitHub added digests have none.");
+        return Task.CompletedTask;
     }
 
     private static Task ParsesReleaseFields()

@@ -94,6 +94,7 @@ internal static class ExplorerSessionJournalTests
         fixture.Invoke("CompleteClosedSessions", true);
         Check.Equal(a.Location, saved.Snapshot!.Locations[0], "The last-used group wins even when its HWND disappeared first.");
         Check.That(saved.Snapshot.Owner == null, "The promoted group is no longer a live-process record.");
+        Check.That(saved.Snapshot.EndedWithExplorer, "A group recovered from an ended Explorer is marked as still open when it ended.");
     });
 
     private static Task NormalClose() => WithJournal(async (fixture, saved, live) =>
@@ -112,6 +113,7 @@ internal static class ExplorerSessionJournalTests
         fixture.SetExplorerWindows(survivor.Handle);
         await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None)!;
         Check.Equal(a.Location, saved.Snapshot!.Locations[0], "A settled normal close becomes the saved group.");
+        Check.That(!saved.Snapshot.EndedWithExplorer, "A window the user closed is not one Windows reopens at sign-in.");
         Check.Equal(b.Location, live.Snapshot!.Locations[0], "The surviving window remains available for later crash recovery.");
         Check.That(live.Snapshot.SavedAt > saved.Snapshot.SavedAt, "A later shutdown must prefer the still-open group.");
     });
@@ -123,6 +125,7 @@ internal static class ExplorerSessionJournalTests
         await live.SaveAsync(ended);
         fixture.Invoke("PromoteEndedLiveSession");
         Check.That(saved.Snapshot!.HasSameTabs(ended), "An ended owner promotes its complete order and active tab.");
+        Check.That(saved.Snapshot.EndedWithExplorer, "The promoted group records that it was open when Explorer ended.");
         await saved.SaveAsync(Group("newer-close", 30));
         fixture.Invoke("PromoteEndedLiveSession");
         Check.Equal(@"C:\newer-close", saved.Snapshot!.Locations[0], "A stale live file must never supersede a newer real close.");
@@ -150,6 +153,10 @@ internal static class ExplorerSessionJournalTests
             Check.Equal(owner, copy.Owner!, "Process incarnation survives a disk round-trip.");
             Check.Equal(original.SavedAt, copy.SavedAt, "Save ordering survives a restart.");
             Check.That(copy.HasSameTabs(original), "Order, duplicate locations and selection survive serialization.");
+            Check.That(!copy.EndedWithExplorer, "A journal entry is not a group recovered from an ended Explorer.");
+            Check.That(await live.SaveAsync(original with { Owner = null, EndedWithExplorer = true }), "A recovered group must persist.");
+            using var recovered = new ExplorerSessionStore(path);
+            Check.That(recovered.Snapshot!.EndedWithExplorer, "Being recovered from an ended Explorer survives a restart.");
             Check.Throws<System.Text.Json.JsonException>(() => (original with { SavedAt = long.MaxValue }).ValidatedCopy(), "Unsupported timestamps cannot overflow save ordering.");
             Check.Throws<System.Text.Json.JsonException>(() => (original with { Owner = new ExplorerSessionOwner(-1, 1) }).ValidatedCopy(), "Invalid owners cannot be mistaken for ended processes.");
         }

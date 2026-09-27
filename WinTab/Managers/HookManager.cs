@@ -35,7 +35,7 @@ public sealed class HookManager : IDisposable
     {
         _syncContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
-        _explorerWatcher = new ExplorerWatcher(RegistryManager.GetDefaultExplorerLaunchId);
+        _explorerWatcher = new ExplorerWatcher(RegistryManager.GetDefaultExplorerLaunchId, RegistryManager.RestoresFolderWindowsAtSignIn);
         _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab);
         _middleClickHook = new ExplorerNavigationMiddleClickHook();
         _wheelSwitchHook = new ExplorerTabWheelSwitchHook(_explorerWatcher, () => SettingsManager.WheelSwitchSensitivity);

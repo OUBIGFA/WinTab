@@ -159,32 +159,31 @@ public partial class ExplorerWatcher
     }
 
     /// <summary>
-    /// Reopens the most recently closed tab: in the Explorer window in front, else in the window it was closed
-    /// in, else in the window used last, else in a window of its own. With tab reuse on, a location that is
-    /// already open is brought forward instead.
+    /// Reopens the most recently closed tab that can be opened now: in the Explorer window in front, else in the
+    /// window it was closed in, else in the window used last, else in a window of its own. With tab reuse on, a
+    /// location that is already open is brought forward instead. Newer closes that could not be opened are passed
+    /// over; they are reported with this reopen and not offered again.
     /// </summary>
     private async Task<SessionCommandResult> ReopenClosedTabCoreAsync(CancellationToken token)
     {
         if (!_recordClosedTabs)
             return SessionCommandResult.NoClosedTab;
         CompleteClosedSessions();
-        if (!_closedTabs.TryPop(out var closed))
+        var candidates = _closedTabs.Peek();
+        if (candidates.Length == 0)
             return SessionCommandResult.NoClosedTab;
-        ExplorerDebugLog.Write($"Reopen closed tab location={closed.Location}");
+        var index = await FindReopenableClosedTabAsync(candidates, token);
+        if (index < 0)
+            return SessionCommandResult.NothingAvailable;
+        token.ThrowIfCancellationRequested();
+        var closed = candidates[index];
+        if (!_recordClosedTabs || !_closedTabs.TryTake(closed))
+            return SessionCommandResult.NoClosedTab;
+        ExplorerDebugLog.Write($"Reopen closed tab location={closed.Location} passedOver={index}");
         var reopened = false;
         try
         {
-            var available = await _sessionLocationPolicy.FindAvailableAsync(new ExplorerSession
-            {
-                Locations = [closed.Location], ActiveTabIndex = 0, OrderVerified = true
-            }, token);
-            if (!available.Contains(0))
-                return SessionCommandResult.NothingAvailable;
-            token.ThrowIfCancellationRequested();
-            if (!_recordClosedTabs)
-                return SessionCommandResult.NoClosedTab;
             reopened = await ReopenAsync(closed, token);
-            return reopened ? SessionCommandResult.Completed : SessionCommandResult.Failed;
         }
         finally
         {
@@ -192,6 +191,34 @@ public partial class ExplorerWatcher
             if (!reopened && _recordClosedTabs)
                 _closedTabs.Return(closed);
         }
+        if (!reopened)
+            return SessionCommandResult.Failed;
+        foreach (var passedOver in candidates[..index])
+            _closedTabs.TryTake(passedOver);
+        return index == 0 ? SessionCommandResult.Completed : SessionCommandResult.CompletedWithSkips;
+    }
+
+    /// <summary>
+    /// The index of the newest of <paramref name="candidates"/> whose location can be opened now, or -1. Locations
+    /// are checked newest first and only until one can be opened, so an older close never wakes an idle drive.
+    /// A location the policy never admits, such as a network share, and a local folder confirmed missing, for
+    /// example on an unplugged drive, are passed over; a folder whose drive does not answer in time ends the
+    /// search instead, since it may still open. When none can be opened, only the locations the policy never
+    /// admits are forgotten; a missing local folder keeps its place so that it can be tried again.
+    /// </summary>
+    private async Task<int> FindReopenableClosedTabAsync(ClosedTab[] candidates, CancellationToken token)
+    {
+        for (var index = 0; index < candidates.Length; index++)
+        {
+            var available = await _sessionLocationPolicy.IsAvailableAsync(candidates[index].Location, token);
+            if (available == true)
+                return index;
+            if (available == null)
+                break;
+        }
+        foreach (var tab in candidates.Where(tab => !ExplorerSessionLocationPolicy.IsSupported(tab.Location)))
+            _closedTabs.TryTake(tab);
+        return -1;
     }
 
     private async Task<bool> ReopenAsync(ClosedTab closed, CancellationToken token)
