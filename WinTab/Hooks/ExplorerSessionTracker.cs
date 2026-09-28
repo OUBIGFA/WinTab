@@ -66,16 +66,17 @@ internal sealed class ExplorerSessionTracker
     /// <summary>
     /// The complete group of the most recently used window that <paramref name="qualifies"/>. A window never
     /// brought to the front ranks below every used one; among those the first tracked comes first.
+    /// Tabs in <paramref name="movedTabs"/> live on in another window and are left out, as a close would.
     /// </summary>
     public (WindowIdentity Identity, ExplorerSession Session)? MostRecent(Func<ExplorerSession, bool> qualifies,
-        Func<WindowIdentity, bool>? includeWindow = null)
+        Func<WindowIdentity, bool>? includeWindow = null, IReadOnlySet<WindowIdentity>? movedTabs = null)
     {
         lock (_gate)
         {
             foreach (var (identity, frame) in _frames.OrderByDescending(pair => pair.Value.LastUsed)
                 .ThenBy(pair => pair.Value.Order))
             {
-                if ((includeWindow == null || includeWindow(identity)) && frame.Snapshot(null) is { } session && qualifies(session))
+                if ((includeWindow == null || includeWindow(identity)) && frame.Snapshot(movedTabs) is { } session && qualifies(session))
                     return (identity, session);
             }
             return null;

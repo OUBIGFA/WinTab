@@ -14,7 +14,8 @@ internal readonly record struct SessionRestoreResult(int RestoredCount, bool Com
 /// at once. The tabs therefore appear together instead of one per navigation. The initial tab is never
 /// navigated, and a normal-launch placeholder is only removed after every addition has been confirmed, while it
 /// is still the active tab: Explorer can apply a close command sent to a background tab to its active tab, and
-/// closing the active placeholder cannot reach a restored tab either way. The saved active tab is selected last.
+/// closing the active placeholder cannot reach a restored tab either way. The saved active tab is selected last:
+/// switching to a tab Explorer is still creating crashes Explorer.
 /// </summary>
 internal static class ExplorerSessionRestorer
 {

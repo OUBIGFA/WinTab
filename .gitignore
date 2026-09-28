@@ -389,3 +389,6 @@ FodyWeavers.xsd
 
 AGENTS.md
 CLAUDE.md
+
+# Keep local temporary work out of Git at every depth, after all allow rules
+_temp/

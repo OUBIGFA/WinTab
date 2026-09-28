@@ -55,6 +55,8 @@ internal static partial class ExplorerStressTest
                 ExplorerWindowDiscovery.GetAllExplorerWindows().Where(handle => !userFrames.Contains(handle)).ToArray()));
             var store = new ExplorerSessionStore(Path.Combine(root, "session.json"));
             SetWatcherField(watcher, "_sessionStore", store);
+            // Never journal the probe's windows into the user's live session.
+            SetWatcherField(watcher, "_liveSessionStore", new ExplorerSessionStore(Path.Combine(root, "session-live.json")));
             watcher.StatusChanged += message => Console.WriteLine("  status: " + message);
             if (!await WaitForConditionAsync(() => watcher.IsShellReady, 10_000))
                 throw new InvalidOperationException("The watcher did not connect to Explorer.");
@@ -68,73 +70,79 @@ internal static partial class ExplorerStressTest
                 excludeUserFrame.Invoke(watcher, [userFrame]);
             await Task.Delay(1_500);
 
-            // 1. A normal launch replaces the start page with the whole saved group and selects the saved tab.
-            await SaveSessionAsync(store, [a, b, c], 1);
-            var frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, null);
-            await ExpectProbeTabsAsync(frame, ["A", "B", "C"], "B", failures, "normal launch");
-            if (failures.Count > 0)
-                throw new InvalidOperationException("Stopped after the first restoration failed.");
-            await WaitForSessionRestoreIdleAsync(watcher);
-
-            // 2. The restored window is the next saved group, with the tab the user selected last.
-            if (IsSessionProbeFrame(frame, userFrames, root))
+            if (args.Contains("--requested", StringComparer.OrdinalIgnoreCase))
+                await RunRequestedRestoreTimingAsync(watcher, store, root, userFrames, ownedFrames, failures,
+                    args.Contains("--real-folders", StringComparer.OrdinalIgnoreCase));
+            else
             {
-                WinApi.TrySendMessage(frame, WinApi.WM_COMMAND, 0xA221, 3, 1_000);
-                await ExpectProbeTabsAsync(frame, ["A", "B", "C"], "C", failures, "user selects C");
-                await Task.Delay(1_500);
-            }
-            await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
-            await ExpectSavedSessionAsync(store, [a, b, c], 2, failures, "restored window closed");
-            if (failures.Count > 0)
-                throw new InvalidOperationException("Stopped after the restored window could not be saved.");
-            if (!args.Contains("--quick", StringComparer.OrdinalIgnoreCase))
-            {
-                // A hidden preload may become the next window after this one closes.
-                watcher.SetRestoreOnAnyFolder(true);
-                await Task.Delay(6_000);
-                await SaveSessionAsync(store, [a, b, c], 2);
-                frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, start);
-                await ExpectProbeTabsAsync(frame, ["start", "A", "B", "C"], "start", failures, "any-folder explicit folder");
-                if (failures.Count > 0) throw new InvalidOperationException("Stopped after any-folder restore failed.");
-                await WaitForSessionRestoreIdleAsync(watcher);
-                await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
-                await ExpectSavedSessionAsync(store, [start, a, b, c], 0, failures, "explicit-folder window closed");
-                if (failures.Count > 0) throw new InvalidOperationException("Stopped after the folder window could not be saved.");
-
-                // A plain launch, as from the taskbar icon, opens Explorer's start page. In any-folder mode that
-                // page is what the user opened: it stays first and active, and the group follows it.
-                await Task.Delay(6_000);
+                // 1. A normal launch replaces the start page with the whole saved group and selects the saved tab.
                 await SaveSessionAsync(store, [a, b, c], 1);
-                frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, null);
-                await ExpectStartPageKeptAsync(frame, ["A", "B", "C"], failures, "any-folder plain launch keeps the start page");
-                if (failures.Count > 0) throw new InvalidOperationException("Stopped after any-folder plain launch failed.");
+                var frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, null);
+                await ExpectProbeTabsAsync(frame, ["A", "B", "C"], "B", failures, "normal launch");
+                if (failures.Count > 0)
+                    throw new InvalidOperationException("Stopped after the first restoration failed.");
                 await WaitForSessionRestoreIdleAsync(watcher);
-                await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
-                // A frame can disappear before its asynchronous OnQuit/capture work has saved the group.
-                // Wait for that save before injecting the next scenario's history, or the old close overwrites it.
-                var keptGroupSaved = await WaitForConditionAsync(() => store.Snapshot is { } saved &&
-                    saved.Locations.Length == 4 && saved.ActiveTabIndex == 0 &&
-                    saved.Locations.Skip(1).Select(Helper.NormalizeLocation).SequenceEqual(new[] { a, b, c }, StringComparer.OrdinalIgnoreCase), 5_000);
-                if (!keptGroupSaved)
-                    throw new InvalidOperationException("The any-folder start-page window was not saved before the next scenario.");
-                Console.WriteLine("PASS start-page window closed: initial page and restored group saved");
 
-                watcher.SetRestoreOnAnyFolder(false);
-                await SaveSessionAsync(store, [a, b], 0);
-                frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, start);
-                await Task.Delay(4_000);
-                await ExpectProbeTabsAsync(frame, ["start"], "start", failures, "normal-launch mode explicit folder", 1_000);
+                // 2. The restored window is the next saved group, with the tab the user selected last.
+                if (IsSessionProbeFrame(frame, userFrames, root))
+                {
+                    WinApi.TrySendMessage(frame, WinApi.WM_COMMAND, 0xA221, 3, 1_000);
+                    await ExpectProbeTabsAsync(frame, ["A", "B", "C"], "C", failures, "user selects C");
+                    await Task.Delay(1_500);
+                }
                 await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
-                // Single-tab restore is off by default: a window with one tab does not replace the saved group.
-                await ExpectSavedSessionAsync(store, [a, b], 0, failures, "single-tab window closed keeps the group");
-                if (failures.Count > 0) throw new InvalidOperationException("Stopped after strict-mode restore failed.");
+                await ExpectSavedSessionAsync(store, [a, b, c], 2, failures, "restored window closed");
+                if (failures.Count > 0)
+                    throw new InvalidOperationException("Stopped after the restored window could not be saved.");
+                if (!args.Contains("--quick", StringComparer.OrdinalIgnoreCase))
+                {
+                    // A hidden preload may become the next window after this one closes.
+                    watcher.SetRestoreOnAnyFolder(true);
+                    await Task.Delay(6_000);
+                    await SaveSessionAsync(store, [a, b, c], 2);
+                    frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, start);
+                    await ExpectProbeTabsAsync(frame, ["start", "A", "B", "C"], "start", failures, "any-folder explicit folder");
+                    if (failures.Count > 0) throw new InvalidOperationException("Stopped after any-folder restore failed.");
+                    await WaitForSessionRestoreIdleAsync(watcher);
+                    await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
+                    await ExpectSavedSessionAsync(store, [start, a, b, c], 0, failures, "explicit-folder window closed");
+                    if (failures.Count > 0) throw new InvalidOperationException("Stopped after the folder window could not be saved.");
 
-                var recycleBin = GetShellPageTitle(RecycleBinPage);
-                await SaveSessionAsync(store, [a, RecycleBinPage, Path.Combine(root, "missing"), c], 1);
-                frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, null);
-                await ExpectProbeTabsAsync(frame, ["A", recycleBin, "C"], recycleBin, failures, "built-in page and missing folder");
-                await WaitForSessionRestoreIdleAsync(watcher);
-                await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
+                    // A plain launch, as from the taskbar icon, opens Explorer's start page. In any-folder mode that
+                    // page is what the user opened: it stays first and active, and the group follows it.
+                    await Task.Delay(6_000);
+                    await SaveSessionAsync(store, [a, b, c], 1);
+                    frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, null);
+                    await ExpectStartPageKeptAsync(frame, ["A", "B", "C"], failures, "any-folder plain launch keeps the start page");
+                    if (failures.Count > 0) throw new InvalidOperationException("Stopped after any-folder plain launch failed.");
+                    await WaitForSessionRestoreIdleAsync(watcher);
+                    await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
+                    // A frame can disappear before its asynchronous OnQuit/capture work has saved the group.
+                    // Wait for that save before injecting the next scenario's history, or the old close overwrites it.
+                    var keptGroupSaved = await WaitForConditionAsync(() => store.Snapshot is { } saved &&
+                        saved.Locations.Length == 4 && saved.ActiveTabIndex == 0 &&
+                        saved.Locations.Skip(1).Select(Helper.NormalizeLocation).SequenceEqual(new[] { a, b, c }, StringComparer.OrdinalIgnoreCase), 5_000);
+                    if (!keptGroupSaved)
+                        throw new InvalidOperationException("The any-folder start-page window was not saved before the next scenario.");
+                    Console.WriteLine("PASS start-page window closed: initial page and restored group saved");
+
+                    watcher.SetRestoreOnAnyFolder(false);
+                    await SaveSessionAsync(store, [a, b], 0);
+                    frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, start);
+                    await Task.Delay(4_000);
+                    await ExpectProbeTabsAsync(frame, ["start"], "start", failures, "normal-launch mode explicit folder", 1_000);
+                    await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
+                    // Single-tab restore is off by default: a window with one tab does not replace the saved group.
+                    await ExpectSavedSessionAsync(store, [a, b], 0, failures, "single-tab window closed keeps the group");
+                    if (failures.Count > 0) throw new InvalidOperationException("Stopped after strict-mode restore failed.");
+
+                    var recycleBin = GetShellPageTitle(RecycleBinPage);
+                    await SaveSessionAsync(store, [a, RecycleBinPage, Path.Combine(root, "missing"), c], 1);
+                    frame = await OpenSessionProbeWindowAsync(userFrames, ownedFrames, null);
+                    await ExpectProbeTabsAsync(frame, ["A", recycleBin, "C"], recycleBin, failures, "built-in page and missing folder");
+                    await WaitForSessionRestoreIdleAsync(watcher);
+                    await CloseSessionProbeFrameAsync(frame, userFrames, root, ownedFrames, failures);
+                }
             }
         }
         catch (Exception exception)
@@ -178,8 +186,110 @@ internal static partial class ExplorerStressTest
         using var reader = new StreamReader(stream);
         Console.WriteLine("Restore timeline:");
         while (reader.ReadLine() is { } line)
-            if (line.Contains("Session restore") || line.Contains("OpenTab direct tab="))
+            if (line.Contains("Session restore") || line.Contains("OpenTab direct tab=") ||
+                line.Contains("Requested restore") || line.Contains("Registered") || line.Contains("Session command"))
                 Console.WriteLine("  " + line);
+    }
+
+    /// <summary>
+    /// Times the restore the user asks for from the tray or its shortcut: when its window shows, when every tab
+    /// is present, when the saved tab is selected and when the command returns, measured from the request. The
+    /// last run asks again right after the restored window was closed, as a user checking the shortcut does.
+    /// With --real-folders the user's own saved group is opened, read-only, instead of empty probe folders.
+    /// </summary>
+    private static async Task RunRequestedRestoreTimingAsync(ExplorerWatcher watcher, ExplorerSessionStore store,
+        string root, HashSet<nint> userFrames, HashSet<WindowIdentity> ownedFrames, List<string> failures, bool realFolders)
+    {
+        using var savedStore = realFolders
+            ? new ExplorerSessionStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WinTab", "session.json"))
+            : null;
+        var locations = realFolders
+            ? savedStore?.Snapshot?.Locations ?? []
+            : new[] { "R1", "R2", "R3", "R4", "R5", "R6" }.Select(name => CreateSessionFolder(root, name)).ToArray();
+        if (locations.Length < 2)
+            throw new InvalidOperationException("No saved group to time.");
+        var active = locations.Length / 2;
+        const int runs = 4;
+        for (var run = 1; run <= runs; run++)
+        {
+            var immediate = run == runs;
+            if (!immediate)
+                await SaveSessionAsync(store, locations, active);
+            var shownBefore = ExplorerWindowDiscovery.GetAllExplorerWindows().Where(WinApi.IsWindowVisible).ToHashSet();
+            var clock = Stopwatch.StartNew();
+            var command = watcher.RestoreLastSessionAsync();
+            var repeated = await watcher.RestoreLastSessionAsync();
+            if (repeated != SessionCommandResult.Busy)
+                throw new InvalidOperationException($"An overlapping request must be rejected, got {repeated}.");
+            nint frame = 0;
+            long shown = -1, allTabs = -1, selected = -1, done = -1;
+            while (clock.ElapsedMilliseconds < 15_000 && (done < 0 || selected < 0 || allTabs < 0))
+            {
+                if (done < 0 && command.IsCompleted)
+                    done = clock.ElapsedMilliseconds;
+                if (frame == 0)
+                {
+                    frame = ExplorerWindowDiscovery.GetAllExplorerWindows().FirstOrDefault(handle =>
+                        !userFrames.Contains(handle) && !shownBefore.Contains(handle) && WinApi.IsWindowVisible(handle));
+                    if (frame != 0)
+                    {
+                        shown = clock.ElapsedMilliseconds;
+                        ownedFrames.Add(WindowIdentity.Capture(frame));
+                    }
+                }
+                else
+                {
+                    if (allTabs < 0 && ExplorerWindowDiscovery.GetAllExplorerTabs(frame).Count() == locations.Length)
+                        allTabs = clock.ElapsedMilliseconds;
+                    if (selected < 0)
+                    {
+                        ExplorerTabAutomation.Tab[] tabs;
+                        try { tabs = ExplorerTabAutomation.ReadSessionTabs(frame); }
+                        catch (Exception) { tabs = []; }
+                        if (tabs.Length > active && tabs.Count(tab => tab.Selected) == 1 && tabs[active].Selected)
+                            selected = clock.ElapsedMilliseconds;
+                    }
+                }
+                await Task.Delay(25);
+            }
+            var result = command.IsCompleted ? command.Result.ToString() : "pending";
+            Console.WriteLine($"run {run}{(immediate ? " (right after closing)" : "")}: result={result} window={shown} ms, " +
+                $"all tabs={allTabs} ms, saved tab selected={selected} ms, command returned={done} ms, repeat={repeated}");
+            if (result != nameof(SessionCommandResult.Completed) || selected < 0 || allTabs < 0)
+                failures.Add($"requested restore run {run}: result={result} selected={selected} allTabs={allTabs}");
+            await WaitForSessionRestoreIdleAsync(watcher);
+            if (frame != 0)
+            {
+                var finalTabs = ExplorerTabAutomation.ReadSessionTabs(frame);
+                if (finalTabs.Length != locations.Length || !finalTabs[active].Selected || finalTabs.Count(tab => tab.Selected) != 1)
+                    failures.Add($"requested restore run {run}: the final tab count or saved selection changed");
+                await CloseRequestedProbeFrameAsync(frame, userFrames, ownedFrames, locations, failures);
+            }
+            if (failures.Count > 0)
+                return;
+            // Ask immediately after run 3 closes, while its close is still pending, not after the settle delay.
+            if (run < runs - 1)
+                await Task.Delay(ExplorerWatcher.SessionWindowCloseSettleMs + 1_500);
+        }
+    }
+
+    /// <summary>Closes a window the timing probe restored, only while it is provably that window.</summary>
+    private static async Task CloseRequestedProbeFrameAsync(nint frame, HashSet<nint> userFrames,
+        HashSet<WindowIdentity> ownedFrames, string[] locations, List<string> failures)
+    {
+        var expected = locations.Select(Helper.NormalizeLocation).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var tabs = GetShellWindows().Where(window => (nint)window.Hwnd == frame).ToArray();
+        var owned = !userFrames.Contains(frame) && ownedFrames.Any(identity => identity.Handle == frame && identity.IsCurrent) &&
+            tabs.Length > 0 && tabs.Length == ExplorerWindowDiscovery.GetAllExplorerTabs(frame).Count() &&
+            tabs.All(tab => expected.Contains(Helper.NormalizeLocation(string.IsNullOrEmpty(tab.LocationUrl) ? tab.Path : tab.LocationUrl)));
+        if (!owned)
+        {
+            failures.Add($"frame {frame} is not provably the probe's own window; it was left open");
+            return;
+        }
+        WinApi.PostMessage(frame, 0x0112, 0xF060, 0);
+        if (!await WaitForConditionAsync(() => !ExplorerWindowDiscovery.IsFileExplorerWindow(frame) || !WinApi.IsWindowVisible(frame), 3_000))
+            failures.Add($"probe frame {frame} did not close");
     }
 
     private static async Task ExpectStartPageKeptAsync(nint frame, string[] restored, List<string> failures, string scenario)

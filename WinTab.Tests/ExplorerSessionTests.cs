@@ -52,6 +52,7 @@ internal static class ExplorerSessionTests
         yield return ("session restore requests every tab before confirming any location", RequestsAllTabsBeforeConfirming);
         yield return ("session restore an unconfirmed location stops before closing or selecting", UnconfirmedLocationStops);
         yield return ("session restore reuses a matching placeholder as the first saved tab", MatchingFirstTabReusesPlaceholder);
+        yield return ("session restore never switches tabs before every tab is added and confirmed", SelectsOnlyAfterConfirming);
         yield return ("session restore selects a reused placeholder that was the saved active tab", ReusedPlaceholderCanBeActive);
         yield return ("session restore folder mode never replaces the opened folder", FolderModeNeverClosesOpenedFolder);
         yield return ("session restore folder mode preserves the opened folder and its selection", FolderRestoreKeepsInitial);
@@ -391,6 +392,19 @@ internal static class ExplorerSessionTests
         Check.Equal(@"C:\B", environment.Tabs[environment.Active], "The saved active tab must still be selected.");
         Check.That(Plan(Session([@"C:\A", Home]))!.CloseInitialTab,
             "A matching placeholder at another saved position cannot keep the saved order and is replaced.");
+    }
+
+    private static async Task SelectsOnlyAfterConfirming()
+    {
+        var session = new ExplorerSession { Locations = [@"C:\A", @"C:\B", @"C:\C", @"C:\D"], ActiveTabIndex = 1, OrderVerified = true };
+        var (plan, _) = ExplorerSessionRestorePlan.CreateForNewWindow(session, new HashSet<int> { 0, 1, 2, 3 })!.Value;
+        var environment = new RestoreEnvironment(@"C:\A");
+        var result = await ExplorerSessionRestorer.RestoreAsync(plan, environment, CancellationToken.None);
+        Check.That(result.Completed && environment.Tabs.Values.SequenceEqual([@"C:\A", @"C:\B", @"C:\C", @"C:\D"]),
+            "Every saved tab is restored in saved order.");
+        Check.Equal(@"C:\B", environment.Tabs[environment.Active], "The saved active tab ends up selected.");
+        Check.That(environment.Events.SequenceEqual(["append:C:\\B", "append:C:\\C", "append:C:\\D", "confirm:2,3,4", "select:2"]),
+            "Switching to a tab Explorer is still creating crashes Explorer, so selection comes after confirmation.");
     }
 
     private static async Task ReusedPlaceholderCanBeActive()

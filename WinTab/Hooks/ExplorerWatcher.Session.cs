@@ -460,14 +460,33 @@ public partial class ExplorerWatcher
         }
     }
 
-    /// <summary>Fast close/reopen must wait for the closing window, not restore an older saved group.</summary>
-    private async Task AwaitClosedSessionsAsync(CancellationToken token)
+    /// <summary>
+    /// The last group, including windows still closing. Automatic restore waits for them to settle. An explicit
+    /// request reads a closing window's complete group at once, the one in use last as the journal would, but
+    /// neither consumes it nor saves it: until process exit is known it may still be a crash's teardown.
+    /// </summary>
+    private async Task<ExplorerSession?> AwaitClosedSessionsAsync(CancellationToken token, bool requested = false)
     {
+        token.ThrowIfCancellationRequested();
+        if (requested)
+        {
+            CompleteClosedSessions();
+            var pending = _sessionWindows.Values.Where(identity => !identity.IsCurrent).ToHashSet();
+            if (pending.Count > 0)
+            {
+                var liveTabs = _getExplorerWindows().SelectMany(ExplorerWindowDiscovery.GetAllExplorerTabs)
+                    .Select(WindowIdentity.Read).Where(identity => identity.Token != 0).ToHashSet();
+                if (_sessionTracker.MostRecent(QualifiesAsGroup, pending.Contains, liveTabs) is { } closing)
+                    return closing.Session;
+            }
+            return _sessionStore?.Snapshot;
+        }
         await Helper.DoUntilConditionAsync(() =>
         {
             CompleteClosedSessions();
             return _sessionWindows.Values.Any(identity => !identity.IsCurrent);
         }, pending => !pending, SessionWindowCloseSettleMs + 500, 25, token);
+        return _sessionStore?.Snapshot;
     }
 
     /// <param name="shellEnded">

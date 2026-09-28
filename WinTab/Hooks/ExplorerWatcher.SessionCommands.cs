@@ -59,12 +59,14 @@ public partial class ExplorerWatcher
             return SessionCommandResult.Busy;
         var generation = _shellGeneration;
         var lifetime = _shellLifetime.Token;
+        ExplorerDebugLog.Write($"Session command {name} requested");
         try
         {
             var result = await Task.Factory.StartNew(async () =>
             {
                 if (_disposed || generation != _shellGeneration || lifetime.IsCancellationRequested)
                     return SessionCommandResult.NotReady;
+                ExplorerDebugLog.Write($"Session command {name} started on the shell worker");
                 using var budget = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
                 budget.CancelAfter(RequestedCommandBudgetMs);
                 return await command(budget.Token);
@@ -103,8 +105,9 @@ public partial class ExplorerWatcher
     /// </summary>
     private async Task<SessionCommandResult> RestoreLastSessionCoreAsync(CancellationToken token)
     {
-        await AwaitClosedSessionsAsync(token);
-        if (_sessionStore?.Snapshot is not { } session || !QualifiesAsGroup(session))
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        string Elapsed() => $"{System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0}ms";
+        if (await AwaitClosedSessionsAsync(token, requested: true) is not { } session || !QualifiesAsGroup(session))
             return SessionCommandResult.NothingSaved;
         if (Volatile.Read(ref _sessionRestoresInProgress) != 0)
             return SessionCommandResult.Busy;
@@ -113,9 +116,10 @@ public partial class ExplorerWatcher
             return SessionCommandResult.NothingAvailable;
         var (plan, first) = created;
         var location = session.Locations[first];
-        ExplorerDebugLog.Write($"Requested restore saved={session.Locations.Length} available={available.Count} first={first} active={plan.ActiveSavedIndex}");
+        ExplorerDebugLog.Write($"Requested restore saved={session.Locations.Length} available={available.Count} first={first} active={plan.ActiveSavedIndex} at {Elapsed()}");
         if (await OpenRequestedWindowAsync(location, token) is not { } opened)
             return SessionCommandResult.Failed;
+        ExplorerDebugLog.Write($"Requested restore window registered hwnd={opened.Info.Identity.Handle} at {Elapsed()}");
 
         var (window, info) = opened;
         var identity = info.Identity;
@@ -137,11 +141,14 @@ public partial class ExplorerWatcher
                 return SessionCommandResult.Failed;
             }
             attempt.ObserveForeground(true);
+            ExplorerDebugLog.Write($"Requested restore window in front hwnd={handle} at {Elapsed()}");
             if (plan.Tabs.Length > 0)
             {
                 attempt.ArmNavigation();
                 info.Location = location;
-                if (!await RestoreSessionInWindowAsync(window, info, location, plan, _sessionGeneration, attempt.Token, requested: true))
+                var restored = await RestoreSessionInWindowAsync(window, info, location, plan, _sessionGeneration, attempt.Token, requested: true);
+                ExplorerDebugLog.Write($"Requested restore finished hwnd={handle} completed={restored} at {Elapsed()}");
+                if (!restored)
                     return SessionCommandResult.Failed;
             }
             return plan.SkippedCount > 0 ? SessionCommandResult.CompletedWithSkips : SessionCommandResult.Completed;

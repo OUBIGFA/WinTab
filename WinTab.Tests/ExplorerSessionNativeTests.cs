@@ -249,7 +249,7 @@ internal static class ExplorerSessionNativeTests
         frame.Dispose();
         fixture.SetExplorerWindows();
         fixture.Invoke("NotifySessionWindowDestroyed", handle);
-        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None)!;
+        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None, false)!;
         Check.Equal(@"C:\single-session", store.Snapshot!.Locations[0], "Closing a singleton must immediately publish its complete session in memory.");
         Check.That(await store.FlushAsync(), "The singleton must also persist successfully.");
     });
@@ -269,7 +269,7 @@ internal static class ExplorerSessionNativeTests
         frame.Dispose();
         fixture.SetExplorerWindows();
         fixture.Invoke("NotifySessionWindowDestroyed", handle);
-        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None)!;
+        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None, false)!;
         Check.That(store.Snapshot!.Locations.SequenceEqual([@"C:\group-a", @"C:\group-b"]),
             "Closing a single-tab window must not replace the saved group while single-tab restore is off.");
     }, singleTab: false);
@@ -291,7 +291,7 @@ internal static class ExplorerSessionNativeTests
         first.Dispose();
         fixture.Invoke("NotifySessionWindowDestroyed", firstHandle);
         fixture.SetExplorerWindows();
-        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None)!;
+        await (Task)fixture.Invoke("AwaitClosedSessionsAsync", CancellationToken.None, false)!;
         Check.Equal(@"C:\closed-last", store.Snapshot!.Locations[0], "WinEvent close ordering, not frame registration/dictionary ordering, must select the last group.");
         Check.Equal(1, store.Snapshot.Locations.Length, "Independent windows must never be merged into one historical group.");
         Check.That(await store.FlushAsync(), "Only the last closed group must persist.");
