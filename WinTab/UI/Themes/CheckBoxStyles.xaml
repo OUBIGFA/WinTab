@@ -37,7 +37,7 @@
                             <Border x:Name="SwitchOutline"
                                     CornerRadius="10"
                                     BorderThickness="1"
-                                    BorderBrush="{DynamicResource BorderBrush}" />
+                                    BorderBrush="{DynamicResource ControlBorderBrush}" />
                             <Ellipse x:Name="SwitchThumb"
                                      Width="12"
                                      Height="12"

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using WinTab.Helpers;
 using WinTab.Hooks;
 using WinTab.Models;
 
@@ -23,6 +24,8 @@ internal static class ExplorerSessionLocationTests
         yield return ("session locations follow a junction that stays on a local drive", LocalJunctionIsFollowed);
         yield return ("session locations never follow links to shares, volumes or process-relative paths", RemoteLinkTargetsAreRejected);
         yield return ("session locations keep paths confirmed before a stalled probe", ConfirmedPathsSurviveStall);
+        yield return ("session locations stop a timed-out probe after its stalled call returns", () => AbandonedProbeStopsRemainingPaths(cancel: false));
+        yield return ("session locations stop a cancelled probe after its stalled call returns", () => AbandonedProbeStopsRemainingPaths(cancel: true));
         yield return ("session locations bound a stalled device probe without queuing more work", SlowProbeIsBounded);
         yield return ("session locations decide a single location or report that its check did not finish", SingleLocationDecision);
         yield return ("session locations honour cancellation before starting filesystem work", CancelledProbeDoesNotStart);
@@ -162,6 +165,56 @@ internal static class ExplorerSessionLocationTests
             Check.That(available.SetEquals([0, 1]), "Paths confirmed before the stall and built-in pages stay restorable; unconfirmed ones are skipped.");
             lock (reads)
                 Check.That(!reads.Contains(@"C:\later"), "Nothing may be probed behind a stalled path within the budget.");
+        }
+        finally { gate.Set(); await exited.Task.WaitAsync(TimeSpan.FromSeconds(2)); }
+    }
+
+    private static async Task AbandonedProbeStopsRemainingPaths(bool cancel)
+    {
+        using var gate = new ManualResetEventSlim();
+        using var cancellation = new CancellationTokenSource();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = new List<string>();
+        var policy = new ExplorerSessionLocationPolicy(location =>
+        {
+            lock (reads) reads.Add(location);
+            if (location == @"C:\slow")
+            {
+                entered.TrySetResult();
+                gate.Wait();
+                exited.TrySetResult();
+            }
+            return true;
+        });
+        try
+        {
+            var pending = policy.FindAvailableAsync(new ExplorerSession
+            {
+                Locations = [@"C:\fast", ThisPc, @"C:\slow", @"D:\not-requested"]
+            }, cancellation.Token, cancel ? 5_000 : 300);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            if (cancel)
+            {
+                cancellation.Cancel();
+                await ExpectCancellation(() => pending.WaitAsync(TimeSpan.FromSeconds(2)));
+            }
+            else
+            {
+                Check.That((await pending).SetEquals([0, 1]), "The timeout must retain only already confirmed folders and built-in pages.");
+            }
+            Check.Equal<bool?>(null, await policy.IsAvailableAsync(@"C:\retry", CancellationToken.None),
+                "An abandoned synchronous call still owns the probe slot until it actually returns.");
+
+            gate.Set();
+            // A decided new request proves the previous worker has exited, without inspecting private task state
+            // or relying on a sleep to guess when the abandoned filesystem call resumed.
+            var retried = await Helper.DoUntilConditionAsync(
+                () => policy.IsAvailableAsync(@"C:\retry", CancellationToken.None), result => result.HasValue, 2_000, 10);
+            Check.Equal<bool?>(true, retried, "New requests must work again after the stalled call returns.");
+            lock (reads)
+                Check.That(reads.SequenceEqual([@"C:\fast", @"C:\slow", @"C:\retry"]),
+                    "An abandoned request must not wake another drive after its caller has already left.");
         }
         finally { gate.Set(); await exited.Task.WaitAsync(TimeSpan.FromSeconds(2)); }
     }

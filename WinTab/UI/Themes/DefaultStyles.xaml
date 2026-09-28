@@ -2,17 +2,17 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:system="clr-namespace:System;assembly=mscorlib">
 
-    <!-- Fonts -->
-    <FontFamily x:Key="DefaultFontFamily">Segoe UI Variable, Microsoft YaHei UI, Aptos, Segoe UI, Arial</FontFamily>
+    <!-- Use the text optical family and consistent pixel-fitted metrics for compact bilingual settings. -->
+    <FontFamily x:Key="DefaultFontFamily">Segoe UI Variable Text, Microsoft YaHei UI, Segoe UI, Arial</FontFamily>
     <FontWeight x:Key="DefaultFontWeight">Normal</FontWeight>
-    <system:Double x:Key="DefaultFontSize">14.5</system:Double>
+    <system:Double x:Key="DefaultFontSize">14</system:Double>
 
     <!-- Default style for all controls -->
     <Style TargetType="{x:Type Control}">
         <Setter Property="FontFamily" Value="{StaticResource DefaultFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource DefaultFontSize}" />
         <Setter Property="FontWeight" Value="{StaticResource DefaultFontWeight}" />
-        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
         <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
         <Setter Property="TextOptions.TextHintingMode" Value="Auto" />
 
@@ -28,7 +28,7 @@
         <Setter Property="FontFamily" Value="{StaticResource DefaultFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource DefaultFontSize}" />
         <Setter Property="FontWeight" Value="{StaticResource DefaultFontWeight}" />
-        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
         <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
         <Setter Property="TextOptions.TextHintingMode" Value="Auto" />
         <Setter Property="UseLayoutRounding" Value="True" />
@@ -45,7 +45,7 @@
         <Setter Property="FontFamily" Value="{StaticResource DefaultFontFamily}" />
         <Setter Property="FontSize" Value="{StaticResource DefaultFontSize}" />
         <Setter Property="FontWeight" Value="{StaticResource DefaultFontWeight}" />
-        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
         <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
         <Setter Property="TextOptions.TextHintingMode" Value="Auto" />
 
@@ -77,7 +77,7 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="10,6" />
         <Setter Property="HasDropShadow" Value="False" />
-        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
         <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
         <Setter Property="TextOptions.TextHintingMode" Value="Auto" />
         <Setter Property="Template">
@@ -144,7 +144,7 @@
                 <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Padding" Value="11,0,12,5" />
-                <Setter Property="FontSize" Value="13.5" />
+                <Setter Property="FontSize" Value="14" />
                 <Setter Property="Height" Value="34" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="Template">

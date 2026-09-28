@@ -13,21 +13,23 @@ internal static class MainWindowSizingTests
 
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
-        yield return ("main window sizing caps only the initial height for long content", () => OnSta(InitialHeightLimit));
+        yield return ("main window sizing expands past 900 without scrollbars on first launch", () => OnSta(InitialContentFit));
         yield return ("main window sizing fits short content and retains the minimum height", () => OnSta(ShortContent));
         yield return ("main window sizing keeps the initial size inside a small work area", () => OnSta(SmallWorkArea));
         yield return ("main window sizing restores user sizes above and below the initial limit", () => OnSta(RestoreUserSize));
         yield return ("main window sizing fits a saved height to the screen without a permanent limit", () => OnSta(RestoreOnSmallerScreen));
+        yield return ("main window sizing fits a saved width to a narrower screen without a permanent limit", () => OnSta(RestoreWideUserSize));
         yield return ("main window sizing allows native resizing in both dimensions and scrolling", () => OnSta(ResizeAndScroll));
     }
 
-    private static void InitialHeightLimit() => WithWindow(window =>
+    private static void InitialContentFit() => WithWindow(window =>
     {
         MainWindow.ApplyInitialSize(window, null, LargeWorkArea);
         Check.Equal(960d, window.Width);
-        Check.Equal(900d, window.Height, "Long content must not fill the screen on first launch.");
+        Check.That(window.Height > 1050, "First launch must fit the whole page, including content beyond 900 DIPs.");
+        AssertNoScrollbars(window);
         AssertFreelyResizable(window);
-    });
+    }, 1050);
 
     private static void ShortContent()
     {
@@ -36,7 +38,8 @@ internal static class MainWindowSizingTests
             WithWindow(window =>
             {
                 MainWindow.ApplyInitialSize(window, null, LargeWorkArea);
-                Check.Equal(Math.Max(contentHeight, window.MinHeight), window.Height);
+                Check.Equal(Math.Max(contentHeight + 2, window.MinHeight), window.Height);
+                AssertNoScrollbars(window);
                 AssertFreelyResizable(window);
             }, contentHeight);
         }
@@ -45,8 +48,9 @@ internal static class MainWindowSizingTests
     private static void SmallWorkArea() => WithWindow(window =>
     {
         MainWindow.ApplyInitialSize(window, null, new Size(800, 700));
-        Check.Equal(800d, window.Width);
+        Check.That(window.Width <= 800, "The first window must stay within the screen width.");
         Check.Equal(700d, window.Height);
+        AssertNoScrollbars(window);
         AssertFreelyResizable(window);
     });
 
@@ -67,6 +71,14 @@ internal static class MainWindowSizingTests
     {
         MainWindow.ApplyInitialSize(window, new Size(960, 1600), new Size(1920, 1100));
         Check.Equal(1100d, window.Height, "Only the available work area limits restoration of an oversized height.");
+        AssertFreelyResizable(window);
+    });
+
+    private static void RestoreWideUserSize() => WithWindow(window =>
+    {
+        MainWindow.ApplyInitialSize(window, new Size(2400, 1000), LargeWorkArea);
+        Check.Equal(LargeWorkArea.Width, window.Width, "A size saved on a wider monitor must fit the current work area.");
+        Check.Equal(1000d, window.Height, "A saved height above the initial limit must remain unchanged when it fits.");
         AssertFreelyResizable(window);
     });
 
@@ -105,6 +117,18 @@ internal static class MainWindowSizingTests
         Check.That(double.IsPositiveInfinity(window.MaxWidth), "The initial width must not become a permanent maximum.");
     }
 
+    private static void AssertNoScrollbars(Window window)
+    {
+        // Exercise layout in an actual native window, without activating it or starting Explorer hooks.
+        window.Show();
+        window.UpdateLayout();
+        var scroll = (ScrollViewer)window.Content;
+        Check.Equal(0d, scroll.ScrollableHeight, "The entire page must be visible on first launch.");
+        Check.Equal(0d, scroll.ScrollableWidth);
+        Check.Equal(Visibility.Collapsed, scroll.ComputedVerticalScrollBarVisibility);
+        Check.Equal(Visibility.Collapsed, scroll.ComputedHorizontalScrollBarVisibility);
+    }
+
     private static void WithWindow(Action<Window> body, double contentHeight = 1600)
     {
         var window = new Window
@@ -124,6 +148,14 @@ internal static class MainWindowSizingTests
                 Content = new Border { Height = contentHeight }
             }
         };
+        // Match MainWindow's client-area frame so the test measures the same available content area.
+        System.Windows.Shell.WindowChrome.SetWindowChrome(window, new System.Windows.Shell.WindowChrome
+        {
+            CaptionHeight = 46,
+            ResizeBorderThickness = new Thickness(6),
+            GlassFrameThickness = new Thickness(-1),
+            UseAeroCaptionButtons = false
+        });
         try { body(window); }
         finally { window.Close(); }
     }

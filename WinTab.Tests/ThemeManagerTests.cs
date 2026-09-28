@@ -18,6 +18,7 @@ internal static class ThemeManagerTests
         "TextTertiaryBrush",
         "TextAccentBrush",
         "BorderBrush",
+        "ControlBorderBrush",
         "DividerBrush",
         "ControlBackgroundBrush",
         "ControlHoverBrush",
@@ -52,6 +53,7 @@ internal static class ThemeManagerTests
                 "Light primary text");
             AssertContrast(GetColor("TextSecondaryBrush"), GetColor("SurfaceBrush"), 4.5,
                 "Light secondary text");
+            AssertControlContrast("Light");
 
             ThemeManager.ApplyTheme(dark: true);
             AssertPaletteIsNeutral();
@@ -60,6 +62,7 @@ internal static class ThemeManagerTests
                 "Dark primary text");
             AssertContrast(GetColor("TextSecondaryBrush"), GetColor("SurfaceBrush"), 4.5,
                 "Dark secondary text");
+            AssertControlContrast("Dark");
         }, CancellationToken.None, TaskCreationOptions.None, scheduler);
     }
 
@@ -79,10 +82,19 @@ internal static class ThemeManagerTests
     /// <summary>Settings groups sit on the window background as slightly lighter cards in both themes.</summary>
     private static void AssertSurfaceLift(string theme)
     {
-        Check.That(GetGrayLevel("SurfaceBrush") - GetGrayLevel("WindowBackgroundBrush") >= 4,
+        Check.That(GetGrayLevel("SurfaceBrush") - GetGrayLevel("WindowBackgroundBrush") >= 12,
             $"{theme} surface needs a visible lift from the window background.");
         AssertContrast(GetColor("DividerBrush"), GetColor("SurfaceBrush"), 1.15,
             $"{theme} group outline");
+    }
+
+    private static void AssertControlContrast(string theme)
+    {
+        // Off switches and editable fields must remain identifiable without relying on hover.
+        AssertContrast(GetColor("ControlBorderBrush"), GetColor("SurfaceBrush"), 3.0,
+            $"{theme} control outline");
+        AssertContrast(GetColor("TextSecondaryBrush"), GetColor("ControlBackgroundBrush"), 4.5,
+            $"{theme} unselected control text");
     }
 
     private static void AssertPaletteIsNeutral()

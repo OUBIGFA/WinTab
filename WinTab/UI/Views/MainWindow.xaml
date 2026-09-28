@@ -27,17 +27,18 @@
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
+        <!-- Section hierarchy comes from size and spacing; setting labels retain a regular weight. -->
         <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="13.5" />
+            <Setter Property="FontSize" Value="16" />
             <Setter Property="FontWeight" Value="Medium" />
-            <Setter Property="LineHeight" Value="18" />
-            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
-            <Setter Property="Margin" Value="4,0,0,8" />
+            <Setter Property="LineHeight" Value="22" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Margin" Value="4,0,0,10" />
         </Style>
 
         <Style x:Key="SettingsGroupStyle" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
@@ -45,7 +46,7 @@
         <Style x:Key="SettingRowStyle" TargetType="Border">
             <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
-            <Setter Property="Padding" Value="18,12" />
+            <Setter Property="Padding" Value="18,14" />
         </Style>
 
         <Style x:Key="LastSettingRowStyle" TargetType="Border" BasedOn="{StaticResource SettingRowStyle}">
@@ -53,8 +54,9 @@
         </Style>
 
         <Style x:Key="SettingTitleStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="14.5" />
-            <Setter Property="LineHeight" Value="20" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="LineHeight" Value="22" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
@@ -62,23 +64,45 @@
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="FontSize" Value="13" />
-            <Setter Property="LineHeight" Value="18" />
-            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="LineHeight" Value="20" />
+            <Setter Property="Margin" Value="0,3,0,0" />
         </Style>
 
         <Style x:Key="FootnoteStyle" TargetType="TextBlock" BasedOn="{StaticResource SettingDescriptionStyle}">
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Margin" Value="4,8,4,0" />
         </Style>
 
         <Style x:Key="ShortcutTextStyle" TargetType="TextBox">
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="14" />
             <Setter Property="Width" Value="170" />
-            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="MinHeight" Value="32" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5">
+                            <!-- TextBox supplies Padding to the content host; do not apply it twice. -->
+                            <ScrollViewer x:Name="PART_ContentHost" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="SegmentStyle" TargetType="RadioButton">
@@ -87,7 +111,7 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="MinWidth" Value="52" />
-            <Setter Property="Height" Value="28" />
+            <Setter Property="Height" Value="30" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{StaticResource RoundedFocusVisualStyle}" />
             <Setter Property="Template">
@@ -107,7 +131,7 @@
                 <Trigger Property="IsChecked" Value="True">
                     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                     <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
@@ -176,7 +200,7 @@
                         </Image.Source>
                     </Image>
                     <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="WinTab" FontSize="20" FontWeight="Medium" LineHeight="26" />
+                        <TextBlock Text="WinTab" FontSize="24" FontWeight="Medium" LineHeight="30" />
                         <TextBlock x:Name="HeroDescriptionText"
                                    Text="One window, multiple tabs: auto-merge new windows into active tabs"
                                    Margin="0,3,0,0"
@@ -310,7 +334,7 @@
                                             <TextBlock x:Name="RestoreGroupTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
                                         </DockPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <CheckBox x:Name="GroupShortcutToggle" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" />
+                                            <CheckBox x:Name="GroupShortcutToggle" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
                                             <controls:ShortcutTextBox x:Name="GroupShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=RestoreGroupTitleText}" />
                                         </StackPanel>
                                     </StackPanel>
@@ -324,7 +348,7 @@
                                             <TextBlock x:Name="ReopenTabTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
                                         </DockPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <CheckBox x:Name="TabShortcutToggle" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" />
+                                            <CheckBox x:Name="TabShortcutToggle" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
                                             <controls:ShortcutTextBox x:Name="TabShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" />
                                         </StackPanel>
                                         <DockPanel Margin="0,10,0,0">
@@ -337,7 +361,7 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock x:Name="SystemSectionTitleText" Text="System" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,8" />
+                        <TextBlock x:Name="SystemSectionTitleText" Text="System" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,10" />
                         <Border Style="{StaticResource SettingsGroupStyle}">
                             <StackPanel>
                                 <Border Style="{StaticResource SettingRowStyle}">
@@ -372,7 +396,7 @@
                     </StackPanel>
                 </Grid>
 
-                <TextBlock x:Name="AboutSectionTitleText" Text="About" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,8" />
+                <TextBlock x:Name="AboutSectionTitleText" Text="About" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,10" />
                 <Border Style="{StaticResource SettingsGroupStyle}">
                     <Border Style="{StaticResource LastSettingRowStyle}">
                         <DockPanel>

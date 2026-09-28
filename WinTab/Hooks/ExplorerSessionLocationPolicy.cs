@@ -84,6 +84,8 @@ internal sealed class ExplorerSessionLocationPolicy
                 available.Add(index);
 
         var confirmed = new bool[locations.Length];
+        using var probeCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var probeToken = probeCancellation.Token;
         Task probe;
         lock (_gate)
         {
@@ -91,7 +93,7 @@ internal sealed class ExplorerSessionLocationPolicy
             // or let repeated launches exhaust the thread pool while a device is unavailable.
             if (_probe is { IsCompleted: false })
                 return (available, false);
-            _probe = probe = Task.Run(() => Probe(locations, confirmed, cancellationToken), cancellationToken);
+            _probe = probe = Task.Run(() => Probe(locations, confirmed, probeToken), probeToken);
         }
         var decided = true;
         try
@@ -102,6 +104,13 @@ internal sealed class ExplorerSessionLocationPolicy
         {
             decided = false;
             ExplorerDebugLog.Write("Session restore filesystem check timed out; unconfirmed paths were skipped.");
+        }
+        finally
+        {
+            // WaitAsync bounds only the caller. Stop the abandoned worker between filesystem calls too,
+            // so a stalled drive returning later cannot start probing the rest of this expired request.
+            // The still-running task retains the single probe slot until that synchronous call returns.
+            probeCancellation.Cancel();
         }
         // Paths confirmed before the budget ended stay restorable; a blocked path skips only itself and later ones.
         for (var index = 0; index < confirmed.Length; index++)
@@ -117,7 +126,10 @@ internal sealed class ExplorerSessionLocationPolicy
             cancellationToken.ThrowIfCancellationRequested();
             var location = Helper.NormalizeLocation(locations[index]);
             if (!IsKnownShellPage(location) && IsLocalPath(location) && _directoryAvailable(location))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
                 Volatile.Write(ref confirmed[index], true);
+            }
         }
     }
 

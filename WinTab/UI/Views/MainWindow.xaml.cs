@@ -20,7 +20,6 @@ public partial class MainWindow : Window
     private const string MoonGlyph = "\uE708";
     private const int WM_ENTERSIZEMOVE = 0x0231;
     private const int WM_EXITSIZEMOVE = 0x0232;
-    private const double MaxInitialWindowHeight = 900;
 
     private readonly HookManager _hookManager;
     private readonly SystemTrayIcon _trayIcon;
@@ -403,14 +402,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Restores a size the user chose; otherwise measures the content up to the initial height limit.
-    /// This only chooses the starting size: the frame stays freely resizable and excess content scrolls.
+    /// Restores a user size, or fits the complete settings page on first launch.
+    /// Widen before scaling on short screens so ordinary displays retain native text size.
     /// </summary>
     internal static void ApplyInitialSize(Window window, Size? savedSize, Size workArea)
     {
         if (savedSize is { } saved)
         {
-            window.Width = saved.Width;
+            // A saved size may come from a larger monitor; constrain only this launch, not later resizing.
+            window.Width = Math.Min(saved.Width, workArea.Width);
             window.Height = Math.Min(saved.Height, workArea.Height);
             return;
         }
@@ -418,8 +418,25 @@ public partial class MainWindow : Window
         window.Width = Math.Min(window.Width, workArea.Width);
         var root = (FrameworkElement)window.Content;
         root.Measure(new Size(window.Width, double.PositiveInfinity));
-        var initialHeightLimit = Math.Min(MaxInitialWindowHeight, workArea.Height);
-        window.Height = Math.Min(Math.Max(Math.Ceiling(root.DesiredSize.Height), window.MinHeight), initialHeightLimit);
+        // Extra width reduces wrapping; stop as soon as the whole page fits at native scale.
+        while (root.DesiredSize.Height > workArea.Height && window.Width < workArea.Width)
+        {
+            var previousHeight = root.DesiredSize.Height;
+            window.Width = Math.Min(window.Width + 32, workArea.Width);
+            root.Measure(new Size(window.Width, double.PositiveInfinity));
+            if (root.DesiredSize.Height >= previousHeight && window.Width >= 1280)
+                break; // The page's maximum content width makes further widening ineffective.
+        }
+
+        var contentHeight = Math.Ceiling(root.DesiredSize.Height) + 2;
+        if (contentHeight > workArea.Height)
+        {
+            // Fit the full page rather than hiding overflow when display scaling leaves little room.
+            var scale = workArea.Height / contentHeight;
+            root.LayoutTransform = new System.Windows.Media.ScaleTransform(scale, scale);
+            window.Width = Math.Max(window.MinWidth, window.Width * scale);
+        }
+        window.Height = Math.Min(Math.Max(contentHeight, window.MinHeight), workArea.Height);
     }
 
     // Only a drag of the window frame is a size choice worth keeping. Layout-driven sizes, including

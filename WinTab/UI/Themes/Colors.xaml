@@ -4,14 +4,15 @@
     <!-- Grayscale only. ThemeManager replaces these at startup for dark mode. -->
     <Color x:Key="PrimaryColor">#2A2A2A</Color>
     <Color x:Key="PrimaryLightColor">#5E5E5E</Color>
-    <Color x:Key="TextPrimaryColor">#252525</Color>
-    <Color x:Key="TextSecondaryColor">#606060</Color>
-    <Color x:Key="TextTertiaryColor">#7A7A7A</Color>
+    <Color x:Key="TextPrimaryColor">#202020</Color>
+    <Color x:Key="TextSecondaryColor">#595959</Color>
+    <Color x:Key="TextTertiaryColor">#707070</Color>
     <Color x:Key="TextAccentColor">#181818</Color>
-    <Color x:Key="BorderColor">#CCCCCC</Color>
-    <Color x:Key="DividerColor">#DEDEDE</Color>
-    <Color x:Key="ControlBackgroundColor">#EFEFEF</Color>
-    <Color x:Key="ControlHoverColor">#E4E4E4</Color>
+    <Color x:Key="BorderColor">#C8C8C8</Color>
+    <Color x:Key="ControlBorderColor">#888888</Color>
+    <Color x:Key="DividerColor">#D8D8D8</Color>
+    <Color x:Key="ControlBackgroundColor">#E9E9E9</Color>
+    <Color x:Key="ControlHoverColor">#DDDDDD</Color>
     <Color x:Key="DropdownBackgroundColor">#FAFAFA</Color>
     <Color x:Key="ShadowColor">#5A5A5A</Color>
     <Color x:Key="CheckBoxCheckedBackgroundColor">#2A2A2A</Color>
@@ -27,6 +28,7 @@
     <SolidColorBrush x:Key="TextTertiaryBrush" Color="{DynamicResource TextTertiaryColor}" />
     <SolidColorBrush x:Key="TextAccentBrush" Color="{DynamicResource TextAccentColor}" />
     <SolidColorBrush x:Key="BorderBrush" Color="{DynamicResource BorderColor}" />
+    <SolidColorBrush x:Key="ControlBorderBrush" Color="{DynamicResource ControlBorderColor}" />
     <SolidColorBrush x:Key="DividerBrush" Color="{DynamicResource DividerColor}" />
     <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{DynamicResource ControlBackgroundColor}" />
     <SolidColorBrush x:Key="ControlHoverBrush" Color="{DynamicResource ControlHoverColor}" />
@@ -37,9 +39,9 @@
     <SolidColorBrush x:Key="FocusRingBrush" Color="{DynamicResource FocusRingColor}" />
 
     <!-- Solid surface brushes. -->
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#F3F3F3" />
-    <SolidColorBrush x:Key="WindowTitleBarBrush" Color="#F3F3F3" />
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#EDEDED" />
+    <SolidColorBrush x:Key="WindowTitleBarBrush" Color="#EDEDED" />
     <SolidColorBrush x:Key="WindowBorderBrush" Color="#C7C7C7" />
-    <SolidColorBrush x:Key="SurfaceBrush" Color="#F8F8F8" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FCFCFC" />
 
 </ResourceDictionary>
