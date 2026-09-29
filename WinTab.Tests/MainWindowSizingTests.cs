@@ -87,17 +87,27 @@ internal static class MainWindowSizingTests
         MainWindow.ApplyInitialSize(window, null, LargeWorkArea);
         // Exercise a real WPF frame, off screen and without activation. No Explorer hooks or user input.
         window.Show();
+        // Windows caps an ordinary window at the tracking size of its monitor, so a 1024x768 desktop
+        // (the CI runner) cannot host the 1100x1000 resize below and the assertion would fail on the
+        // environment instead of the code. Clamp the targets to the real work area: a window no larger
+        // than the work area is always reachable, so the resize path stays covered on small desktops.
+        var work = SystemParameters.WorkArea;
+        var wide = new Size(Math.Min(1100, work.Width), Math.Min(1000, work.Height));
+        var narrow = new Size(Math.Min(800, work.Width), Math.Min(650, work.Height));
         var scroll = (ScrollViewer)window.Content;
-        Resize(window, 1100, 1000);
+        Resize(window, wide.Width, wide.Height);
         var largeViewport = scroll.ViewportHeight;
         Check.That(scroll.ScrollableHeight > 0, "Content beyond the chosen window size remains scrollable.");
         scroll.ScrollToBottom();
         window.UpdateLayout();
         Check.That(scroll.VerticalOffset > 0, "The bottom of long content must remain reachable.");
 
-        Resize(window, 800, 650);
-        Check.That(scroll.ViewportHeight < largeViewport, "The content viewport must follow manual resizing.");
-        Resize(window, 1100, 1000);
+        if (narrow.Height < wide.Height)
+        {
+            Resize(window, narrow.Width, narrow.Height);
+            Check.That(scroll.ViewportHeight < largeViewport, "The content viewport must follow manual resizing.");
+        }
+        Resize(window, wide.Width, wide.Height);
     });
 
     private static void Resize(Window window, double width, double height)
@@ -122,6 +132,15 @@ internal static class MainWindowSizingTests
         // Exercise layout in an actual native window, without activating it or starting Explorer hooks.
         window.Show();
         window.UpdateLayout();
+        // A page taller than the real desktop cannot be laid out whole: Windows shrinks the window to the
+        // screen, the content overflows and the scrollbar is then the expected behaviour, not a defect.
+        // Report the environment as unavailable rather than failing on a desktop this test cannot use.
+        if (window.ActualHeight < window.Height - 2 || window.ActualWidth < window.Width - 2)
+        {
+            throw new TestSkippedException(
+                $"The real desktop ({SystemParameters.WorkArea.Width}x{SystemParameters.WorkArea.Height}) cannot host the " +
+                $"{window.Width}x{window.Height} window whose whole page must stay visible.");
+        }
         var scroll = (ScrollViewer)window.Content;
         Check.Equal(0d, scroll.ScrollableHeight, "The entire page must be visible on first launch.");
         Check.Equal(0d, scroll.ScrollableWidth);
