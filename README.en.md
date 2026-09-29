@@ -12,7 +12,7 @@ File Explorer tab utility for Windows 11
 
 </div>
 
-WinTab is a Windows 11 utility that brings a single-window, multi-tab experience by automatically merging newly opened File Explorer windows into the active window as tabs, with path deduplication, double-click to close, independent window retention via Ctrl+Shift, and system tray operation for more efficient file management.
+WinTab folds your File Explorer windows into one: newly opened windows become tabs automatically, the same folder reuses its existing tab, and your tab groups and recently closed tabs can be brought back at any time.
 
 ---
 
@@ -20,13 +20,17 @@ WinTab is a Windows 11 utility that brings a single-window, multi-tab experience
 
 ## Features
 
-- One window, multiple tabs: automatically merge new File Explorer windows into active tabs
-- Reuse opened tabs instead of opening duplicates
-- Continuously save tab groups for shutdown/crash recovery, with manual group and closed-tab recovery
-- Open middle-clicked folders in the foreground, whether clicked in the navigation pane, the file list or Home
-- Double-click tab titles to close tabs
-- Hold `Ctrl + Shift` while opening folders to keep a separate window
-- System tray background runtime
+- One window, multiple tabs: newly opened File Explorer windows are merged into the active window as tabs
+- Reuse the existing tab instead of opening the same folder twice
+- Tab groups are saved continuously and can be recovered after shutdown or an Explorer crash; recently closed tabs can be reopened too
+- Scroll the wheel over the tab row to switch to the previous or next tab, with Low / Medium / High sensitivity
+- Double-click a tab title to close it
+- Middle-click a folder in the navigation pane, file list, Home or the address bar to open it in the foreground
+- When native focus such as "Open file location" lands on a background tab, that tab is brought to the front
+- Hold `Ctrl + Shift` while opening folders to keep a separate window; drag a tab off the tab row to split it into a new window
+- Runs from the system tray, starts with Windows, and switches between light / dark themes and Chinese / English
+
+The last two days of logs are recorded in the background at `%LOCALAPPDATA%\WinTab\logs\`; the settings page has an "Open logs" button.
 
 ## Restore last tab group
 
@@ -34,27 +38,19 @@ WinTab records tab groups while running and restores only the last-used window: 
 
 The tray's recovery section and the settings page provide:
 
-- **Restore last tab group**: restore the group in a new window, keeping tab order and the saved active tab. Shortcut `Alt+E`, works globally.
-- **Reopen last closed tab**: reopen the most recently closed tab, preferring the current window. Enabled by default; shortcut `Alt+W`, works only while Explorer is in the foreground. Up to 25 closures are kept until WinTab exits. When the most recently closed location can no longer be opened (a network location or an unplugged drive, for example), the newest tab that can be opened is reopened instead and the skip is reported.
+- **Restore last tab group**: restore the group in a new window, keeping tab order and the saved active tab. Default shortcut `Alt + E`, works globally
+- **Reopen last closed tab**: reopen the most recently closed tab, preferring the current window. Enabled by default; default shortcut `Alt + W`, works only while Explorer is in the foreground. Up to 25 closures are kept until WinTab exits. When the most recently closed location can no longer be opened (a network location or an unplugged drive, for example), the newest tab that can be opened is reopened instead and the skip is reported
 
-Both can be disabled or re-bound in settings. Folder records live in `%APPDATA%\WinTab\session.json` and its backups; treat them as personal folder information.
+Both can be disabled or re-bound in settings; shortcuts use `Ctrl` / `Alt` with a letter, top-row digit or `F1`–`F24`, and `Shift` is optional. Folder records live in `%APPDATA%\WinTab\session.json` and its backups; treat them as personal folder information.
 
 ### Automatic restoration (optional)
 
 **Auto-restore last tab group** is off by default. When enabled, only a newly opened window can trigger it, and only when no other File Explorer windows are open:
 
-- **Normal launch only (default)**: restore on launch to Home, This PC or the configured start folder.
-- **Any folder**: keep the initial tab and append the saved tabs after it.
+- **Normal launch only (default)**: restore on launch to Home, This PC or the configured start folder
+- **Any folder**: keep the initial tab and append the saved tabs after it
 
-Torn-off windows, `Ctrl + Shift` windows and windows already open when the feature is enabled do not trigger restoration; missing or unsupported locations are skipped. Switching windows or tabs stops the restoration.
-
-With Windows' **Restore previous folder windows at logon** turned on in Folder Options, Windows itself reopens the windows, tabs included, that were still open at shutdown or when Explorer crashed; automatic restoration then does not add the same group again. It can still be restored from the tray or with the shortcut.
-
-## Diagnostic logs
-
-WinTab records diagnostic logs by default; no setup is needed. Files are stored in `%LOCALAPPDATA%\WinTab\logs\` as `WinTab-yyyyMMdd.log`. Only today's and yesterday's logs are kept. Each file is limited to 8 MiB with one `.1.log` rollover file, bounding the two days to about 32 MiB in total.
-
-If a middle-click does not activate its tab or restoration behaves unexpectedly, check the matching time for click outcomes, cancellation reasons and restoration stages. Review folder paths and other details before sharing logs. Writing happens in the background through a bounded queue; consecutive duplicate entries are collapsed into a count.
+Torn-off windows, `Ctrl + Shift` windows and windows already open when the feature is enabled do not trigger restoration; missing or unsupported locations are skipped. With Windows' **Restore previous folder windows at logon** turned on in Folder Options, Windows itself reopens the windows, tabs included, that were still open at shutdown or when Explorer crashed; WinTab then does not add the same group again, and it can still be restored from the tray or with the shortcut.
 
 ## Download
 
