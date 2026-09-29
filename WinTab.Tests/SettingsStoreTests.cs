@@ -30,6 +30,10 @@ internal static class SettingsStoreTests
         yield return ("an unexpected settings save failure still completes and a later save succeeds", RecoversFromUnexpectedWriteFailure);
         yield return ("settings save notifications cannot strand pending saves", NotificationFailureDoesNotStrandSaves);
         yield return ("settings retain a valid backup and recover from a damaged primary file", RecoversBackup);
+        yield return ("settings preserve the backup when the primary is damaged during use",
+            () => PreservesBackupAfterRuntimeCorruption("{broken"));
+        yield return ("settings preserve the backup when a primary value becomes invalid during use",
+            () => PreservesBackupAfterRuntimeCorruption("{\"FormSize\":{\"Width\":-1,\"Height\":720}}"));
         yield return ("settings recover a backup after a negative width", () => RecoversInvalidValues("""{"FormSize":{"Width":-1,"Height":720}}"""));
         yield return ("settings recover a backup after a negative height", () => RecoversInvalidValues("""{"FormSize":{"Width":1020,"Height":-1}}"""));
         yield return ("settings recover a backup after a zero dimension", () => RecoversInvalidValues("""{"FormSize":{"Width":1020,"Height":0}}"""));
@@ -301,6 +305,37 @@ internal static class SettingsStoreTests
         {
             RecycleDirectory(path);
         }
+    }
+
+    private static async Task PreservesBackupAfterRuntimeCorruption(string damagedJson)
+    {
+        var path = NewPath();
+        try
+        {
+            using var store = new SettingsStore(path);
+            store.Update(settings => settings with { Theme = "Dark" }, deferred: true);
+            Check.That(await store.FlushAsync(), "The initial settings must save.");
+            store.Update(settings => settings with { AutoUpdate = false }, deferred: true);
+            Check.That(await store.FlushAsync(), "The next save must create a valid backup.");
+            var backup = File.ReadAllText(path + ".bak", Encoding.UTF8);
+
+            // Damage occurs after loading, so startup recovery cannot protect this backup.
+            File.WriteAllText(path, damagedJson, Encoding.UTF8);
+            store.Update(settings => settings with { ShowTrayIcon = false }, deferred: true);
+            Check.That(await store.FlushAsync(), "The current in-memory settings must repair the damaged primary.");
+            Check.Equal(backup, File.ReadAllText(path + ".bak", Encoding.UTF8),
+                "A damaged primary must never replace the last valid backup.");
+            using (var reloaded = new SettingsStore(path))
+                Check.That(reloaded.Snapshot is { Theme: "Dark", AutoUpdate: false, ShowTrayIcon: false },
+                    "The repaired primary must retain all current preferences.");
+
+            var repaired = File.ReadAllText(path, Encoding.UTF8);
+            store.Update(settings => settings with { Language = "English" }, deferred: true);
+            Check.That(await store.FlushAsync(), "Saving must continue after repairing the primary.");
+            Check.Equal(repaired, File.ReadAllText(path + ".bak", Encoding.UTF8),
+                "A valid primary must resume normal backup rotation.");
+        }
+        finally { RecycleDirectory(path); }
     }
 
     private static async Task RecoversInvalidValues(string json)

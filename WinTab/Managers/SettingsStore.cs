@@ -195,7 +195,14 @@ internal sealed class SettingsStore : IDisposable
         }
 
         if (File.Exists(_path))
-            File.Replace(temporaryPath, _path, _preserveBackup ? null : _path + ".bak");
+        {
+            // Damage may occur after startup. Only a still-valid primary may rotate into the backup;
+            // an unreadable primary aborts saving rather than replacing data we cannot inspect.
+            var preserveBackup = _preserveBackup;
+            try { _ = Read(_path); }
+            catch (JsonException) { preserveBackup = true; }
+            File.Replace(temporaryPath, _path, preserveBackup ? null : _path + ".bak");
+        }
         else
             File.Move(temporaryPath, _path);
         _preserveBackup = false;

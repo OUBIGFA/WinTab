@@ -20,6 +20,7 @@ internal static class ExplorerSessionLocationTests
         yield return ("session locations restore built-in local pages without probing them", BuiltInPagesNeedNoProbe);
         yield return ("session locations never probe network web relative or arbitrary shell targets", UnsafeLocationsAreNotProbed);
         yield return ("session locations keep duplicate available indexes and skip unavailable folders", AvailableIndexesRemainDistinct);
+        yield return ("session locations probe duplicate paths once per request and recheck on the next request", DuplicatePathsAreProbedOncePerRequest);
         yield return ("session locations perform real local directory checks", LocalDirectoriesAreChecked);
         yield return ("session locations follow a junction that stays on a local drive", LocalJunctionIsFollowed);
         yield return ("session locations never follow links to shares, volumes or process-relative paths", RemoteLinkTargetsAreRejected);
@@ -79,6 +80,32 @@ internal static class ExplorerSessionLocationTests
             Locations = [@"C:\same", @"D:\missing", "file:///C:/same", ThisPc]
         }, CancellationToken.None);
         Check.That(available.SetEquals([0, 2, 3]), "Availability must preserve duplicate saved positions and normalized file URLs.");
+    }
+
+    private static async Task DuplicatePathsAreProbedOncePerRequest()
+    {
+        var reads = new List<string>();
+        var foldersAvailable = true;
+        var policy = new ExplorerSessionLocationPolicy(location =>
+        {
+            reads.Add(location);
+            return foldersAvailable && location == @"C:\same";
+        });
+        var session = new ExplorerSession
+        {
+            Locations = [@"C:\same", "file:///C:/same", @"D:\missing", @"D:\missing", ThisPc]
+        };
+        var available = await policy.FindAvailableAsync(session, CancellationToken.None);
+        Check.That(available.SetEquals([0, 1, 4]), "Checking a path once must preserve every duplicate tab position.");
+        Check.That(reads.SequenceEqual([@"C:\same", @"D:\missing"]),
+            "Both available and missing duplicate paths must reach the filesystem only once per request.");
+
+        foldersAvailable = false;
+        reads.Clear();
+        available = await policy.FindAvailableAsync(session, CancellationToken.None);
+        Check.That(available.SetEquals([4]), "A later request must notice when a previously available folder disappears.");
+        Check.That(reads.SequenceEqual([@"C:\same", @"D:\missing"]),
+            "A later request must perform fresh filesystem checks.");
     }
 
     private static async Task LocalDirectoriesAreChecked()

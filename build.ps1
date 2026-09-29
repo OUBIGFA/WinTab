@@ -204,9 +204,11 @@ function Test-InstallerRuntime {
                 [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin)
         }
         catch {
-            # The shell can report a failure after it already removed the directory; clean up whatever
-            # is left without failing the build.
-            try { [System.IO.Directory]::Delete($resolvedDirectory, $true) } catch { }
+            # The shell may report an error after successful recycling. Preserve any remaining
+            # files and report them; a recycle failure never authorizes permanent deletion.
+            if (Test-Path -LiteralPath $resolvedDirectory) {
+                Write-Warning "Installer test files could not be recycled and were retained at ${resolvedDirectory}: $_"
+            }
         }
     }
 }

@@ -121,11 +121,19 @@ internal sealed class ExplorerSessionLocationPolicy
 
     private void Probe(string[] locations, bool[] confirmed, CancellationToken cancellationToken)
     {
+        // Repeated tabs share one filesystem check within this request, including missing folders.
+        // Keep results local to the request so a later restore observes changed drives and folders,
+        // and compare exact paths to preserve case-sensitive directory behavior.
+        var availability = new Dictionary<string, bool>(StringComparer.Ordinal);
         for (var index = 0; index < locations.Length; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var location = Helper.NormalizeLocation(locations[index]);
-            if (!IsKnownShellPage(location) && IsLocalPath(location) && _directoryAvailable(location))
+            if (IsKnownShellPage(location) || !IsLocalPath(location))
+                continue;
+            if (!availability.TryGetValue(location, out var available))
+                availability[location] = available = _directoryAvailable(location);
+            if (available)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Volatile.Write(ref confirmed[index], true);
