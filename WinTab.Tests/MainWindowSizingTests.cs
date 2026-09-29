@@ -129,18 +129,20 @@ internal static class MainWindowSizingTests
 
     private static void AssertNoScrollbars(Window window)
     {
+        // A page taller than the real desktop cannot be laid out whole: Windows keeps such a window inside
+        // the screen, the content overflows and the scrollbar is then the expected behaviour rather than a
+        // defect. Decide from the work area WPF sizes windows against (in DIPs, with slack for the frame)
+        // and report the environment as unavailable, so a small desktop is never reported as a failure.
+        var work = SystemParameters.WorkArea;
+        if (window.Height > work.Height - 40 || window.Width > work.Width - 40)
+        {
+            throw new TestSkippedException(
+                $"The real desktop ({work.Width}x{work.Height}) cannot host the {window.Width}x{window.Height} " +
+                "window whose whole page must stay visible.");
+        }
         // Exercise layout in an actual native window, without activating it or starting Explorer hooks.
         window.Show();
         window.UpdateLayout();
-        // A page taller than the real desktop cannot be laid out whole: Windows shrinks the window to the
-        // screen, the content overflows and the scrollbar is then the expected behaviour, not a defect.
-        // Report the environment as unavailable rather than failing on a desktop this test cannot use.
-        if (window.ActualHeight < window.Height - 2 || window.ActualWidth < window.Width - 2)
-        {
-            throw new TestSkippedException(
-                $"The real desktop ({SystemParameters.WorkArea.Width}x{SystemParameters.WorkArea.Height}) cannot host the " +
-                $"{window.Width}x{window.Height} window whose whole page must stay visible.");
-        }
         var scroll = (ScrollViewer)window.Content;
         Check.Equal(0d, scroll.ScrollableHeight, "The entire page must be visible on first launch.");
         Check.Equal(0d, scroll.ScrollableWidth);
