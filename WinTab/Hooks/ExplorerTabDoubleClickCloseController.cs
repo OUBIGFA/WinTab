@@ -47,17 +47,20 @@ internal sealed class ExplorerTabDoubleClickCloseController(IExplorerTabDoubleCl
             return MouseHookDecision.Native;
         }
 
-        var onTabStrip = IsPointOnTabStrip(currentPoint, explorerWindow, now);
+        // Notepad is not watched by Explorer's bounds cache. Recognize its gesture without blocking
+        // the input hook; the worker validates the tab before sending input. Editor clicks stay native.
+        var deferred = environment.ShouldDeferHitTest(explorerWindow);
+        var onTabStrip = deferred || IsPointOnTabStrip(currentPoint, explorerWindow, now);
         if (previous != null &&
             previous.ExplorerWindow == explorerWindow &&
             IsWithinDoubleClickWindow(previous, currentPoint, now) &&
             onTabStrip &&
             previous.OnTabStrip)
         {
-            _suppressNextLeftUp = true;
+            _suppressNextLeftUp = !deferred;
             _pendingNativeClose = new ClickCandidate(explorerWindow, currentPoint, now) { OnTabStrip = true };
             _lastClickCandidate = null;
-            return MouseHookDecision.HandledOnly;
+            return new MouseHookDecision(!deferred, null);
         }
 
         _lastClickCandidate = onTabStrip
@@ -69,9 +72,10 @@ internal sealed class ExplorerTabDoubleClickCloseController(IExplorerTabDoubleCl
 
     public MouseHookDecision HandleLeftMouseUp(long now)
     {
-        if (!_suppressNextLeftUp)
+        if (!_suppressNextLeftUp && _pendingNativeClose == null)
             return MouseHookDecision.Native;
 
+        var handled = _suppressNextLeftUp;
         _suppressNextLeftUp = false;
 
         var pending = _pendingNativeClose;
@@ -79,12 +83,12 @@ internal sealed class ExplorerTabDoubleClickCloseController(IExplorerTabDoubleCl
         if (pending == null || !environment.IsEnabled)
         {
             _recentNativeClose = null;
-            return MouseHookDecision.HandledOnly;
+            return new MouseHookDecision(handled, null);
         }
 
         _recentNativeClose = new ClickCandidate(pending.ExplorerWindow, pending.Point, now) { OnTabStrip = true };
         return new MouseHookDecision(
-            true,
+            handled,
             new ExplorerTabCloseRequest(pending.ExplorerWindow, pending.Point));
     }
 
@@ -159,6 +163,7 @@ internal sealed class ExplorerTabDoubleClickCloseController(IExplorerTabDoubleCl
     }
 }
 
+/// <summary>The environment resolves windows in the feature's scope: Explorer frames, plus Notepad when included.</summary>
 internal interface IExplorerTabDoubleClickEnvironment
 {
     bool IsEnabled { get; }
@@ -168,6 +173,7 @@ internal interface IExplorerTabDoubleClickEnvironment
     nint ResolveExplorerWindow(Point point);
     bool IsExplorerWindow(nint explorerWindow);
     bool IsPointOnTabStrip(Point point, nint explorerWindow);
+    bool ShouldDeferHitTest(nint window) => false;
 }
 
 internal readonly record struct ExplorerTabCloseRequest(nint ExplorerWindow, Point Point);

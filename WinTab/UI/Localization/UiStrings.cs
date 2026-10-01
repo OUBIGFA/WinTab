@@ -40,6 +40,11 @@ internal static class UiStrings
         "Torn-off windows and Ctrl + Shift separate windows do not trigger restoration; with Windows' \"Restore previous folder windows at logon\" on, windows still open at shutdown or an Explorer crash are left to Windows");
     public static string DoubleClickTitle => Pick("双击关闭标签页", "Double-click to close tabs");
     public static string DoubleClickDescription => Pick("双击标签页标题直接关闭", "Double-click any tab title to close it");
+    public static string DoubleClickScopeLabel => Pick("作用范围", "Applies to");
+    public static string DoubleClickScopeExplorerOnly => Pick("仅资源管理器", "Explorer only");
+    public static string DoubleClickScopeIncludeNotepad => Pick("包含记事本", "Include Notepad");
+    public static string DoubleClickScopeHint => Pick("选择双击关闭标签页生效的应用；包含记事本时，记事本标签页标题同样支持双击关闭",
+        "Choose which apps double-click close works in; with Notepad included, Notepad tab titles close the same way");
     public static string MiddleClickTitle => Pick("中键前台打开标签页", "Open middle-clicked tabs in foreground");
     public static string MiddleClickDescription => Pick("中键点击侧边栏、文件列表或主页中的文件夹时，新标签一律在前台打开", "Open folders middle-clicked in the navigation pane, file list or Home in the foreground instead of the background");
     public static string WheelSwitchTitle => Pick("滚轮切换标签页", "Scroll to switch tabs");

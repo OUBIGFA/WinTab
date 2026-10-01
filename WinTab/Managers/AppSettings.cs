@@ -16,6 +16,8 @@ internal sealed record AppSettings
     /// <summary>Off: a window with a single tab is neither saved nor restored as a tab group.</summary>
     public bool RestoreSingleTab { get; init; } = false;
     public bool DoubleClickCloseTab { get; init; } = true;
+    /// <summary>Whether double-click close also acts in Notepad windows, not only in Explorer.</summary>
+    public bool DoubleClickCloseIncludeNotepad { get; init; } = true;
     public bool MiddleClickForegroundTab { get; init; } = true;
     public bool WheelSwitchTab { get; init; } = true;
     public string WheelSwitchSensitivity { get; init; } = "Medium";

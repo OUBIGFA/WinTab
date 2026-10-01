@@ -36,7 +36,8 @@ public sealed class HookManager : IDisposable
         _syncContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
         _explorerWatcher = new ExplorerWatcher(RegistryManager.GetDefaultExplorerLaunchId, RegistryManager.RestoresFolderWindowsAtSignIn);
-        _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab);
+        _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab,
+            () => SettingsManager.DoubleClickCloseIncludeNotepad);
         _middleClickHook = new ExplorerNavigationMiddleClickHook();
         _wheelSwitchHook = new ExplorerTabWheelSwitchHook(_explorerWatcher, () => SettingsManager.WheelSwitchSensitivity);
         _sessionShortcuts = new ExplorerSessionShortcutHook(action => _ = ExecuteSessionCommandAsync(action == SessionAction.RestoreGroup));
@@ -199,6 +200,13 @@ public sealed class HookManager : IDisposable
     {
         SettingsManager.DoubleClickCloseTab = enabled;
         TryChangeHookStatus(_doubleClickHook, enabled);
+        RaiseStateChanged();
+    }
+
+    /// <summary>The scope is read per event; changing it needs no hook restart.</summary>
+    public void SetDoubleClickCloseIncludeNotepad(bool enabled)
+    {
+        SettingsManager.DoubleClickCloseIncludeNotepad = enabled;
         RaiseStateChanged();
     }
 

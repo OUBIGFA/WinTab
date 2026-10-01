@@ -78,6 +78,12 @@ public static class SettingsManager
         set => SetProperty(settings => settings with { DoubleClickCloseTab = value });
     }
 
+    public static bool DoubleClickCloseIncludeNotepad
+    {
+        get => Store.Snapshot.DoubleClickCloseIncludeNotepad;
+        set => SetProperty(settings => settings with { DoubleClickCloseIncludeNotepad = value });
+    }
+
     public static bool MiddleClickForegroundTab
     {
         get => Store.Snapshot.MiddleClickForegroundTab;

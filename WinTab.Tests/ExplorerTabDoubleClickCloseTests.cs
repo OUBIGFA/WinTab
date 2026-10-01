@@ -1,19 +1,42 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
+using WinTab.Helpers;
 using WinTab.Hooks;
 
 internal static class ExplorerTabDoubleClickCloseTests
 {
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("double-click deferred hit testing preserves cold gestures and native input", DeferredHitTestPreservesColdGesture);
         yield return ("double-click close can continue after a tab-strip hit-test refresh gap", ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick);
         yield return ("double-click close chain ignores points outside the double-click geometry", CloseChainFallbackIgnoresDifferentPoints);
         yield return ("double-click close is inert while the feature is disabled", DisabledEnvironmentNeverSwallowsClicks);
         yield return ("disabling double-click close cancels an already pending close", DisablingCancelsPendingClose);
         yield return ("double-click restart discards the previous click and pending release", RestartDiscardsClickState);
         yield return ("queued double-click close rechecks ownership after its delay", QueuedCloseRechecksOwnership);
+        yield return ("double-click close scope recognizes Notepad windows only when included", NotepadScopeGatesDoubleClickTargets);
+    }
+
+    private static Task DeferredHitTestPreservesColdGesture()
+    {
+        var environment = new FakeDoubleClickEnvironment { DeferHitTest = true };
+        var controller = new ExplorerTabDoubleClickCloseController(environment);
+        var point = new Point(240, 48);
+        Check.That(!controller.HandleLeftMouseDown(point, 1000).Handled, "The first click must select normally.");
+        Check.That(!controller.HandleLeftMouseUp(1020).Handled, "The first release must pass through.");
+        Check.That(!controller.HandleLeftMouseDown(point, 1080).Handled, "Unverified double-clicks must remain native.");
+        var up = controller.HandleLeftMouseUp(1100);
+        Check.That(!up.Handled && up.CloseRequest.HasValue, "A cold double-click must reach asynchronous tab validation without swallowing native input.");
+        controller.HandleLeftMouseDown(point, 1200);
+        controller.HandleLeftMouseUp(1220);
+        controller.HandleLeftMouseDown(point, 1280);
+        environment.IsEnabled = false;
+        Check.That(controller.HandleLeftMouseUp(1300).CloseRequest is null, "Disabling must cancel deferred work.");
+        return Task.CompletedTask;
     }
 
     private static Task ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick()
@@ -156,12 +179,78 @@ internal static class ExplorerTabDoubleClickCloseTests
         Check.Equal(1, clicks, "A current request must emit exactly one click.");
     }
 
+    private static async Task NotepadScopeGatesDoubleClickTargets()
+    {
+        using var scheduler = new StaTaskScheduler();
+        await Task.Factory.StartNew(() =>
+        {
+            var handle = CreateNotepadClassedWindow();
+            try
+            {
+                Check.That(ExplorerWindowDiscovery.IsNotepadWindow(handle), "A Notepad-classed window must be recognized.");
+                Check.That(!ExplorerWindowDiscovery.IsFileExplorerWindow(handle),
+                    "A Notepad window must never be mistaken for an Explorer frame.");
+                Check.That(ExplorerWindowDiscovery.IsTabbedAppWindow(handle),
+                    "The tab strip reader must accept Notepad windows.");
+                Check.That(ExplorerWindowDiscovery.IsDoubleClickCloseTarget(handle, includeNotepad: true),
+                    "Including Notepad must accept a Notepad window.");
+                Check.That(!ExplorerWindowDiscovery.IsDoubleClickCloseTarget(handle, includeNotepad: false),
+                    "The Explorer-only scope must refuse a Notepad window.");
+            }
+            finally { DestroyWindow(handle); }
+        }, CancellationToken.None, TaskCreationOptions.None, scheduler);
+    }
+
+    private static nint CreateNotepadClassedWindow()
+    {
+        var windowClass = new TestWindowClass
+        {
+            Size = (uint)Marshal.SizeOf<TestWindowClass>(),
+            Procedure = Marshal.GetFunctionPointerForDelegate(Procedure),
+            Instance = GetModuleHandle(null),
+            ClassName = "Notepad"
+        };
+        Check.That(RegisterClassEx(ref windowClass) != 0, "The Notepad test window class must register.");
+        var handle = CreateWindowEx(0, "Notepad", "WinTab scope test", 0, 0, 0, 10, 10, (nint)(-3), 0, windowClass.Instance, 0);
+        Check.That(handle != 0, "The Notepad-classed test window must be created.");
+        return handle;
+    }
+
+    private delegate nint WindowProcedure(nint window, uint message, nint wParam, nint lParam);
+    private static readonly WindowProcedure Procedure = DefWindowProc;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct TestWindowClass
+    {
+        public uint Size, Style;
+        public nint Procedure;
+        public int ClassExtra, WindowExtra;
+        public nint Instance, Icon, Cursor, Background;
+        public string? MenuName;
+        public string ClassName;
+        public nint SmallIcon;
+    }
+
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern ushort RegisterClassEx(ref TestWindowClass windowClass);
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern nint CreateWindowEx(uint extendedStyle, string className, string name, uint style,
+        int left, int top, int width, int height, nint parent, nint menu, nint instance, nint parameter);
+    [DllImport("user32.dll")]
+    private static extern bool DestroyWindow(nint handle);
+    [DllImport("user32.dll")]
+    private static extern nint DefWindowProc(nint window, uint message, nint wParam, nint lParam);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern nint GetModuleHandle(string? moduleName);
+
     private sealed class FakeDoubleClickEnvironment : IExplorerTabDoubleClickEnvironment
     {
         private readonly nint _explorerWindow = 42;
 
         public Queue<bool> HitTestResults { get; } = new();
         public bool IsEnabled { get; set; } = true;
+        public bool DeferHitTest { get; set; }
+        public bool ShouldDeferHitTest(nint window) => DeferHitTest;
         public int DoubleClickTimeMs => 500;
         public int DoubleClickWidth => 8;
         public int DoubleClickHeight => 8;

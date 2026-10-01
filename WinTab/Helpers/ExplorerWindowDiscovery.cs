@@ -15,6 +15,23 @@ public static class ExplorerWindowDiscovery
         return window != 0 && WinApi.IsWindowHasClassName(window, "CabinetWClass");
     }
 
+    public static bool IsNotepadWindow(nint window)
+    {
+        return window != 0 && WinApi.IsWindowHasClassName(window, "Notepad");
+    }
+
+    /// <summary>A top-level window whose tab strip WinTab can read through UI Automation.</summary>
+    public static bool IsTabbedAppWindow(nint window)
+    {
+        return IsFileExplorerWindow(window) || IsNotepadWindow(window);
+    }
+
+    /// <summary>A window the double-click close gesture may act in, per the feature's scope setting.</summary>
+    public static bool IsDoubleClickCloseTarget(nint window, bool includeNotepad)
+    {
+        return IsFileExplorerWindow(window) || (includeNotepad && IsNotepadWindow(window));
+    }
+
     /// <summary>
     /// An Explorer window the shell has actually shown. Windows 11 preloads hidden frames for later
     /// folder opens; those are not user windows and must never receive merged tabs.

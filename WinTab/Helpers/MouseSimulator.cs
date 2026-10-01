@@ -29,7 +29,7 @@ public static class MouseSimulator
 
     /// <summary>
     /// Sends a middle-button click at the specified screen-space point.
-    /// Windows 11 File Explorer's tab strip closes the tab under the cursor on a middle-click,
+    /// Windows 11 File Explorer and Notepad close the tab under the cursor on a middle-click,
     /// so this is used as the close-tab primitive — it is dramatically faster than walking the
     /// UI Automation tree to find and invoke the close button. Button-only SendInput ignores coordinates,
     /// so the pointer must still be at the requested point; this helper never moves it to replay a stale click.

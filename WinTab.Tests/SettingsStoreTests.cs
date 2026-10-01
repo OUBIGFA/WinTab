@@ -24,6 +24,8 @@ internal static class SettingsStoreTests
         yield return ("settings remember single-tab and any-folder preferences while group restoration is disabled", () => RestoreTabsPersists(false, true, true));
         yield return ("settings enable navigation middle-click for existing configurations independently", MiddleClickDefaults);
         yield return ("settings persist disabling navigation middle-click independently", MiddleClickPersists);
+        yield return ("settings include Notepad in double-click close for existing configurations", DoubleClickScopeDefaults);
+        yield return ("settings persist excluding Notepad from double-click close", DoubleClickScopePersists);
         yield return ("settings reads and changes do not wait for a blocked disk write", BlockedWriteDoesNotBlockSettings);
         yield return ("settings writes coalesce changes without concurrent file access", WritesLatestSnapshot);
         yield return ("settings save failure is reported without losing in-memory state", ReportsWriteFailure);
@@ -158,6 +160,40 @@ internal static class SettingsStoreTests
             Check.That(!reloaded.Snapshot.MiddleClickForegroundTab, "The disabled setting must survive restarting.");
             Check.That(reloaded.Snapshot.WindowHook && reloaded.Snapshot.ReuseTabs && reloaded.Snapshot.DoubleClickCloseTab,
                 "Disabling middle-click activation must leave the other features unchanged.");
+        }
+        finally { RecycleDirectory(path); }
+    }
+
+    private static Task DoubleClickScopeDefaults()
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, """{"WindowHook":false,"ReuseTabs":false}""");
+            using var store = new SettingsStore(path);
+            Check.That(store.Snapshot.DoubleClickCloseIncludeNotepad,
+                "An existing configuration should keep Notepad in the close scope by default.");
+            Check.That(!store.Snapshot.WindowHook && !store.Snapshot.ReuseTabs,
+                "Loading the scope default must not enable merging or reuse.");
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
+    }
+
+    private static async Task DoubleClickScopePersists()
+    {
+        var path = NewPath();
+        try
+        {
+            using (var store = new SettingsStore(path))
+            {
+                store.Update(settings => settings with { DoubleClickCloseIncludeNotepad = false });
+                Check.That(await store.FlushAsync(), "Narrowing the close scope must save successfully.");
+            }
+            using var reloaded = new SettingsStore(path);
+            Check.That(!reloaded.Snapshot.DoubleClickCloseIncludeNotepad, "The Explorer-only scope must survive restarting.");
+            Check.That(reloaded.Snapshot.DoubleClickCloseTab, "Narrowing the scope must leave the close feature enabled.");
         }
         finally { RecycleDirectory(path); }
     }

@@ -73,6 +73,8 @@ public partial class MainWindow : Window
         RestoreNormalLaunchOnly.Click += (_, _) => _hookManager.SetRestoreOnAnyFolder(false);
         RestoreAnyFolder.Click += (_, _) => _hookManager.SetRestoreOnAnyFolder(true);
         DoubleClickCloseToggle.Click += (_, _) => _hookManager.SetDoubleClickClose(DoubleClickCloseToggle.IsChecked == true);
+        DoubleClickScopeExplorerOnly.Click += (_, _) => _hookManager.SetDoubleClickCloseIncludeNotepad(false);
+        DoubleClickScopeIncludeNotepad.Click += (_, _) => _hookManager.SetDoubleClickCloseIncludeNotepad(true);
         MiddleClickForegroundToggle.Click += (_, _) => _hookManager.SetMiddleClickForeground(MiddleClickForegroundToggle.IsChecked == true);
         WheelSwitchToggle.Click += (_, _) => _hookManager.SetWheelSwitch(WheelSwitchToggle.IsChecked == true);
         WheelSensitivityLow.Click += (_, _) => _hookManager.SetWheelSwitchSensitivity(WheelSwitchSensitivity.Low);
@@ -147,6 +149,9 @@ public partial class MainWindow : Window
         if (_hookManager.ShortcutError != null) SessionFeedbackText.Text = _hookManager.ShortcutError;
         RestoreModeHintText.Text = UiStrings.RestoreModeHint(SettingsManager.RestoreOnAnyFolder);
         DoubleClickCloseToggle.IsChecked = SettingsManager.DoubleClickCloseTab;
+        DoubleClickScopeExplorerOnly.IsChecked = !SettingsManager.DoubleClickCloseIncludeNotepad;
+        DoubleClickScopeIncludeNotepad.IsChecked = SettingsManager.DoubleClickCloseIncludeNotepad;
+        DoubleClickScopePanel.IsEnabled = SettingsManager.DoubleClickCloseTab;
         MiddleClickForegroundToggle.IsChecked = SettingsManager.MiddleClickForegroundTab;
         WheelSwitchToggle.IsChecked = SettingsManager.WheelSwitchTab;
         var sensitivity = SettingsManager.WheelSwitchSensitivity;
@@ -225,6 +230,10 @@ public partial class MainWindow : Window
         RestoreExclusionsText.Text = UiStrings.RestoreExclusions;
         DoubleClickTitleText.Text = UiStrings.DoubleClickTitle;
         DoubleClickDescText.Text = UiStrings.DoubleClickDescription;
+        DoubleClickScopeLabelText.Text = UiStrings.DoubleClickScopeLabel;
+        DoubleClickScopeExplorerOnly.Content = UiStrings.DoubleClickScopeExplorerOnly;
+        DoubleClickScopeIncludeNotepad.Content = UiStrings.DoubleClickScopeIncludeNotepad;
+        DoubleClickScopeHintText.Text = UiStrings.DoubleClickScopeHint;
         MiddleClickTitleText.Text = UiStrings.MiddleClickTitle;
         MiddleClickDescText.Text = UiStrings.MiddleClickDescription;
         WheelSwitchTitleText.Text = UiStrings.WheelSwitchTitle;

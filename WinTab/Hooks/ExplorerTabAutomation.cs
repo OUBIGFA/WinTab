@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Automation;
+using WinTab.Helpers;
 using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
@@ -59,6 +60,10 @@ internal static class ExplorerTabAutomation
 
     private static AutomationElement? FindTabControl(nint window)
     {
+        // Notepad hangs its tab strip directly off the root element instead of an island or frame child.
+        if (ExplorerWindowDiscovery.IsNotepadWindow(window))
+            return AutomationElement.FromHandle(window).FindFirst(TreeScope.Descendants, TabCondition);
+
         // Current WinUI and earlier Windows 11 XAML islands use different native host classes.
         var host = WinApi.FindWindowEx(window, 0, "Microsoft.UI.Content.DesktopChildSiteBridge", null);
         if (host == 0)

@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using H.Hooks;
@@ -17,17 +18,19 @@ public sealed class ExplorerTabDoubleClickHook : IHook
     private readonly LowLevelMouseHook _lowLevelMouseHook;
     private readonly ExplorerTabDoubleClickCloseController _controller;
     private readonly Func<bool> _isEnabled;
+    private readonly Func<bool> _includeNotepad;
     private readonly object _closeQueueGate = new();
     private Task _closeQueueTail = Task.CompletedTask;
     private int _generation;
     private volatile bool _active;
     private bool _disposed;
 
-    public ExplorerTabDoubleClickHook(ExplorerWatcher explorerWatcher, Func<bool>? isEnabled = null)
+    public ExplorerTabDoubleClickHook(ExplorerWatcher explorerWatcher, Func<bool>? isEnabled = null, Func<bool>? includeNotepad = null)
     {
         _tabStrip = explorerWatcher.TabStrip;
         _isEnabled = isEnabled ?? (() => true);
-        _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(_tabStrip, () => _active && _isEnabled()));
+        _includeNotepad = includeNotepad ?? (() => true);
+        _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(_tabStrip, () => _active && _isEnabled(), _includeNotepad));
         _lowLevelMouseHook = new LowLevelMouseHook
         {
             AddKeyboardKeys = true,
@@ -72,10 +75,8 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             return;
 
         var decision = _controller.HandleLeftMouseUp(Environment.TickCount64);
-        if (!decision.Handled)
-            return;
-
-        e.IsHandled = true;
+        if (decision.Handled)
+            e.IsHandled = true;
 
         if (decision.CloseRequest is not { } closeRequest)
             return;
@@ -93,7 +94,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             Environment.TickCount64 - queuedAt <= 500 && identity.IsCurrent &&
             WinApi.GetWindowRect(identity.Handle, out var rect) && rect.Equals(initialRect) &&
             WinApi.GetCursorPos(out var point) && point == closeRequest.Point &&
-            GetExplorerWindowForPoint(point) == identity.Handle;
+            GetDoubleClickTargetWindowForPoint(point, _includeNotepad()) == identity.Handle;
         lock (_closeQueueGate)
         {
             // Preserve the order of rapid double-clicks. Independent thread-pool work items can otherwise
@@ -118,8 +119,16 @@ public sealed class ExplorerTabDoubleClickHook : IHook
     {
         try
         {
-            if (await ExecuteCloseWhenCurrentAsync(isCurrent, () => MouseSimulator.SendMiddleClick(closeRequest.Point)))
-                StatusChanged?.Invoke("Closed Explorer tab via middle-click.");
+            // Read Notepad's current tab rectangles once, off the hook. No cold-cache misses and no
+            // close-button UIA walk. Recheck ownership after the remote read before injecting input.
+            if (ExplorerWindowDiscovery.IsNotepadWindow(closeRequest.ExplorerWindow) &&
+                (!isCurrent() || !ExplorerTabAutomation.ReadTabs(closeRequest.ExplorerWindow)
+                    .Any(tab => tab.Bounds.Contains(closeRequest.Point.X, closeRequest.Point.Y))))
+                return;
+            var delivered = await ExecuteCloseWhenCurrentAsync(isCurrent,
+                () => MouseSimulator.SendMiddleClick(closeRequest.Point));
+            if (delivered)
+                StatusChanged?.Invoke("Tab close requested");
         }
         catch (Exception exception)
         {
@@ -129,7 +138,8 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         {
             try
             {
-                _tabStrip.Refresh(closeRequest.ExplorerWindow);
+                if (ExplorerWindowDiscovery.IsFileExplorerWindow(closeRequest.ExplorerWindow))
+                    _tabStrip.Refresh(closeRequest.ExplorerWindow);
             }
             catch
             {
@@ -140,28 +150,29 @@ public sealed class ExplorerTabDoubleClickHook : IHook
 
     private static bool IsLeftMouse(MouseEventArgs e) => e.CurrentKey is Key.MouseLeft or Key.LButton;
 
-    private static nint GetExplorerWindowForPoint(Point point)
+    private static nint GetDoubleClickTargetWindowForPoint(Point point, bool includeNotepad)
     {
         var hit = WinApi.WindowFromPoint(point);
         if (hit != 0)
         {
             var root = WinApi.GetAncestor(hit, WinApi.GA_ROOT);
-            if (ExplorerWindowDiscovery.IsFileExplorerWindow(root))
+            if (ExplorerWindowDiscovery.IsDoubleClickCloseTarget(root, includeNotepad))
                 return root;
         }
 
         return 0;
     }
 
-    private sealed class HookEnvironment(TabStripHitTester tabStrip, Func<bool> isEnabled) : IExplorerTabDoubleClickEnvironment
+    private sealed class HookEnvironment(TabStripHitTester tabStrip, Func<bool> isEnabled, Func<bool> includeNotepad) : IExplorerTabDoubleClickEnvironment
     {
         public bool IsEnabled => isEnabled();
         public int DoubleClickTimeMs => (int)WinApi.GetDoubleClickTime();
         public int DoubleClickWidth => WinApi.GetSystemMetrics(SM_CXDOUBLECLK);
         public int DoubleClickHeight => WinApi.GetSystemMetrics(SM_CYDOUBLECLK);
-        public nint ResolveExplorerWindow(Point point) => GetExplorerWindowForPoint(point);
-        public bool IsExplorerWindow(nint explorerWindow) => ExplorerWindowDiscovery.IsFileExplorerWindow(explorerWindow);
+        public nint ResolveExplorerWindow(Point point) => GetDoubleClickTargetWindowForPoint(point, includeNotepad());
+        public bool IsExplorerWindow(nint explorerWindow) => ExplorerWindowDiscovery.IsDoubleClickCloseTarget(explorerWindow, includeNotepad());
         public bool IsPointOnTabStrip(Point point, nint explorerWindow) => tabStrip.IsPointOnTabStrip(point, explorerWindow);
+        public bool ShouldDeferHitTest(nint window) => ExplorerWindowDiscovery.IsNotepadWindow(window);
     }
 
     public void Dispose()

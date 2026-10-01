@@ -16,6 +16,9 @@ Environment.SetEnvironmentVariable(WinTab.Hooks.ExplorerDebugLog.FileOverrideVar
 if (args.Length == 3 && args[0] == "--conceal-test-window")
     return WindowSafetyTests.ConcealRecoveryWindow(args[1], args[2]);
 
+if (args.Length == 2 && args[0] == "--notepad-owned-window")
+    return await NotepadTabAutomationTests.RunGestureProbe((nint)long.Parse(args[1]));
+
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--session-restore-stress"))
     return await ExplorerStressTest.RunSessionRestoreAsync(args);
 if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--stress"))
@@ -79,6 +82,7 @@ internal static class UnitTestRunner
             .Concat(NavigationNativeSelectionTests.All())
             .Concat(MergeSourceConcealPulseTests.All())
             .Concat(ExplorerTabDoubleClickCloseTests.All())
+            .Concat(NotepadTabAutomationTests.All())
             .Concat(ExplorerTabWheelSwitchTests.All())
             .Concat(ExplorerTabRegistrationTests.All())
             .Concat(ExplorerTabLifetimeTests.All())

@@ -60,7 +60,7 @@ internal sealed class TabStripHitTester : IDisposable
     private static bool TryGetWindowRect(nint explorerWindow, out RECT windowRect)
     {
         windowRect = default;
-        return ExplorerWindowDiscovery.IsFileExplorerWindow(explorerWindow) &&
+        return ExplorerWindowDiscovery.IsTabbedAppWindow(explorerWindow) &&
                WinApi.GetWindowRect(explorerWindow, out windowRect);
     }
 
@@ -100,7 +100,7 @@ internal sealed class TabStripHitTester : IDisposable
 
     private static TabStripBounds? ComputeBounds(nint explorerWindow, Func<nint, ExplorerTabAutomation.Tab[]> readTabs)
     {
-        if (!ExplorerWindowDiscovery.IsFileExplorerWindow(explorerWindow) ||
+        if (!ExplorerWindowDiscovery.IsTabbedAppWindow(explorerWindow) ||
             !WinApi.GetWindowRect(explorerWindow, out var initialRect))
             return null;
 

@@ -246,6 +246,20 @@
                                         <StackPanel>
                                             <TextBlock x:Name="DoubleClickTitleText" Text="Double-click to close tabs" Style="{StaticResource SettingTitleStyle}" />
                                             <TextBlock x:Name="DoubleClickDescText" Text="Double-click any tab title to close it" Style="{StaticResource SettingDescriptionStyle}" />
+                                            <StackPanel x:Name="DoubleClickScopePanel" Margin="0,10,0,0">
+                                                <DockPanel LastChildFill="False">
+                                                    <TextBlock x:Name="DoubleClickScopeLabelText" Text="Applies to" VerticalAlignment="Center"
+                                                               FontSize="13" Margin="0,0,12,0" DockPanel.Dock="Left" />
+                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="7" Padding="2">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <RadioButton x:Name="DoubleClickScopeExplorerOnly" GroupName="DoubleClickScope" Content="Explorer only" Style="{StaticResource SegmentStyle}" />
+                                                            <RadioButton x:Name="DoubleClickScopeIncludeNotepad" GroupName="DoubleClickScope" Content="Include Notepad" Style="{StaticResource SegmentStyle}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DockPanel>
+                                                <TextBlock x:Name="DoubleClickScopeHintText" Style="{StaticResource SettingDescriptionStyle}"
+                                                           Margin="0,6,0,0" />
+                                            </StackPanel>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
