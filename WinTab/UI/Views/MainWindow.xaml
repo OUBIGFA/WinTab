@@ -40,7 +40,7 @@
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="10" />
         </Style>
 
         <Style x:Key="SettingRowStyle" TargetType="Border">
@@ -55,7 +55,7 @@
 
         <Style x:Key="SettingTitleStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="15" />
-            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="FontWeight" Value="Medium" />
             <Setter Property="LineHeight" Value="22" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
@@ -87,7 +87,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
                         <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5">
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
                             <!-- TextBox supplies Padding to the content host; do not apply it twice. -->
                             <ScrollViewer x:Name="PART_ContentHost" />
                         </Border>
@@ -118,7 +118,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="1" CornerRadius="5" Padding="12,0">
+                                BorderThickness="1" CornerRadius="8" Padding="12,0">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                     </ControlTemplate>
@@ -131,7 +131,7 @@
                 <Trigger Property="IsChecked" Value="True">
                     <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                     <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
-                    <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}" />
@@ -169,16 +169,16 @@
                     Margin="0,0,8,0"
                     WindowChrome.IsHitTestVisibleInChrome="True">
             <Button x:Name="ThemeToggleButton" Style="{StaticResource IconButtonStyle}" Focusable="False">
-                <TextBlock x:Name="ThemeToggleGlyph" Style="{StaticResource GlyphIconStyle}" Text="&#xE708;" />
+                <controls:LineIcon x:Name="ThemeToggleGlyph" Data="{StaticResource MoonIcon}" />
             </Button>
             <Button x:Name="LanguageToggleButton" Style="{StaticResource IconButtonStyle}" Margin="2,0,8,0" Focusable="False">
-                <TextBlock Style="{StaticResource GlyphIconStyle}" Text="&#xF2B7;" />
+                <controls:LineIcon Data="{StaticResource LanguagesIcon}" />
             </Button>
             <Button x:Name="MinimizeButton" Style="{StaticResource CaptionButtonStyle}" Focusable="False">
-                <TextBlock Style="{StaticResource CaptionGlyphStyle}" Text="&#xE921;" />
+                <controls:LineIcon Data="{StaticResource MinusIcon}" />
             </Button>
             <Button x:Name="CloseButton" Style="{StaticResource CaptionButtonStyle}" Margin="2,0,0,0" Focusable="False">
-                <TextBlock Style="{StaticResource CaptionGlyphStyle}" Text="&#xE8BB;" />
+                <controls:LineIcon Data="{StaticResource XIcon}" />
             </Button>
         </StackPanel>
 
@@ -200,7 +200,7 @@
                         </Image.Source>
                     </Image>
                     <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="WinTab" FontSize="24" FontWeight="Medium" LineHeight="30" />
+                        <TextBlock Text="WinTab" FontSize="26" FontWeight="SemiBold" LineHeight="32" />
                         <TextBlock x:Name="HeroDescriptionText"
                                    Text="One window, multiple tabs: auto-merge new windows into active tabs"
                                    Margin="0,3,0,0"
@@ -219,7 +219,10 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock x:Name="ExplorerSectionTitleText" Text="File Explorer" Style="{StaticResource SectionTitleStyle}" />
+                        <StackPanel Orientation="Horizontal" Margin="4,0,0,10">
+                            <controls:LineIcon Data="{StaticResource FolderOpenIcon}" Margin="0,0,8,0" />
+                            <TextBlock x:Name="ExplorerSectionTitleText" Text="File Explorer" Style="{StaticResource SectionTitleStyle}" Margin="0" />
+                        </StackPanel>
                         <Border Style="{StaticResource SettingsGroupStyle}">
                             <StackPanel>
                                 <Border Style="{StaticResource SettingRowStyle}">
@@ -250,7 +253,7 @@
                                                 <DockPanel LastChildFill="False">
                                                     <TextBlock x:Name="DoubleClickScopeLabelText" Text="Applies to" VerticalAlignment="Center"
                                                                FontSize="13" Margin="0,0,12,0" DockPanel.Dock="Left" />
-                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="7" Padding="2">
+                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="10" Padding="2">
                                                         <StackPanel Orientation="Horizontal">
                                                             <RadioButton x:Name="DoubleClickScopeExplorerOnly" GroupName="DoubleClickScope" Content="Explorer only" Style="{StaticResource SegmentStyle}" />
                                                             <RadioButton x:Name="DoubleClickScopeIncludeNotepad" GroupName="DoubleClickScope" Content="Include Notepad" Style="{StaticResource SegmentStyle}" />
@@ -272,7 +275,7 @@
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
-                                <Border Style="{StaticResource SettingRowStyle}">
+                                <Border Style="{StaticResource LastSettingRowStyle}">
                                     <DockPanel>
                                         <CheckBox x:Name="WheelSwitchToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                         <StackPanel>
@@ -282,7 +285,7 @@
                                                 <DockPanel LastChildFill="False">
                                                     <TextBlock x:Name="WheelSensitivityLabelText" Text="Sensitivity" VerticalAlignment="Center"
                                                                FontSize="13" Margin="0,0,12,0" DockPanel.Dock="Left" />
-                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="7" Padding="2">
+                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="10" Padding="2">
                                                         <StackPanel Orientation="Horizontal">
                                                             <RadioButton x:Name="WheelSensitivityLow" GroupName="WheelSensitivity" Content="Low" Style="{StaticResource SegmentStyle}" />
                                                             <RadioButton x:Name="WheelSensitivityMedium" GroupName="WheelSensitivity" Content="Medium" Style="{StaticResource SegmentStyle}" />
@@ -296,35 +299,6 @@
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
-                                <Border Style="{StaticResource LastSettingRowStyle}">
-                                    <StackPanel>
-                                        <DockPanel>
-                                            <CheckBox x:Name="RestoreTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
-                                            <StackPanel>
-                                                <TextBlock x:Name="RestoreTabsTitleText" Text="Restore last tab group" Style="{StaticResource SettingTitleStyle}" />
-                                                <TextBlock x:Name="RestoreTabsDescText" Style="{StaticResource SettingDescriptionStyle}" />
-                                            </StackPanel>
-                                        </DockPanel>
-                                        <StackPanel x:Name="RestoreModePanel" Margin="0,10,0,0">
-                                            <Border Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="7" Padding="2" HorizontalAlignment="Left">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <RadioButton x:Name="RestoreNormalLaunchOnly" GroupName="RestoreMode" Content="Normal launch only" Style="{StaticResource SegmentStyle}" />
-                                                    <RadioButton x:Name="RestoreAnyFolder" GroupName="RestoreMode" Content="Any folder" Style="{StaticResource SegmentStyle}" />
-                                                </StackPanel>
-                                            </Border>
-                                            <TextBlock x:Name="RestoreModeHintText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,6,0,0" />
-                                            <TextBlock x:Name="RestoreExclusionsText" Style="{StaticResource SettingDescriptionStyle}" />
-                                            <DockPanel Margin="0,10,0,0">
-                                                <CheckBox x:Name="RestoreSingleTabToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
-                                                          AutomationProperties.LabeledBy="{Binding ElementName=RestoreSingleTabTitleText}" />
-                                                <StackPanel>
-                                                    <TextBlock x:Name="RestoreSingleTabTitleText" Text="Restore single-tab windows" Style="{StaticResource SettingTitleStyle}" />
-                                                    <TextBlock x:Name="RestoreSingleTabDescText" Style="{StaticResource SettingDescriptionStyle}" />
-                                                </StackPanel>
-                                            </DockPanel>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
                             </StackPanel>
                         </Border>
                         <TextBlock x:Name="HookErrorText"
@@ -335,47 +309,10 @@
                         <TextBlock x:Name="BypassHintText"
                                    Text="Hold Ctrl + Shift while opening folders to keep a separate window"
                                    Style="{StaticResource FootnoteStyle}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock x:Name="RecoveryTitleText" Style="{StaticResource SectionTitleStyle}" />
-                        <Border Style="{StaticResource SettingsGroupStyle}">
-                            <StackPanel>
-                                <Border Style="{StaticResource SettingRowStyle}">
-                                    <StackPanel>
-                                        <TextBlock x:Name="RecoveryDescriptionText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,0,0,10" />
-                                        <DockPanel>
-                                            <Button x:Name="RestoreGroupButton" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
-                                            <TextBlock x:Name="RestoreGroupTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <CheckBox x:Name="GroupShortcutToggle" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                            <controls:ShortcutTextBox x:Name="GroupShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=RestoreGroupTitleText}" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                                <Border Style="{StaticResource LastSettingRowStyle}">
-                                    <StackPanel>
-                                        <DockPanel>
-                                            <Button x:Name="ReopenTabButton" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
-                                            <CheckBox x:Name="RecordClosedTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
-                                                      AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" Margin="12,0,16,0" />
-                                            <TextBlock x:Name="ReopenTabTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <CheckBox x:Name="TabShortcutToggle" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                            <controls:ShortcutTextBox x:Name="TabShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" />
-                                        </StackPanel>
-                                        <DockPanel Margin="0,10,0,0">
-                                            <Button x:Name="SaveShortcutsButton" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="ShortcutHintText" Style="{StaticResource SettingDescriptionStyle}" />
-                                        </DockPanel>
-                                        <TextBlock x:Name="SessionFeedbackText" Style="{StaticResource SettingDescriptionStyle}" AutomationProperties.LiveSetting="Polite" />
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-
-                        <TextBlock x:Name="SystemSectionTitleText" Text="System" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,10" />
+                        <StackPanel Orientation="Horizontal" Margin="4,24,0,10">
+                            <controls:LineIcon Data="{StaticResource Settings2Icon}" Margin="0,0,8,0" />
+                            <TextBlock x:Name="SystemSectionTitleText" Text="System" Style="{StaticResource SectionTitleStyle}" Margin="0" />
+                        </StackPanel>
                         <Border Style="{StaticResource SettingsGroupStyle}">
                             <StackPanel>
                                 <Border Style="{StaticResource SettingRowStyle}">
@@ -408,18 +345,93 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <StackPanel Orientation="Horizontal" Margin="4,0,0,10">
+                            <controls:LineIcon Data="{StaticResource RotateCcwIcon}" Margin="0,0,8,0" />
+                            <TextBlock x:Name="RecoveryTitleText" Style="{StaticResource SectionTitleStyle}" Margin="0" />
+                        </StackPanel>
+                        <Border Style="{StaticResource SettingsGroupStyle}">
+                            <StackPanel>
+                                <Border Style="{StaticResource SettingRowStyle}">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <CheckBox x:Name="RestoreTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
+                                            <StackPanel>
+                                                <TextBlock x:Name="RestoreTabsTitleText" Text="Restore last tab group" Style="{StaticResource SettingTitleStyle}" />
+                                                <TextBlock x:Name="RestoreTabsDescText" Style="{StaticResource SettingDescriptionStyle}" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                        <StackPanel x:Name="RestoreModePanel" Margin="0,10,0,0">
+                                            <Border Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="10" Padding="2" HorizontalAlignment="Left">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <RadioButton x:Name="RestoreNormalLaunchOnly" GroupName="RestoreMode" Content="Normal launch only" Style="{StaticResource SegmentStyle}" />
+                                                    <RadioButton x:Name="RestoreAnyFolder" GroupName="RestoreMode" Content="Any folder" Style="{StaticResource SegmentStyle}" />
+                                                </StackPanel>
+                                            </Border>
+                                            <TextBlock x:Name="RestoreModeHintText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,6,0,0" />
+                                            <TextBlock x:Name="RestoreExclusionsText" Style="{StaticResource SettingDescriptionStyle}" />
+                                            <DockPanel Margin="0,10,0,0">
+                                                <CheckBox x:Name="RestoreSingleTabToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
+                                                          AutomationProperties.LabeledBy="{Binding ElementName=RestoreSingleTabTitleText}" />
+                                                <StackPanel>
+                                                    <TextBlock x:Name="RestoreSingleTabTitleText" Text="Restore single-tab windows" Style="{StaticResource SettingTitleStyle}" />
+                                                    <TextBlock x:Name="RestoreSingleTabDescText" Style="{StaticResource SettingDescriptionStyle}" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource SettingRowStyle}">
+                                    <StackPanel>
+                                        <TextBlock x:Name="RecoveryDescriptionText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,0,0,10" />
+                                        <DockPanel>
+                                            <Button x:Name="RestoreGroupButton" Tag="{StaticResource RotateCcwIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
+                                            <TextBlock x:Name="RestoreGroupTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <CheckBox x:Name="GroupShortcutToggle" Style="{StaticResource LabeledCheckBoxStyle}" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <controls:ShortcutTextBox x:Name="GroupShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=RestoreGroupTitleText}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource LastSettingRowStyle}">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <Button x:Name="ReopenTabButton" Tag="{StaticResource RotateCcwIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
+                                            <CheckBox x:Name="RecordClosedTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
+                                                      AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" Margin="12,0,16,0" />
+                                            <TextBlock x:Name="ReopenTabTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <CheckBox x:Name="TabShortcutToggle" Style="{StaticResource LabeledCheckBoxStyle}" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <controls:ShortcutTextBox x:Name="TabShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" />
+                                        </StackPanel>
+                                        <DockPanel Margin="0,10,0,0">
+                                            <Button x:Name="SaveShortcutsButton" Tag="{StaticResource CheckIcon}" DockPanel.Dock="Right" Style="{StaticResource PrimaryButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="ShortcutHintText" Style="{StaticResource SettingDescriptionStyle}" />
+                                        </DockPanel>
+                                        <TextBlock x:Name="SessionFeedbackText" Style="{StaticResource SettingDescriptionStyle}" AutomationProperties.LiveSetting="Polite" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
                 </Grid>
 
-                <TextBlock x:Name="AboutSectionTitleText" Text="About" Style="{StaticResource SectionTitleStyle}" Margin="4,24,0,10" />
+                <StackPanel Orientation="Horizontal" Margin="4,24,0,10">
+                    <controls:LineIcon Data="{StaticResource InfoIcon}" Margin="0,0,8,0" />
+                    <TextBlock x:Name="AboutSectionTitleText" Text="About" Style="{StaticResource SectionTitleStyle}" Margin="0" />
+                </StackPanel>
                 <Border Style="{StaticResource SettingsGroupStyle}">
                     <Border Style="{StaticResource LastSettingRowStyle}">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="24,0,0,0">
-                                <Button x:Name="OpenLogsButton"
+                                <Button x:Name="OpenLogsButton" Tag="{StaticResource FolderOpenIcon}"
                                         Content="Open logs"
                                         Style="{StaticResource FlatButtonStyle}"
                                         VerticalAlignment="Center" />
-                                <Button x:Name="CheckUpdatesButton"
+                                <Button x:Name="CheckUpdatesButton" Tag="{StaticResource RefreshCwIcon}"
                                         Content="Check for updates"
                                         Style="{StaticResource FlatButtonStyle}"
                                         VerticalAlignment="Center"

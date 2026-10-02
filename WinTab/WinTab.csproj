@@ -59,6 +59,7 @@
     <ItemGroup>
         <Resource Include="Icon.ico"/>
         <Resource Include="wintab-logo.png"/>
+        <Resource Include="UI/Fonts/*.ttf"/>
     </ItemGroup>
 
 </Project>

@@ -21,29 +21,33 @@ public static class ThemeManager
         if (Application.Current == null)
             return;
 
-        SetColor("PrimaryColor", dark ? "#E8E8E8" : "#2A2A2A");
-        SetColor("PrimaryLightColor", dark ? "#BDBDBD" : "#5E5E5E");
-        SetColor("TextPrimaryColor", dark ? "#F0F0F0" : "#202020");
-        SetColor("TextSecondaryColor", dark ? "#BDBDBD" : "#595959");
-        SetColor("TextTertiaryColor", dark ? "#909090" : "#707070");
-        SetColor("TextAccentColor", dark ? "#F0F0F0" : "#181818");
+        SetColor("PrimaryColor", dark ? "#E5E5E5" : "#171717");
+        SetColor("PrimaryLightColor", dark ? "#BDBDBD" : "#404040");
+        SetColor("TextPrimaryColor", dark ? "#FAFAFA" : "#0A0A0A");
+        SetColor("TextSecondaryColor", dark ? "#A3A3A3" : "#707070");
+        SetColor("TextTertiaryColor", dark ? "#909090" : "#737373");
+        SetColor("TextAccentColor", dark ? "#FAFAFA" : "#171717");
         // Controls need stronger outlines than the quieter card borders and row dividers.
-        SetColor("ControlBorderColor", dark ? "#8A8A8A" : "#888888");
-        SetColor("BorderColor", dark ? "#454545" : "#C8C8C8");
-        SetColor("DividerColor", dark ? "#3B3B3B" : "#D8D8D8");
-        SetColor("ControlBackgroundColor", dark ? "#303030" : "#E9E9E9");
-        SetColor("ControlHoverColor", dark ? "#3D3D3D" : "#DDDDDD");
-        SetColor("DropdownBackgroundColor", dark ? "#1B1B1B" : "#FAFAFA");
+        SetColor("ControlBorderColor", dark ? "#858585" : "#888888");
+        SetColor("BorderColor", dark ? "#333333" : "#E5E5E5");
+        SetColor("DividerColor", dark ? "#333333" : "#E5E5E5");
+        SetColor("ControlBackgroundColor", dark ? "#262626" : "#F5F5F5");
+        SetColor("ControlHoverColor", dark ? "#333333" : "#EAEAEA");
+        SetColor("DropdownBackgroundColor", dark ? "#171717" : "#FFFFFF");
         SetColor("ShadowColor", dark ? "#111111" : "#5A5A5A");
-        SetColor("CheckBoxCheckedBackgroundColor", dark ? "#E5E5E5" : "#2A2A2A");
-        SetColor("CheckBoxCheckedBorderColor", dark ? "#E5E5E5" : "#2A2A2A");
-        SetColor("CheckBoxCheckedGlyphColor", dark ? "#242424" : "#EEEEEE");
-        SetColor("FocusRingColor", dark ? "#C5C5C5" : "#444444");
+        SetColor("CheckBoxCheckedBackgroundColor", dark ? "#E5E5E5" : "#171717");
+        SetColor("CheckBoxCheckedBorderColor", dark ? "#E5E5E5" : "#171717");
+        SetColor("CheckBoxCheckedGlyphColor", dark ? "#171717" : "#FAFAFA");
+        SetColor("FocusRingColor", dark ? "#A3A3A3" : "#737373");
 
-        SetBrush("WindowBackgroundBrush", dark ? "#161616" : "#EDEDED");
-        SetBrush("WindowTitleBarBrush", dark ? "#191919" : "#EDEDED");
-        SetBrush("WindowBorderBrush", dark ? "#373737" : "#C7C7C7");
-        SetBrush("SurfaceBrush", dark ? "#242424" : "#FCFCFC");
+        SetColor("SwitchOffColor", dark ? "#737373" : "#888888");
+
+        SetColor("SwitchThumbColor", dark ? "#FAFAFA" : "#FFFFFF");
+
+        SetBrush("WindowBackgroundBrush", dark ? "#0A0A0A" : "#FFFFFF");
+        SetBrush("WindowTitleBarBrush", dark ? "#171717" : "#FAFAFA");
+        SetBrush("WindowBorderBrush", dark ? "#333333" : "#E5E5E5");
+        SetBrush("SurfaceBrush", dark ? "#171717" : "#FFFFFF");
     }
 
     private static void SetColor(string key, string hex)

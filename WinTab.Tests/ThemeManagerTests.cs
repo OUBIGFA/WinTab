@@ -31,7 +31,9 @@ internal static class ThemeManagerTests
         "WindowBackgroundBrush",
         "WindowTitleBarBrush",
         "WindowBorderBrush",
-        "SurfaceBrush"
+        "SurfaceBrush",
+        "SwitchOffBrush",
+        "SwitchThumbBrush"
     };
 
     public static IEnumerable<(string Name, Func<Task> Body)> All()
@@ -79,11 +81,15 @@ internal static class ThemeManagerTests
 
     private static byte GetGrayLevel(string key) => GetColor(key).R;
 
-    /// <summary>Settings groups sit on the window background as slightly lighter cards in both themes.</summary>
+    /// <summary>WinOne uses a flat light page and raised dark surfaces, with visible separators.</summary>
     private static void AssertSurfaceLift(string theme)
     {
-        Check.That(GetGrayLevel("SurfaceBrush") - GetGrayLevel("WindowBackgroundBrush") >= 12,
-            $"{theme} surface needs a visible lift from the window background.");
+        if (theme == "Light")
+            Check.Equal(GetColor("WindowBackgroundBrush"), GetColor("SurfaceBrush"),
+                "Light sections share the page surface; dividers provide their boundaries.");
+        else
+            Check.That(GetGrayLevel("SurfaceBrush") - GetGrayLevel("WindowBackgroundBrush") >= 12,
+                $"{theme} surface needs a visible lift from the window background.");
         AssertContrast(GetColor("DividerBrush"), GetColor("SurfaceBrush"), 1.15,
             $"{theme} group outline");
     }
@@ -95,6 +101,8 @@ internal static class ThemeManagerTests
             $"{theme} control outline");
         AssertContrast(GetColor("TextSecondaryBrush"), GetColor("ControlBackgroundBrush"), 4.5,
             $"{theme} unselected control text");
+        AssertContrast(GetColor("SwitchThumbBrush"), GetColor("SwitchOffBrush"), 3.0,
+            $"{theme} unchecked switch thumb");
     }
 
     private static void AssertPaletteIsNeutral()
@@ -110,7 +118,6 @@ internal static class ThemeManagerTests
     {
         Check.Equal(color.R, color.G, $"{name} should remain neutral gray.");
         Check.Equal(color.G, color.B, $"{name} should remain neutral gray.");
-        Check.That(color.R is > 0 and < 255, $"{name} should avoid dead black or dead white.");
     }
 
     private static void AssertContrast(Color foreground, Color background, double minimum, string name)

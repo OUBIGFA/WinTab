@@ -15,9 +15,6 @@ namespace WinTab.UI.Views;
 
 public partial class MainWindow : Window
 {
-    // Segoe Fluent Icons / Segoe MDL2 Assets code points for the theme toggle.
-    private const string SunGlyph = "\uE706";
-    private const string MoonGlyph = "\uE708";
     private const int WM_ENTERSIZEMOVE = 0x0231;
     private const int WM_EXITSIZEMOVE = 0x0232;
 
@@ -262,7 +259,7 @@ public partial class MainWindow : Window
 
     private void ApplyTheme()
     {
-        ThemeToggleGlyph.Text = ThemeManager.IsDarkTheme ? SunGlyph : MoonGlyph;
+        ThemeToggleGlyph.Data = (System.Windows.Media.Geometry)FindResource(ThemeManager.IsDarkTheme ? "SunIcon" : "MoonIcon");
         ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(ThemeManager.IsDarkTheme);
     }
 

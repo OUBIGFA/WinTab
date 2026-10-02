@@ -18,9 +18,18 @@ internal static class ExplorerReuseSelectionTests
         yield return ("reusing a tab without a selection request preserves the current selection", () => ReuseSelectionAsync(null, ["previous.txt"]));
         yield return ("reuse does not report success when the selection view is unavailable", () => ReuseSelectionAsync(["target.txt"], ["previous.txt"], expectedReused: false, viewAvailable: false));
         yield return ("reuse does not report success when all requested files are missing", () => ReuseSelectionAsync(["missing.txt"], ["previous.txt"], expectedReused: false));
+        yield return ("file-location reuse preserves a Start menu shortcut selection", () => ReuseSelectionAsync(null, ["测试应用.lnk"],
+            capturedItems: [("测试应用", @"C:\WinTab-reuse\测试应用.lnk", true)]));
+        yield return ("file-location reuse preserves hidden extensions in a mixed selection", () => ReuseSelectionAsync(null, ["report.txt", "target.txt"],
+            capturedItems: [("report", @"C:\WinTab-reuse\report.txt", true), ("target.txt", @"C:\WinTab-reuse\target.txt", true)]));
+        yield return ("file-location reuse retains virtual item names", () => ReuseSelectionAsync(null, ["Control Panel"],
+            capturedItems: [("Control Panel", "::{26EE0668-A00A-44D7-9371-BEB064C98683}", false)]));
+        yield return ("file-location reuse retains drive-root names without a file name", () => ReuseSelectionAsync(null, ["Local Disk (C:)"],
+            capturedItems: [("Local Disk (C:)", @"C:\", true)]));
     }
 
-    private static async Task ReuseSelectionAsync(string[]? requested, string[] expected, bool expectedReused = true, bool viewAvailable = true)
+    private static async Task ReuseSelectionAsync(string[]? requested, string[] expected, bool expectedReused = true, bool viewAvailable = true,
+        (string Name, string Path, bool IsFileSystem)[]? capturedItems = null)
     {
         using var scheduler = new StaTaskScheduler();
         await Task.Factory.StartNew(async () =>
@@ -43,7 +52,7 @@ internal static class ExplorerReuseSelectionTests
             SetField(watcher, "_closingMergeSourceHWnds", new System.Collections.Concurrent.ConcurrentDictionary<nint, MergeOperation>());
 
             var selected = new List<string> { "previous.txt" };
-            var view = viewAvailable ? CreateFolderView(selected) : null;
+            var view = viewAvailable ? CreateFolderView(selected, capturedItems) : null;
             var dictionaryField = typeof(ExplorerWatcher).GetField("_windowEntryDict", BindingFlags.Instance | BindingFlags.NonPublic)!;
             var dictionary = Activator.CreateInstance(dictionaryField.FieldType)!;
             var browserType = dictionaryField.FieldType.GetGenericArguments()[0];
@@ -54,6 +63,11 @@ internal static class ExplorerReuseSelectionTests
                 "get_Document" => view,
                 _ => throw new InvalidOperationException("Unexpected browser call: " + method)
             });
+            // Exercise the handoff from the source selection to the reused tab. Display names may
+            // omit extensions, but Explorer's folder parser still needs the complete file name.
+            if (capturedItems != null)
+                requested = (string[]?)typeof(ExplorerWatcher).GetMethod("GetSelectedItems", BindingFlags.Static | BindingFlags.NonPublic)!
+                    .Invoke(null, [browser]);
             var location = Helper.NormalizeLocation("C:/WinTab-reuse");
             var info = new WindowInfo
             {
@@ -81,20 +95,38 @@ internal static class ExplorerReuseSelectionTests
         }, CancellationToken.None, TaskCreationOptions.None, scheduler).Unwrap();
     }
 
-    private static object CreateFolderView(List<string> selected)
+    private static object CreateFolderView(List<string> selected, (string Name, string Path, bool IsFileSystem)[]? capturedItems)
     {
         var viewType = typeof(ExplorerWatcher).Assembly.GetType("Shell32.ShellFolderView", throwOnError: true)!;
         var folderType = viewType.GetInterfaces().Append(viewType).SelectMany(type => type.GetProperties())
             .First(property => property.Name == "Folder").PropertyType;
         var itemType = folderType.GetInterfaces().Append(folderType).SelectMany(type => type.GetMethods())
             .First(method => method.Name == "ParseName").ReturnType;
+        var selectionType = viewType.GetInterfaces().Append(viewType).SelectMany(type => type.GetMethods())
+            .First(method => method.Name == "SelectedItems").ReturnType;
+        var sourceItems = (capturedItems ?? []).Select(source => ShellDispatchStub.Create(itemType, (method, arguments) => method switch
+        {
+            "get_Name" => source.Name,
+            "get_Path" => source.Path,
+            "get_IsFileSystem" => source.IsFileSystem,
+            _ => throw new InvalidOperationException("Unexpected source item call: " + method)
+        })).ToArray();
+        var selection = ShellDispatchStub.Create(selectionType, (method, arguments) => method switch
+        {
+            "get_Count" => sourceItems.Length,
+            "Item" => sourceItems[Convert.ToInt32(arguments[0])],
+            _ => throw new InvalidOperationException("Unexpected selection call: " + method)
+        });
+        // Model real ParseName behavior: a display label is not an alias for a file with an extension.
+        var availableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "previous.txt", "target.txt", "first.txt", "second.txt", "测试应用.lnk", "report.txt", "Control Panel", "Local Disk (C:)" };
         var parsedNames = new Dictionary<object, string>();
         var folder = ShellDispatchStub.Create(folderType, (method, arguments) =>
         {
             if (method != "ParseName")
                 throw new InvalidOperationException("Unexpected folder call: " + method);
             var name = (string)arguments[0]!;
-            if (name == "missing.txt")
+            if (!availableNames.Contains(name))
                 return null;
             var item = ShellDispatchStub.Create(itemType, (itemMethod, itemArguments) =>
                 itemMethod == "get_Name" ? name : throw new InvalidOperationException("Unexpected item call: " + itemMethod));
@@ -103,6 +135,8 @@ internal static class ExplorerReuseSelectionTests
         });
         return ShellDispatchStub.Create(viewType, (method, arguments) =>
         {
+            if (method == "SelectedItems")
+                return selection;
             if (method == "get_Folder")
                 return folder;
             if (method != "SelectItem")

@@ -5,6 +5,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="pack://application:,,,/WinTab;component/UI/Themes/Colors.xaml" />
+                <ResourceDictionary Source="pack://application:,,,/WinTab;component/UI/Themes/Icons.xaml" />
                 <ResourceDictionary Source="pack://application:,,,/WinTab;component/UI/Themes/DefaultStyles.xaml" />
                 <ResourceDictionary Source="pack://application:,,,/WinTab;component/UI/Themes/ThemeResources.xaml" />
             </ResourceDictionary.MergedDictionaries>

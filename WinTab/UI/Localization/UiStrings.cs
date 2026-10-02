@@ -85,7 +85,7 @@ internal static class UiStrings
     }
 
     // Manual recovery, independent of automatic restoration.
-    public static string RecoveryTitle => Pick("标签恢复", "Tab recovery");
+    public static string RecoveryTitle => Pick("会话与标签恢复", "Session & tab recovery");
     public static string RecoveryDescription => Pick("后台持续保存标签组；关机或资源管理器崩溃后保留最后使用的窗口", "Groups are saved continuously; recover the last-used window after shutdown or an Explorer crash");
     public static string RestoreGroupCommand => Pick("恢复上次标签组", "Restore last tab group");
     public static string ReopenTabCommand => Pick("恢复上一个标签页", "Reopen last closed tab");

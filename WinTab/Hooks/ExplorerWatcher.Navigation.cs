@@ -1,6 +1,7 @@
 using Shell32;
 using SHDocVw;
 using System;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -252,7 +253,10 @@ public partial class ExplorerWatcher
             var item = selectedItems.Item(index);
             if (item == null)
                 return null;
-            result[index] = item.Name;
+            // Shell display names can hide extensions (notably Start menu .lnk files).
+            // ParseName needs the actual file name; virtual items and drive roots keep their names.
+            var fileName = item.IsFileSystem ? Path.GetFileName(item.Path) : null;
+            result[index] = string.IsNullOrEmpty(fileName) ? item.Name : fileName;
         }
 
         return result;
