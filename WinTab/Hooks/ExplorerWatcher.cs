@@ -141,6 +141,8 @@ public partial class ExplorerWatcher : IHook
 
     private void OnWindowShown(nint hWinEventHook, uint eventType, nint hWnd, int idObject, int idChild, uint dwEventThread, uint dWmsEventTime)
     {
+        if (eventType == WinApi.EVENT_SYSTEM_FOREGROUND)
+            ObserveNativeForegroundActivation(hWnd, dWmsEventTime);
         if (_captureSessions && !_disposed && eventType == WinApi.EVENT_SYSTEM_FOREGROUND)
             ObserveSessionForeground(hWnd);
         if (_captureSessions && !_disposed && eventType == WinApi.EVENT_OBJECT_DESTROY && idObject == 0 && idChild == 0)
@@ -158,7 +160,7 @@ public partial class ExplorerWatcher : IHook
             if (_isForcingTabs && Volatile.Read(ref _tabSelectionsInProgress) == 0 &&
                 unchecked((int)dWmsEventTime - Volatile.Read(ref _ignoreNativeFocusThrough)) > 0)
             {
-                try { _ = TryActivateNativeFocusedTabAsync(hWnd); }
+                try { _ = TryActivateNativeFocusedTabAsync(hWnd, dWmsEventTime); }
                 catch (Exception exception) when (exception is ObjectDisposedException or InvalidOperationException or TaskSchedulerException)
                 {
                     ExplorerDebugLog.Write($"Native file-location focus could not be scheduled: {exception.Message}");

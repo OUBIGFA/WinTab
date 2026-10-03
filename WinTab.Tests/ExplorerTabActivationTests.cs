@@ -108,6 +108,17 @@ internal static class ExplorerTabActivationTests
         }
 
         public nint ActiveTab => WinApi.FindWindowEx(Handle, 0, TabClassName, null);
+
+        /// <summary>Creates Explorer's frame-level focus host without showing or activating a window.</summary>
+        public nint CreateFrameInputSite(string className = "InputSiteWindowClass")
+        {
+            var windowClass = new NativeWindowClass { Procedure = TabProcedure, Instance = Module, ClassName = className };
+            RegisterClass(ref windowClass);
+            var site = CreateWindowEx(0, className, string.Empty, 0x50000000,
+                0, 0, 1, 1, Handle, 0, Module, 0);
+            Check.That(site != 0, "The frame-level input site must exist before testing focus handoff.");
+            return site;
+        }
         public int CommandsWhileMinimized { get; private set; }
         public int SwitchDelayMs { get; set; }
 
