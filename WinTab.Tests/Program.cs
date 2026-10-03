@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -144,8 +145,20 @@ internal static class UnitTestRunner
 
         Console.WriteLine($"{tests.Count - failed - unavailable}/{tests.Count - unavailable} passed" +
             (skipped + unavailable > 0 ? $" ({skipped + unavailable} skipped)" : string.Empty));
+        Console.Out.Flush();
+        // Explorer-facing tests leave live windows and STA/COM apartments behind; that leftover state can
+        // deadlock the CLR shutdown path - Main returning and even Environment.Exit have both been observed
+        // to hang after the summary above. Terminate the process directly so the verdict is always delivered
+        // and the build does not stall. TerminateProcess (unlike Process.Kill) also preserves the exit code.
+        TerminateProcess(GetCurrentProcess(), failed == 0 ? 0u : 1u);
         return failed == 0 ? 0 : 1;
     }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(nint process, uint exitCode);
+
+    [DllImport("kernel32.dll")]
+    private static extern nint GetCurrentProcess();
 
     /// <summary>Splits a <c>|</c>-separated substring list, or null when nothing was given.</summary>
     private static string[]? Split(string? value)

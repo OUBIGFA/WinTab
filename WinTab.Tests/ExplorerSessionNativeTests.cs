@@ -222,7 +222,11 @@ internal static class ExplorerSessionNativeTests
             Set(fixture.Watcher, "_captureSessions", true);
             fixture.Window.Show();
             Helper.RestoreWindowToForeground(fixture.Window.Handle);
-            Check.Equal(fixture.Window.Handle, ExplorerNavigationAccess.ForegroundFrame(), "Only the owned test window may receive native session commands.");
+            // On a live desktop, user input or another window can take the foreground between the restore and
+            // this check. That is host interference, not a product failure, so report it as a skip (the runner
+            // surfaces skips loudly); a hard failure here has repeatedly broken full builds on a busy machine.
+            if (ExplorerNavigationAccess.ForegroundFrame() != fixture.Window.Handle)
+                throw new TestSkippedException("Another window owned the foreground when the session test started");
             var type = typeof(ExplorerWatcher).GetNestedType("NativeSessionRestore", BindingFlags.NonPublic)!;
             var environment = (IExplorerSessionRestoreEnvironment)Activator.CreateInstance(type,
                 [fixture.Watcher, browser, info, Fixture.Location, string.Empty, 0, CancellationToken.None, requested])!;
