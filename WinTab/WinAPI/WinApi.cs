@@ -15,6 +15,7 @@ public static class WinApi
     public const int EVENT_OBJECT_CREATE = 0x8000;
     public const int EVENT_OBJECT_DESTROY = 0x8001;
     public const int EVENT_OBJECT_FOCUS = 0x8005;
+    public const int EVENT_OBJECT_SELECTION = 0x8006;
     public const int EVENT_OBJECT_SHOW = 0x8002;
     public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     public const uint WINEVENT_SKIPOWNPROCESS = 0x0002;

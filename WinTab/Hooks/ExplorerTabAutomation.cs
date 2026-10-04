@@ -121,4 +121,49 @@ internal static class ExplorerTabAutomation
         selectedIndex = Array.FindIndex(tabs, tab => tab.Selected);
         return selectedIndex >= 0;
     }
+
+    /// <summary>
+    /// Prepare the exact tab's close button while it is still active, select its MRU successor, then close
+    /// the original tab in the background. Keeping both operations on this worker avoids an adjacent-tab flash.
+    /// </summary>
+    public static bool TryCloseTabReturningTo(nint window, string closingId, string returnId, Func<bool> isCurrent)
+    {
+        if (string.IsNullOrEmpty(closingId) || string.IsNullOrEmpty(returnId) || closingId == returnId) return false;
+        var control = FindTabControl(window);
+        if (control == null) return false;
+        AutomationElement? closing = null, successor = null;
+        foreach (AutomationElement item in control.FindAll(TreeScope.Descendants, TabItemCondition))
+        {
+            var id = string.Join(".", item.GetRuntimeId());
+            if (id == closingId) closing = item;
+            if (id == returnId) successor = item;
+        }
+        var button = closing?.FindFirst(TreeScope.Descendants, CloseButtonCondition);
+        if (button == null || successor == null ||
+            !button.TryGetCurrentPattern(InvokePattern.Pattern, out var closePattern) ||
+            !successor.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var returnPattern) || !isCurrent())
+            return false;
+        var selection = (SelectionItemPattern)returnPattern;
+        selection.Select();
+        // The tab being closed must already be in the background when the close reaches the application.
+        // Invoke the captured tab-specific button; cursor coordinates can change when selection changes widths.
+        if (!selection.Current.IsSelected || !isCurrent()) return false;
+        ((InvokePattern)closePattern).Invoke();
+        return true;
+    }
+
+    /// <summary>Select an exact surviving tab, resolving its identity again after the close changed indices.</summary>
+    public static bool TrySelectTab(nint window, string expectedId, Func<bool> isCurrent)
+    {
+        var control = FindTabControl(window);
+        if (control == null || string.IsNullOrEmpty(expectedId)) return false;
+        foreach (AutomationElement item in control.FindAll(TreeScope.Descendants, TabItemCondition))
+        {
+            if (!string.Equals(string.Join(".", item.GetRuntimeId()), expectedId, StringComparison.Ordinal)) continue;
+            if (!item.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern) || !isCurrent()) return false;
+            ((SelectionItemPattern)pattern).Select();
+            return true;
+        }
+        return false;
+    }
 }

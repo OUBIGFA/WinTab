@@ -84,6 +84,7 @@ internal static class UnitTestRunner
             .Concat(NavigationNativeSelectionTests.All())
             .Concat(MergeSourceConcealPulseTests.All())
             .Concat(ExplorerTabDoubleClickCloseTests.All())
+            .Concat(ExplorerDoubleClickNativeTests.All())
             .Concat(NotepadTabAutomationTests.All())
             .Concat(ExplorerTabWheelSwitchTests.All())
             .Concat(ExplorerTabRegistrationTests.All())

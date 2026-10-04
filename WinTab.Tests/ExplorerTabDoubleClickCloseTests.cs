@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,65 @@ internal static class ExplorerTabDoubleClickCloseTests
         yield return ("double-click restart discards the previous click and pending release", RestartDiscardsClickState);
         yield return ("queued double-click close rechecks ownership after its delay", QueuedCloseRechecksOwnership);
         yield return ("double-click close scope recognizes Notepad windows only when included", NotepadScopeGatesDoubleClickTargets);
+        yield return ("double-click return follows activation order across tab moves and duplicate titles", ReturnFollowsActivationOrder);
+        yield return ("double-click return skips closed tabs and isolates window histories", ReturnSkipsClosedTabs);
+        yield return ("double-click return waits for exactly its own tab to close", ReturnRequiresConfirmedClose);
+        yield return ("double-click return preserves history across incomplete snapshots", IncompleteSnapshotKeepsHistory);
+    }
+
+    private static ExplorerTabAutomation.Tab[] Tabs(string selected, params string[] ids) =>
+        ids.Select(id => new ExplorerTabAutomation.Tab(new System.Windows.Rect(0, 0, 100, 30),
+            id == selected, "same title", id)).ToArray();
+
+    private static Task ReturnFollowsActivationOrder()
+    {
+        var history = new TabActivationHistory();
+        history.Observe(Tabs("b", "a", "b", "c", "d"));
+        history.Observe(Tabs("a", "a", "b", "c", "d"));
+        history.Observe(Tabs("d", "a", "b", "c", "d"));
+        var before = Tabs("d", "d", "c", "a", "b");
+        history.Observe(before);
+        Check.Equal("a", TabActivationHistory.FindReturnTab(history.GetReturnOrder("d"), "d", before,
+            Tabs("c", "c", "a", "b")), "The previous activation must win over visual order and identical titles.");
+        history.Observe(Tabs("a", "c", "a", "b"));
+        Check.Equal("b", history.GetReturnOrder("a")[0], "A consecutive close must continue through real activations.");
+        return Task.CompletedTask;
+    }
+
+    private static Task ReturnSkipsClosedTabs()
+    {
+        var first = new TabActivationHistory();
+        var second = new TabActivationHistory();
+        first.Observe(Tabs("a", "a", "b", "c"));
+        first.Observe(Tabs("b", "a", "b", "c"));
+        first.Observe(Tabs("c", "a", "b", "c"));
+        first.Observe(Tabs("c", "a", "c"));
+        second.Observe(Tabs("c", "a", "c"));
+        Check.Equal("a", first.GetReturnOrder("c").Single(), "An already closed previous tab must be skipped.");
+        Check.Equal(0, second.GetReturnOrder("c").Length, "Another window must not borrow activations.");
+        return Task.CompletedTask;
+    }
+
+    private static Task ReturnRequiresConfirmedClose()
+    {
+        var before = Tabs("c", "a", "b", "c");
+        foreach (var after in new[] { before, Tabs("b", "b"), Tabs("b", "a", "b", "new"), Tabs("b", "b", "new") })
+            Check.That(TabActivationHistory.FindReturnTab(["a", "b"], "c", before, after) == null,
+                "A save dialog or concurrent tab change must never trigger a return switch.");
+        Check.Equal("a", TabActivationHistory.FindReturnTab(["a", "b"], "c", before, Tabs("b", "a", "b")),
+            "Only the exact confirmed close permits selecting the previous tab.");
+        return Task.CompletedTask;
+    }
+
+    private static Task IncompleteSnapshotKeepsHistory()
+    {
+        var history = new TabActivationHistory();
+        history.Observe(Tabs("a", "a", "b"));
+        history.Observe(Tabs("b", "a", "b"));
+        history.Observe([]);
+        history.Observe(Tabs("", "", "b"));
+        Check.Equal("a", history.GetReturnOrder("b").Single(), "Incomplete UIA publication must not lose the previous tab.");
+        return Task.CompletedTask;
     }
 
     private static Task DeferredHitTestPreservesColdGesture()

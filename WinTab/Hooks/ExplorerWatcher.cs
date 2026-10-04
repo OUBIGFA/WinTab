@@ -78,6 +78,8 @@ public partial class ExplorerWatcher : IHook
     public bool IsHookActive => _isForcingTabs;
     public bool IsShellReady => _mainExplorerProcessId != 0 && _shellWindows != null;
     public event Action? OnShellInitialized;
+    /// <summary>Native focus/selection notifications; subscribers must keep remote UIA reads off this thread.</summary>
+    internal event Action<nint>? TabActivity;
 
     public ExplorerWatcher(Func<int>? getDefaultExplorerLaunchId = null, Func<bool>? restoresFolderWindowsAtSignIn = null)
     {
@@ -141,6 +143,10 @@ public partial class ExplorerWatcher : IHook
 
     private void OnWindowShown(nint hWinEventHook, uint eventType, nint hWnd, int idObject, int idChild, uint dwEventThread, uint dWmsEventTime)
     {
+        if (!_disposed && (eventType == WinApi.EVENT_SYSTEM_FOREGROUND ||
+            eventType == WinApi.EVENT_OBJECT_FOCUS || eventType == WinApi.EVENT_OBJECT_SELECTION))
+            TabActivity?.Invoke(hWnd);
+        if (eventType == WinApi.EVENT_OBJECT_SELECTION) return;
         if (eventType == WinApi.EVENT_SYSTEM_FOREGROUND)
             ObserveNativeForegroundActivation(hWnd, dWmsEventTime);
         if (_captureSessions && !_disposed && eventType == WinApi.EVENT_SYSTEM_FOREGROUND)

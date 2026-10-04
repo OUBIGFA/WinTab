@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -23,6 +24,7 @@ internal static class NotepadTabAutomationTests
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
         yield return ("notepad double-click closes tabs through the real mouse hook", ClosesTabUnderPoint);
+        yield return ("notepad double-click returns to the previously active nonadjacent tab", ReturnsToPreviousTab);
         yield return ("notepad tab bounds exclude the space beside tab titles", IgnoresPointOutsideTabTitles);
     }
 
@@ -36,9 +38,9 @@ internal static class NotepadTabAutomationTests
     private static async Task ClosesTabUnderPoint()
     {
         using var fixture = await LaunchOwnedNotepadAsync(tabs: 2);
-        await RunOnStaAsync(() =>
+        await RunOnStaAsync(async () =>
         {
-            RunGestureProbe(fixture.Window).GetAwaiter().GetResult();
+            await RunGestureProbe(fixture.Window);
 
             var remaining = AwaitTabs(fixture.Window, WaitMs, count => count == 1);
             Check.That(remaining is { Length: 1 }, $"One tab must remain after the close, found {remaining?.Length ?? 0}.");
@@ -63,6 +65,59 @@ internal static class NotepadTabAutomationTests
 
     private static System.Drawing.Point Center(System.Windows.Rect bounds) =>
         new((int)(bounds.X + bounds.Width / 2), (int)(bounds.Y + bounds.Height / 2));
+
+    private static async Task ReturnsToPreviousTab()
+    {
+        using var fixture = await LaunchOwnedNotepadAsync(tabs: 3);
+        Check.Equal(3, fixture.Tabs.Length, "The owned window must start with exactly three test tabs.");
+        using var watcher = new ExplorerWatcher();
+        using var hook = new ExplorerTabDoubleClickHook(watcher, () => WinApi.GetForegroundWindow() == fixture.Window);
+        hook.StartHook();
+        await RunOnStaAsync(() =>
+        {
+            Helper.RestoreWindowToForeground(fixture.Window);
+            var items = AutomationElement.FromHandle(fixture.Window).FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
+            ((SelectionItemPattern)items[0].GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            Thread.Sleep(350);
+            ((SelectionItemPattern)items[2].GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            Thread.Sleep(350);
+            var selectionEvents = new ConcurrentQueue<string>();
+            var root = AutomationElement.FromHandle(fixture.Window);
+            AutomationEventHandler onSelected = (sender, _) =>
+            {
+                if (sender is AutomationElement element)
+                    selectionEvents.Enqueue(string.Join(".", element.GetRuntimeId()));
+            };
+            Automation.AddAutomationEventHandler(SelectionItemPattern.ElementSelectedEvent, root,
+                TreeScope.Subtree, onSelected);
+            try
+            {
+                var point = Center(ExplorerTabAutomation.ReadTabs(fixture.Window)[2].Bounds);
+                Check.That(SetCursorPos(point.X, point.Y), "Cursor must reach the owned tab.");
+                for (var click = 0; click < 2; click++)
+                {
+                    Check.That(WinApi.GetForegroundWindow() == fixture.Window &&
+                        WinApi.GetAncestor(WinApi.WindowFromPoint(point), WinApi.GA_ROOT) == fixture.Window,
+                        "Refusing input outside the owned foreground window.");
+                    Check.Equal(2u, WinApi.SendInput(2, [Mouse(0x0002), Mouse(0x0004)], Marshal.SizeOf<INPUT>()),
+                        "Both left-button events must be delivered.");
+                    Thread.Sleep(60);
+                }
+                var remaining = AwaitTabs(fixture.Window, WaitMs, count => count == 2);
+                Check.That(remaining is { Length: 2 }, "The double-click must close one tab.");
+                Thread.Sleep(350);
+                remaining = ExplorerTabAutomation.ReadSessionTabs(fixture.Window);
+                Check.That(remaining[0].Selected, "Closing the third tab must return to the previously active first tab, not the adjacent second tab.");
+                Check.That(selectionEvents.Contains(fixture.Tabs[0].Id), "The real selection event must confirm the return tab.");
+                Check.That(!selectionEvents.Contains(fixture.Tabs[1].Id), "The adjacent second tab must never become selected during the close.");
+            }
+            finally
+            {
+                Automation.RemoveAutomationEventHandler(SelectionItemPattern.ElementSelectedEvent, root, onSelected);
+            }
+        });
+    }
 
     /// <summary>Caller supplies a disposable two-tab window; input is refused if it is covered or loses foreground.</summary>
     internal static async Task<int> RunGestureProbe(nint window)
@@ -99,6 +154,16 @@ internal static class NotepadTabAutomationTests
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TabItem));
                 ((SelectionItemPattern)items[0].GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             }
+            // Adding/selecting a tab changes its width. Locate the actual target after that layout settles.
+            var layoutDeadline = Environment.TickCount64 + WaitMs;
+            while (true)
+            {
+                await Task.Delay(50);
+                var current = ExplorerTabAutomation.ReadSessionTabs(window);
+                if (current.Length == 2 && current.SequenceEqual(pair)) break;
+                Check.That(Environment.TickCount64 < layoutDeadline, "The owned tab strip must finish arranging before the test clicks it.");
+                pair = current;
+            }
             await DoubleClick(Center(pair[1].Bounds));
             var remaining = AwaitTabs(window, 1000, count => count == 1);
             Check.That(remaining is { Length: 1 }, $"Each double-click must close one tab without retries: repeat={repeat}, count={remaining?.Length}, foreground={WinApi.GetForegroundWindow()}, expectedWindow={window}.");
@@ -114,15 +179,13 @@ internal static class NotepadTabAutomationTests
         {
             Helper.RestoreWindowToForeground(window);
             Check.That(SetCursorPos(target.X, target.Y), "Cursor must reach the owned window.");
-            for (var click = 0; click < 2; click++)
-            {
-                Check.That(WinApi.GetForegroundWindow() == window &&
-                    WinApi.GetAncestor(WinApi.WindowFromPoint(target), WinApi.GA_ROOT) == window,
-                    "Refusing input outside the foreground owned window.");
-                var input = new[] { Mouse(0x0002), Mouse(0x0004) };
-                Check.Equal(2u, WinApi.SendInput(2, input, Marshal.SizeOf<INPUT>()), "Both left-button events must be delivered.");
-                if (click == 0) await Task.Delay(60);
-            }
+            Check.That(WinApi.GetForegroundWindow() == window &&
+                WinApi.GetAncestor(WinApi.WindowFromPoint(target), WinApi.GA_ROOT) == window,
+                "Refusing input outside the foreground owned window.");
+            // Deliver one gesture atomically; a busy STA must not stretch the interval between its clicks.
+            var input = new[] { Mouse(0x0002), Mouse(0x0004), Mouse(0x0002), Mouse(0x0004) };
+            Check.Equal(4u, WinApi.SendInput(4, input, Marshal.SizeOf<INPUT>()), "All double-click events must be delivered.");
+            await Task.Delay(10);
         }
     }
 
@@ -138,10 +201,10 @@ internal static class NotepadTabAutomationTests
     private static async Task<OwnedNotepad> LaunchOwnedNotepadAsync(int tabs)
     {
         SkipWhenNotepadIsAlreadyRunning();
-        var directory = Path.Combine(Path.GetTempPath(), "WinTab.Tests");
+        var directory = Path.Combine(Directory.GetCurrentDirectory(), "_temp", "notepad-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var file = Path.Combine(directory, $"notepad-{Guid.NewGuid():N}.txt");
-        await File.WriteAllTextAsync(file, "WinTab Notepad automation test");
+        await File.WriteAllTextAsync(file, "WinTab Notepad automation test", new System.Text.UTF8Encoding(false));
         var process = Process.Start(new ProcessStartInfo
         {
             FileName = "notepad.exe",
@@ -154,20 +217,23 @@ internal static class NotepadTabAutomationTests
         {
             await RunOnStaAsync(() =>
             {
-                fixture.Window = AwaitWindow(process, WaitMs);
+                fixture.Window = AwaitWindow(file, WaitMs);
                 if (fixture.Window == 0)
                     throw new TestSkippedException("Notepad did not create its own window on this system");
 
                 var initial = AwaitTabs(fixture.Window, WaitMs, count => count >= 1);
                 if (initial is not { Length: >= 1 })
                     throw new TestSkippedException("This Windows' Notepad has no tab strip WinTab can read");
+                if (initial.Length != 1)
+                    throw new TestSkippedException("Notepad restored other tabs; leaving that window untouched");
+                fixture.Identity = WindowIdentity.Capture(fixture.Window);
                 fixture.FirstTabTitle = initial[0].Title;
                 fixture.Tabs = initial;
 
-                if (tabs > 1)
+                for (var index = 1; index < tabs; index++)
                 {
                     InvokeAddTabButton(fixture.Window);
-                    fixture.Tabs = AwaitTabs(fixture.Window, WaitMs, count => count >= tabs) ??
+                    fixture.Tabs = AwaitTabs(fixture.Window, WaitMs, count => count >= index + 1) ??
                         throw new InvalidOperationException($"The second Notepad tab did not appear within {WaitMs} ms");
                 }
             });
@@ -190,15 +256,17 @@ internal static class NotepadTabAutomationTests
         ((InvokePattern)button.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
     }
 
-    private static nint AwaitWindow(Process process, int timeoutMs)
+    private static nint AwaitWindow(string file, int timeoutMs)
     {
         var deadline = Environment.TickCount64 + timeoutMs;
         while (Environment.TickCount64 < deadline)
         {
-            process.Refresh();
-            if (process.HasExited) return 0;
-            if (process.MainWindowHandle != 0)
-                return process.MainWindowHandle;
+            // Packaged Notepad may hand the file to another process and exit its launcher.
+            // Claim only the window containing our uniquely named disposable file.
+            foreach (var window in WinApi.FindAllWindowsEx("Notepad"))
+                if (ExplorerTabAutomation.ReadSessionTabs(window).Any(tab =>
+                    tab.Title.Contains(Path.GetFileNameWithoutExtension(file), StringComparison.OrdinalIgnoreCase)))
+                    return window;
             Thread.Sleep(100);
         }
         return 0;
@@ -218,15 +286,22 @@ internal static class NotepadTabAutomationTests
         return last;
     }
 
-    private static Task RunOnStaAsync(Action action)
+    private static async Task RunOnStaAsync(Action action)
     {
         using var scheduler = new StaTaskScheduler();
-        return Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.None, scheduler);
+        await Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.None, scheduler);
+    }
+
+    private static async Task RunOnStaAsync(Func<Task> action)
+    {
+        using var scheduler = new StaTaskScheduler();
+        await Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.None, scheduler).Unwrap();
     }
 
     private sealed class OwnedNotepad(Process process, string file) : IDisposable
     {
         public nint Window { get; set; }
+        public WindowIdentity Identity { get; set; }
         public string FirstTabTitle { get; set; } = string.Empty;
         public ExplorerTabAutomation.Tab[] Tabs { get; set; } = [];
 
@@ -234,13 +309,32 @@ internal static class NotepadTabAutomationTests
         {
             try
             {
-                if (!process.HasExited) process.Kill();
+                // Close test tabs normally so Notepad cannot restore them into the next test run.
+                // Never kill the packaged process: it can also own restored, unrelated windows.
+                foreach (var tab in Tabs)
+                {
+                    if (!Identity.IsCurrent) break;
+                    if (!ExplorerTabAutomation.ReadSessionTabs(Window).Any(current => current.Id == tab.Id)) continue;
+                    if (!ExplorerTabAutomation.TrySelectTab(Window, tab.Id, () => Identity.IsCurrent)) continue;
+                    if (!ExplorerTabAutomation.TryCloseSelectedTab(Window, tab.Id, () => Identity.IsCurrent)) continue;
+                    var deadline = Environment.TickCount64 + 1500;
+                    while (Identity.IsCurrent && Environment.TickCount64 < deadline &&
+                        ExplorerTabAutomation.ReadSessionTabs(Window).Any(current => current.Id == tab.Id))
+                        Thread.Sleep(25);
+                }
+                if (Identity.IsCurrent)
+                    ((WindowPattern)AutomationElement.FromHandle(Window).GetCurrentPattern(WindowPattern.Pattern)).Close();
             }
-            catch
+            catch (Exception exception)
             {
-                // The process may have exited on its own.
+                Console.WriteLine("Notepad test cleanup: " + exception.Message);
             }
-            try { File.Delete(file); } catch { }
+            var directory = Path.GetFullPath(Path.GetDirectoryName(file)!);
+            var temporaryRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "_temp"));
+            if (directory.StartsWith(temporaryRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(directory,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
             process.Dispose();
         }
     }
