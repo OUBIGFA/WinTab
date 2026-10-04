@@ -22,7 +22,34 @@ internal static class ExplorerNativeFocusTests
         yield return ("queued native file-location focus rechecks focus after the merge lock", QueuedFocusIsRechecked);
         yield return ("native file-location focus ignores delayed events from WinTab tab switching", IgnoresProgrammaticFocus);
         yield return ("native file-location activation follows the folder event after focus moves to the toolbar", ReusesToolbarHandoff);
+        yield return ("external recycle request reuses an inactive tab without an intermediate Explorer window", ReusesRecycleBin);
+        yield return ("external recycle request leaves tabs unchanged when reuse is disabled", DisabledRecycleBin);
     }
+
+    private static Task ReusesRecycleBin() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        var target = fixture.Window.TabAt(2);
+        var browser = fixture.AddBrowser(out var info, target);
+        info.Location = "shell:::{645FF040-5081-101B-9F08-00AA002F954E}";
+        fixture.SetCatalog(browser);
+        fixture.MarkShellConnected();
+        fixture.EnableMerging();
+        fixture.Window.Show();
+        fixture.Window.SetActive(0);
+        Check.That(await fixture.Watcher.OpenRecycleBinAsync(), "The explicit request must find and select the existing virtual tab.");
+        Check.Equal(target, fixture.Window.ActiveTab);
+        Check.Equal(3, ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Window.Handle).Count(), "Reusing must not add a tab.");
+    }, tabCount: 3);
+
+    private static Task DisabledRecycleBin() => ExplorerTabLifetimeTests.WithFixture(async fixture =>
+    {
+        fixture.MarkShellConnected();
+        fixture.EnableMerging();
+        fixture.Watcher.SetReuseTabs(false);
+        var before = fixture.Window.ActiveTab;
+        Check.That(!await fixture.Watcher.OpenRecycleBinAsync(), "A late request must report that native opening is needed.");
+        Check.Equal(before, fixture.Window.ActiveTab);
+    });
 
     private static Task ReusesFocusedTab(int index) => ExplorerTabLifetimeTests.WithFixture(async fixture =>
     {

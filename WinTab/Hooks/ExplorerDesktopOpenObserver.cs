@@ -95,7 +95,9 @@ internal sealed class ExplorerDesktopOpenObserver : IDisposable
             if (selection == null || selection.Count != 1)
                 return;
             item = selection.Item(0);
-            if (item == null || !item.IsFolder || !item.IsFileSystem || item.IsLink)
+            // Virtual folders such as Recycle Bin also have reusable tabs. IsFileSystem would
+            // discard their open notifications when Explorer only activates an existing window.
+            if (item == null || !item.IsFolder || item.IsLink)
                 return;
             var path = item.Path;
             // A COM read can pump another selection or open notification on this STA thread.

@@ -126,9 +126,16 @@ var
   DownloadPage: TDownloadWizardPage;
 
 #include "Runtime.iss"
+#include "RecycleBin.iss"
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
+  if CurUninstallStep = usUninstall then
+  begin
+    RestoreRecycleBinOpenInView(HKCU32, 'Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}');
+    if IsWin64 then
+      RestoreRecycleBinOpenInView(HKCU64, 'Software\Classes\CLSID\{645FF040-5081-101B-9F08-00AA002F954E}');
+  end;
   if CurUninstallStep = usPostUninstall then
   begin
     RegDeleteValue(HKEY_CURRENT_USER, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#MyAppName}');

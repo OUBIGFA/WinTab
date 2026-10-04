@@ -16,11 +16,13 @@ public partial class App : Application
 {
     private Mutex? _mutex;
     private EventWaitHandle? _showMainWindowEvent;
+    private EventWaitHandle? _openRecycleBinEvent;
     private MainWindow? _mainWindow;
     private bool _isExiting;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        var openRecycleBin = e.Args.Any(arg => string.Equals(arg, Constants.OpenRecycleBinArg, StringComparison.OrdinalIgnoreCase));
         _mutex = new Mutex(true, Constants.MutexId, out var createdNew);
 
         if (createdNew)
@@ -31,25 +33,35 @@ public partial class App : Application
             SetupTooltipBehavior();
             ThemeManager.ApplyTheme();
             _showMainWindowEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Constants.ShowMainWindowEventName);
+            _openRecycleBinEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Constants.OpenRecycleBinEventName);
 
             _mainWindow = new MainWindow();
             StartShowMainWindowRequestListener();
 
-            var launchInBackground = e.Args.Any(arg => string.Equals(arg, Constants.BackgroundLaunchArg, StringComparison.OrdinalIgnoreCase));
+            var launchInBackground = openRecycleBin || e.Args.Any(arg => string.Equals(arg, Constants.BackgroundLaunchArg, StringComparison.OrdinalIgnoreCase));
             if (!launchInBackground)
                 _mainWindow.Show();
+            if (openRecycleBin) _openRecycleBinEvent.Set();
 
             return;
         }
 
-        SignalMainWindow();
+        // The process launched by Shell owns the foreground grant; pass it on before signalling the resident app.
+        if (openRecycleBin) AllowSetForegroundWindow(uint.MaxValue);
+        if (!SignalRequest(openRecycleBin ? Constants.OpenRecycleBinEventName : Constants.ShowMainWindowEventName))
+        {
+            System.Diagnostics.Debug.WriteLine("The resident WinTab instance did not accept the launch request");
+            if (openRecycleBin) HookManager.OpenRecycleBinNatively();
+        }
         Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         _isExiting = true;
+        _showMainWindowEvent?.Set();
         _showMainWindowEvent?.Dispose();
+        _openRecycleBinEvent?.Dispose();
         base.OnExit(e);
         if (!ExplorerDebugLog.Complete(TimeSpan.FromMilliseconds(100)))
             System.Diagnostics.Debug.WriteLine("Diagnostic logging is still pending; shutdown will not wait longer.");
@@ -77,11 +89,13 @@ public partial class App : Application
     {
         var thread = new Thread(() =>
         {
+            var requests = new WaitHandle[] { _showMainWindowEvent!, _openRecycleBinEvent! };
             while (!_isExiting)
             {
+                int request;
                 try
                 {
-                    _showMainWindowEvent?.WaitOne();
+                    request = WaitHandle.WaitAny(requests);
                 }
                 catch (ObjectDisposedException)
                 {
@@ -91,7 +105,12 @@ public partial class App : Application
                 if (_isExiting)
                     return;
 
-                Dispatcher.Invoke(() => _mainWindow?.ShowMainWindow());
+                Dispatcher.InvokeAsync(async () =>
+                {
+                    if (_isExiting || _mainWindow == null) return;
+                    if (request == 0) _mainWindow.ShowMainWindow();
+                    else await _mainWindow.OpenRecycleBinAsync();
+                });
             }
         })
         {
@@ -102,22 +121,26 @@ public partial class App : Application
         thread.Start();
     }
 
-    private static void SignalMainWindow()
+    private static bool SignalRequest(string eventName)
     {
         for (var attempt = 0; attempt < 5; attempt++)
         {
             try
             {
-                using var showMainWindowEvent = EventWaitHandle.OpenExisting(Constants.ShowMainWindowEventName);
+                using var showMainWindowEvent = EventWaitHandle.OpenExisting(eventName);
                 showMainWindowEvent.Set();
-                return;
+                return true;
             }
             catch (WaitHandleCannotBeOpenedException)
             {
                 Thread.Sleep(50);
             }
         }
+        return false;
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool AllowSetForegroundWindow(uint processId);
 
     private static void SetupTooltipBehavior()
     {

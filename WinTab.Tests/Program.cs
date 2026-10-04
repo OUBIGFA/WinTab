@@ -71,6 +71,7 @@ internal static class UnitTestRunner
             .Concat(ShortcutTextBoxTests.All())
             .Concat(MainWindowSizingTests.All())
             .Concat(RegistryManagerTests.All())
+            .Concat(RecycleBinOpenRegistrationTests.All())
             .Concat(ThemeManagerTests.All())
             .Concat(HookManagerTests.All())
             .Concat(BackgroundWorkTests.All())

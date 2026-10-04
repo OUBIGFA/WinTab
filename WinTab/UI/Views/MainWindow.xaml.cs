@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private const int WM_EXITSIZEMOVE = 0x0232;
 
     private readonly HookManager _hookManager;
+    internal System.Threading.Tasks.Task OpenRecycleBinAsync() => _hookManager.OpenRecycleBinAsync();
     private readonly SystemTrayIcon _trayIcon;
     private nint _handle;
     private Size _sizeAtMoveStart;

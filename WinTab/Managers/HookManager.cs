@@ -47,7 +47,12 @@ public sealed class HookManager : IDisposable
             RaiseStateChanged();
         };
 
-        _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ => ShellInitialized?.Invoke(), null);
+        _explorerWatcher.OnShellInitialized += () => _syncContext.Post(_ =>
+        {
+            if (_disposed) return;
+            UpdateRecycleBinRegistration();
+            ShellInitialized?.Invoke();
+        }, null);
         _doubleClickHook.StatusChanged += message => ReportHookStatus("Double-click close", message);
         _wheelSwitchHook.StatusChanged += message => ReportHookStatus("Wheel switch", message);
 
@@ -98,6 +103,7 @@ public sealed class HookManager : IDisposable
             _explorerWatcher.SetReuseTabs(false);
         }
 
+        UpdateRecycleBinRegistration();
         RaiseStateChanged();
     }
 
@@ -113,7 +119,29 @@ public sealed class HookManager : IDisposable
             TryChangeHookStatus(_explorerWatcher, true);
         }
 
+        UpdateRecycleBinRegistration();
         RaiseStateChanged();
+    }
+
+    private void UpdateRecycleBinRegistration() => RecycleBinOpenRegistration.Update(
+        !_disposed && SettingsManager.IsWindowHookActive && SettingsManager.ReuseTabs &&
+        _explorerWatcher.IsHookActive && _explorerWatcher.IsShellReady);
+
+    /// <summary>A request arriving during startup or shutdown still opens the page through Explorer.</summary>
+    public async Task OpenRecycleBinAsync()
+    {
+        if (!_disposed && _explorerWatcher.IsShellReady && await _explorerWatcher.OpenRecycleBinAsync()) return;
+        ExplorerDebugLog.Write("Recycle Bin request using native new-window opening; reuse is not ready");
+        OpenRecycleBinNatively();
+    }
+
+    internal static void OpenRecycleBinNatively()
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"))
+        { UseShellExecute = false };
+        start.ArgumentList.Add("/n,::{645FF040-5081-101B-9F08-00AA002F954E}");
+        System.Diagnostics.Process.Start(start)?.Dispose();
     }
 
     /// <summary>Restoration and its capture lifecycle remain independent of the merge/reuse toggle pair.</summary>
@@ -273,6 +301,7 @@ public sealed class HookManager : IDisposable
             return;
 
         _disposed = true;
+        UpdateRecycleBinRegistration();
         System.Windows.Application.Current.SessionEnding -= _sessionEndingHandler;
         try { _sessionShortcuts.Dispose(); }
         catch (Exception exception) { ReportHookStatus("Session shortcuts", exception.Message); }

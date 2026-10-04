@@ -6,6 +6,8 @@ internal static class Constants
     internal const string MutexId = $"__{AppName}Hook__Mutex";
     internal const string ShowMainWindowEventName = $"__{AppName}Hook__ShowMainWindow";
     internal const string BackgroundLaunchArg = "--background";
+    internal const string OpenRecycleBinArg = "--open-recycle-bin";
+    internal const string OpenRecycleBinEventName = $"__{AppName}Hook__OpenRecycleBin";
     internal const string SettingsFileName = "settings.json";
     internal const string UpdateUrl = "https://api.github.com/repos/OUBIGFA/WinTab/releases/latest";
 }

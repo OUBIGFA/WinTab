@@ -15,12 +15,47 @@ OutputDir={#TestOutputDir}
 OutputBaseFilename=RuntimeTests_{#TestArchitecture}
 
 #include "..\installers\Runtime.iss"
+#include "..\installers\RecycleBin.iss"
 
 [Code]
 procedure Check(Condition: Boolean; Message: String);
 begin
   if not Condition then
     RaiseException(Message);
+end;
+
+procedure CheckRecycleCleanup(Root: Integer);
+var
+  Page, Shell, Verb, Command, Value: String;
+begin
+  { The cleanup receives a test-owned page, never the real Recycle Bin registration. }
+  Page := 'Software\WinTab.Tests\InstallerRecycle-' + '{#TestArchitecture}';
+  Check(not RegKeyExists(Root, Page), 'The isolated test key must not exist.');
+  Shell := Page + '\shell';
+  Verb := Shell + '\open';
+  Command := Verb + '\command';
+  try
+    RegWriteStringValue(Root, Shell, '', 'open');
+    RegWriteStringValue(Root, Verb, 'WinTab.Owner', 'WinTab.RecycleBinOpen.v1');
+    RegWriteStringValue(Root, Verb, 'WinTab.Command', 'test-command');
+    RegWriteDWordValue(Root, Verb, 'WinTab.HadDefault', 1);
+    RegWriteStringValue(Root, Verb, 'WinTab.Default', 'original-verb');
+    RegWriteDWordValue(Root, Verb, 'WinTab.DefaultKind', 1);
+    RegWriteDWordValue(Root, Verb, 'WinTab.HadPage', 1);
+    RegWriteDWordValue(Root, Verb, 'WinTab.HadShell', 1);
+    RegWriteStringValue(Root, Command, '', 'changed-by-another-app');
+    RegWriteStringValue(Root, Command, 'DelegateExecute', '');
+    RestoreRecycleBinOpenInView(Root, Page);
+    Check(RegQueryStringValue(Root, Command, '', Value) and (Value = 'changed-by-another-app'),
+      'Uninstall must preserve a changed command.');
+    RegWriteStringValue(Root, Command, '', 'test-command');
+    RestoreRecycleBinOpenInView(Root, Page);
+    Check(RegQueryStringValue(Root, Shell, '', Value) and (Value = 'original-verb'),
+      'Uninstall must restore the original default.');
+    Check(not RegKeyExists(Root, Verb), 'Uninstall must remove the owned handler.');
+  finally
+    RegDeleteKeyIncludingSubkeys(Root, Page);
+  end;
 end;
 
 function InitializeSetup: Boolean;
@@ -33,6 +68,8 @@ begin
   Result := False;
   ResultPath := ExpandConstant('{param:ResultFile}');
   try
+    CheckRecycleCleanup(HKCU32);
+    if IsWin64 then CheckRecycleCleanup(HKCU64);
 #ifdef Arch
     ExpectedArchitecture := '{#Arch}';
 #else
