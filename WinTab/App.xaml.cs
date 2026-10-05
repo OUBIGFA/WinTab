@@ -23,6 +23,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         var openRecycleBin = e.Args.Any(arg => string.Equals(arg, Constants.OpenRecycleBinArg, StringComparison.OrdinalIgnoreCase));
+        var launchInBackground = openRecycleBin || e.Args.Any(arg => string.Equals(arg, Constants.BackgroundLaunchArg, StringComparison.OrdinalIgnoreCase));
         _mutex = new Mutex(true, Constants.MutexId, out var createdNew);
 
         if (createdNew)
@@ -38,11 +39,17 @@ public partial class App : Application
             _mainWindow = new MainWindow();
             StartShowMainWindowRequestListener();
 
-            var launchInBackground = openRecycleBin || e.Args.Any(arg => string.Equals(arg, Constants.BackgroundLaunchArg, StringComparison.OrdinalIgnoreCase));
             if (!launchInBackground)
                 _mainWindow.Show();
             if (openRecycleBin) _openRecycleBinEvent.Set();
 
+            return;
+        }
+
+        // A background restart must also stay quiet when another instance is already running.
+        if (launchInBackground && !openRecycleBin)
+        {
+            Shutdown();
             return;
         }
 

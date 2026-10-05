@@ -1,22 +1,64 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using AutoUpdaterDotNET;
+using WinTab.Helpers;
 using WinTab.Managers;
+using WinTab.UI.Localization;
 
 internal static class UpdateManagerTests
 {
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("update dialog keeps its title and buttons in the selected language", LocalizesUpdateDialog);
         yield return ("an update timeout returns a failure instead of escaping into the UI", ReportsTimeout);
         yield return ("an update deadline also covers a stalled response body", ReportsBodyTimeout);
         yield return ("an explicitly cancelled update check stays cancelled", PreservesCancellation);
         yield return ("malformed update responses report failure", RejectsMalformedResponse);
         yield return ("a valid update response exposes the matching installer", ReadsValidResponse);
+    }
+
+    private static async Task LocalizesUpdateDialog()
+    {
+        using var scheduler = new StaTaskScheduler();
+        await Task.Factory.StartNew(() =>
+        {
+            var previousCulture = CultureInfo.CurrentCulture;
+            var previousUiCulture = CultureInfo.CurrentUICulture;
+            var previousDefault = CultureInfo.DefaultThreadCurrentCulture;
+            var previousUiDefault = CultureInfo.DefaultThreadCurrentUICulture;
+            try
+            {
+                var formType = typeof(AutoUpdater).Assembly.GetType("AutoUpdaterDotNET.UpdateForm", throwOnError: true)!;
+                foreach (var (language, buttonText) in new[] { ("zh-CN", "更新"), ("en-US", "&Update") })
+                {
+                    // Windows' regional format can differ from both its display language and the app choice.
+                    CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(language == "zh-CN" ? "en-US" : "zh-CN");
+                    UiStrings.ApplyCulture(language);
+                    using var dialog = (System.Windows.Forms.Form)Activator.CreateInstance(formType, new UpdateInfoEventArgs
+                    {
+                        CurrentVersion = "99.0.0", InstalledVersion = new Version(1, 0)
+                    })!;
+                    var button = dialog.Controls.Find("buttonUpdate", searchAllChildren: true)[0];
+                    Check.Equal(buttonText.Replace("&", ""), button.Text.Replace("&", ""), "Update button must use the selected language");
+                    var hasChineseTitle = System.Text.RegularExpressions.Regex.IsMatch(dialog.Text, @"[\p{IsCJKUnifiedIdeographs}]");
+                    Check.Equal(language == "zh-CN", hasChineseTitle, "Update title must use the same language as its buttons");
+                }
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = previousCulture;
+                CultureInfo.CurrentUICulture = previousUiCulture;
+                CultureInfo.DefaultThreadCurrentCulture = previousDefault;
+                CultureInfo.DefaultThreadCurrentUICulture = previousUiDefault;
+            }
+        }, CancellationToken.None, TaskCreationOptions.None, scheduler);
     }
 
     private static async Task ReportsTimeout()

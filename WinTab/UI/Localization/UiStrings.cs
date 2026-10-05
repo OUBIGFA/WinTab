@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using WinTab.Managers;
 
@@ -14,6 +15,17 @@ internal static class UiStrings
     public static bool IsChinese => string.Equals(SettingsManager.Language, "zh-CN", StringComparison.OrdinalIgnoreCase);
 
     public static string Pick(string zh, string en) => IsChinese ? zh : en;
+
+    /// <summary>Keep resource-based dialogs in the same language as the settings window.</summary>
+    public static void ApplyCulture(string language)
+    {
+        var culture = CultureInfo.GetCultureInfo(language);
+        // AutoUpdater formats its title with CurrentCulture and its buttons with CurrentUICulture.
+        CultureInfo.DefaultThreadCurrentCulture = culture;
+        CultureInfo.CurrentCulture = culture;
+        CultureInfo.DefaultThreadCurrentUICulture = culture;
+        CultureInfo.CurrentUICulture = culture;
+    }
 
     // Header / sections
     public static string HeroDescription => Pick("一窗多标签：新窗口自动合并为当前窗口标签页", "One window, multiple tabs: auto-merge new windows into active tabs");

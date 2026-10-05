@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using AutoUpdaterDotNET;
 using AutoUpdaterDotNET.Markdown;
 using WinTab.Helpers;
+using WinTab.UI.Localization;
 
 namespace WinTab.Managers;
 
@@ -82,6 +83,8 @@ internal static class UpdateManager
                 ChangelogText = release.Changelog,
                 ChangelogURL = release.ReleaseUrl,
                 DownloadURL = release.DownloadUrl,
+                // Keep setup in the chosen language and resume in the tray after an update.
+                InstallerArgs = "/UPDATE=1 /LANG=" + (UiStrings.IsChinese ? "chinesesimplified" : "english"),
                 // The download is checked against the digest GitHub published before the installer is run.
                 CheckSum = release.DownloadSha256 is { } hash ? new CheckSum { Value = hash, HashingAlgorithm = "SHA256" } : null
             };

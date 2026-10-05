@@ -197,6 +197,8 @@ public partial class MainWindow : Window
 
     private void ApplyLanguage()
     {
+        UiStrings.ApplyCulture(SettingsManager.Language);
+
         HeroDescriptionText.Text = UiStrings.HeroDescription;
         ExplorerSectionTitleText.Text = UiStrings.ExplorerSectionTitle;
         SystemSectionTitleText.Text = UiStrings.SystemSectionTitle;

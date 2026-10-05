@@ -62,6 +62,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 LanguageDetectionMethod=uilanguage
+UsePreviousLanguage=no
 ShowLanguageDialog=no
 ArchitecturesInstallIn64BitMode={#ArchInstallIn64Bit}
 UninstallDisplayIcon={app}\{#MyAppRelativePath}
@@ -77,14 +78,38 @@ VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppNumericVersion}
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: ".\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: ".\ChineseSimplified.isl"
 
 [CustomMessages]
 english.StartWithWindows=Start with Windows
 chinesesimplified.StartWithWindows=开机启动
 english.WindowsIntegration=Windows Integration
 chinesesimplified.WindowsIntegration=Windows 集成
+english.RuntimeNoInternet=No internet connection, WinTab requires .NET 9 Desktop Runtime
+chinesesimplified.RuntimeNoInternet=无法连接网络，WinTab 需要 .NET 9 桌面运行时
+english.RuntimeDownloadFailed=Could not download .NET 9 Desktop Runtime: %1
+chinesesimplified.RuntimeDownloadFailed=无法下载 .NET 9 桌面运行时：%1
+english.RuntimeDownloading=Downloading .NET 9 Desktop Runtime (%1)
+chinesesimplified.RuntimeDownloading=正在下载 .NET 9 桌面运行时（%1）
+english.RuntimeDownloadWait=Please wait while setup downloads the required files
+chinesesimplified.RuntimeDownloadWait=请等待安装程序下载所需文件
+english.RuntimeInstalling=Installing .NET 9 Desktop Runtime
+chinesesimplified.RuntimeInstalling=正在安装 .NET 9 桌面运行时
+english.RuntimeInstallWait=This may take a few minutes
+chinesesimplified.RuntimeInstallWait=这可能需要几分钟
+english.RuntimeNotDetected=Setup finished but .NET 9 Desktop Runtime was not detected
+chinesesimplified.RuntimeNotDetected=安装已结束，但未检测到 .NET 9 桌面运行时
+english.RuntimeInstallFailed=Could not install .NET 9 Desktop Runtime
+chinesesimplified.RuntimeInstallFailed=无法安装 .NET 9 桌面运行时
+english.RuntimeLaunchFailed=Could not start the .NET 9 Desktop Runtime installer
+chinesesimplified.RuntimeLaunchFailed=无法启动 .NET 9 桌面运行时安装程序
+english.RuntimeInstallError=Error installing .NET 9 Desktop Runtime: %1
+chinesesimplified.RuntimeInstallError=安装 .NET 9 桌面运行时出错：%1
+english.RuntimeRequired=WinTab requires .NET 9 Desktop Runtime, setup will download it if needed
+chinesesimplified.RuntimeRequired=WinTab 需要 .NET 9 桌面运行时，安装程序将在缺少时下载
+english.WrongArchitecture=This installer is for %1 Windows, download the installer matching your device
+chinesesimplified.WrongArchitecture=此安装器适用于 %1 Windows，请下载与设备架构匹配的安装器
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -117,7 +142,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupA
 Type: dirifempty; Name: "{app}"
 
 [Run]
-Filename: "{app}\{#MyAppRelativePath}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppRelativePath}"; Parameters: "{code:GetAppLaunchParameters}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 var
@@ -127,6 +152,13 @@ var
 
 #include "Runtime.iss"
 #include "RecycleBin.iss"
+#include "Startup.iss"
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+    DetectUpdateInstall(ExpandConstant('{app}\{#MyAppRelativePath}'));
+end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
@@ -155,12 +187,12 @@ begin
   Log('Download error: ' + ErrorMessage);
 
   if Pos('12007', ErrorMessage) > 0 then
-    SuppressibleMsgBox('No internet connection available. WinTab requires the .NET 9 Desktop Runtime to run.',
+    SuppressibleMsgBox(CustomMessage('RuntimeNoInternet'),
                        mbInformation, MB_OK, MB_OK)
   else if Pos('aborted', ErrorMessage) > 0 then
     Log('Download was aborted by user.')
   else if not DownloadPage.AbortedByUser then
-    SuppressibleMsgBox('Failed to download .NET 9 Desktop Runtime: ' + ErrorMessage,
+    SuppressibleMsgBox(FmtMessage(CustomMessage('RuntimeDownloadFailed'), [ErrorMessage]),
                        mbInformation, MB_OK, MB_OK);
 end;
 
@@ -177,8 +209,8 @@ begin
   DownloadPage.Add(GetDotNet9Url(''), GetDotNet9Filename(), GetDotNet9Hash);
 
   try
-    DownloadPage.SetText('Downloading .NET 9 Desktop Runtime (' + ArchString + ')',
-                         'Please wait while the installer downloads the required files...');
+    DownloadPage.SetText(FmtMessage(CustomMessage('RuntimeDownloading'), [ArchString]),
+                         CustomMessage('RuntimeDownloadWait'));
     DownloadPage.Show;
 
     try
@@ -201,7 +233,7 @@ begin
 
     if Result then
     begin
-      DownloadPage.SetText('Installing .NET 9 Desktop Runtime...', 'This may take a few minutes...');
+      DownloadPage.SetText(CustomMessage('RuntimeInstalling'), CustomMessage('RuntimeInstallWait'));
       DownloadPage.SetProgress(0, 100);
 
       try
@@ -218,7 +250,7 @@ begin
             if not DotNet9Detected then
             begin
               Log('Installation completed but .NET 9 Desktop Runtime is still not detected');
-              SuppressibleMsgBox('Installation completed but .NET 9 Desktop Runtime is still not detected.',
+              SuppressibleMsgBox(CustomMessage('RuntimeNotDetected'),
                                 mbInformation, MB_OK, MB_OK);
               Result := False;
             end;
@@ -226,7 +258,7 @@ begin
           else
           begin
             Log(Format('Failed to install .NET 9 Desktop Runtime. Exit code: %d', [ResultCode]));
-            SuppressibleMsgBox('Failed to install .NET 9 Desktop Runtime.',
+            SuppressibleMsgBox(CustomMessage('RuntimeInstallFailed'),
                               mbInformation, MB_OK, MB_OK);
             Result := False;
           end;
@@ -234,14 +266,14 @@ begin
         else
         begin
           Log('Failed to execute .NET 9 Desktop Runtime installer');
-          SuppressibleMsgBox('Failed to execute .NET 9 Desktop Runtime installer.',
+          SuppressibleMsgBox(CustomMessage('RuntimeLaunchFailed'),
                             mbInformation, MB_OK, MB_OK);
           Result := False;
         end;
       except
         ErrorMessage := GetExceptionMessage;
         Log('Installation exception: ' + ErrorMessage);
-        SuppressibleMsgBox('Error during .NET 9 installation: ' + ErrorMessage,
+        SuppressibleMsgBox(FmtMessage(CustomMessage('RuntimeInstallError'), [ErrorMessage]),
                           mbInformation, MB_OK, MB_OK);
         Result := False;
       end;
@@ -282,7 +314,7 @@ begin
 
   if not DotNet9Detected and not WizardSilent then
   begin
-    MsgBox('.NET 9 Desktop Runtime is required and will be downloaded during setup if it is missing.',
+    MsgBox(CustomMessage('RuntimeRequired'),
            mbInformation, MB_OK);
   end;
 end;
@@ -294,21 +326,21 @@ begin
   #if Arch == "x64"
   if not IsX64 then
   begin
-    SuppressibleMsgBox('This installer is for x64 (64-bit Intel/AMD) Windows. Please download the matching installer for your CPU architecture.',
+    SuppressibleMsgBox(FmtMessage(CustomMessage('WrongArchitecture'), ['x64']),
                        mbError, MB_OK, IDOK);
     Result := False;
   end;
   #elif Arch == "arm64"
   if not IsArm64 then
   begin
-    SuppressibleMsgBox('This installer is for ARM64 Windows. Please download the matching installer for your CPU architecture.',
+    SuppressibleMsgBox(FmtMessage(CustomMessage('WrongArchitecture'), ['ARM64']),
                        mbError, MB_OK, IDOK);
     Result := False;
   end;
   #elif Arch == "x86"
   if IsArm64 then
   begin
-    SuppressibleMsgBox('This installer is for x86 (32-bit) Windows. ARM64 Windows users should download the ARM64 installer.',
+    SuppressibleMsgBox(FmtMessage(CustomMessage('WrongArchitecture'), ['x86']),
                        mbError, MB_OK, IDOK);
     Result := False;
   end;

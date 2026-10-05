@@ -1,9 +1,13 @@
+using System.Globalization;
 using System.Windows;
 
 namespace WinTab.Managers;
 
 internal sealed record AppSettings
 {
+    // Use Windows' display language only until the user saves an explicit choice.
+    internal static string DefaultLanguage => CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "zh" ? "zh-CN" : "en-US";
+
     public bool WindowHook { get; init; } = true;
     public bool ReuseTabs { get; init; } = true;
     public bool RestoreTabs { get; init; } = false;
@@ -23,7 +27,7 @@ internal sealed record AppSettings
     public string WheelSwitchSensitivity { get; init; } = "Medium";
     public bool AutoUpdate { get; init; } = true;
     public bool ShowTrayIcon { get; init; } = true;
-    public string Language { get; init; } = "zh-CN";
+    public string Language { get; init; } = DefaultLanguage;
     public string Theme { get; init; } = "Light";
     // Null until the user resizes the window; the initial size fits content up to the window height limit.
     public Size? FormSize { get; init; }

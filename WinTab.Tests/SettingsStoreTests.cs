@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -11,6 +12,7 @@ internal static class SettingsStoreTests
 {
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("settings choose the UI language from Windows until a language is saved", LanguageDefaults);
         yield return ("settings keep tab restoration off and strict for new configurations", RestoreTabsDefaults);
         yield return ("settings keep tab restoration off and strict for existing configurations", RestoreTabsLegacyDefaults);
         yield return ("settings persist disabled strict tab restoration", () => RestoreTabsPersists(false, false));
@@ -52,6 +54,30 @@ internal static class SettingsStoreTests
     }
 
     private static string NewPath() => Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"), "settings.json");
+
+    private static Task LanguageDefaults()
+    {
+        var previousCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            foreach (var (systemLanguage, expected) in new[]
+            {
+                ("zh-CN", "zh-CN"), ("zh-TW", "zh-CN"),
+                ("en-US", "en-US"), ("en-GB", "en-US"), ("de-DE", "en-US")
+            })
+            {
+                CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo(systemLanguage);
+                Check.Equal(expected, new AppSettings().Language, "New settings must use the supported system UI language");
+                Check.Equal(expected, JsonSerializer.Deserialize<AppSettings>("{}")!.Language,
+                    "Older settings without a saved language must use the system UI language");
+                foreach (var saved in new[] { "zh-CN", "en-US" })
+                    Check.Equal(saved, JsonSerializer.Deserialize<AppSettings>("{\"Language\":\"" + saved + "\"}")!.Language,
+                        "An explicit language choice must survive an update");
+            }
+        }
+        finally { CultureInfo.CurrentUICulture = previousCulture; }
+        return Task.CompletedTask;
+    }
 
     private static Task RestoreTabsDefaults()
     {

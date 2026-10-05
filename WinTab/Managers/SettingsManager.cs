@@ -160,7 +160,9 @@ public static class SettingsManager
         }
     }
 
-    private static string NormalizeLanguage(string? value) => string.IsNullOrWhiteSpace(value) ? "zh-CN" : value;
+    private static string NormalizeLanguage(string? value) => string.IsNullOrWhiteSpace(value)
+        ? AppSettings.DefaultLanguage
+        : value.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? "zh-CN" : "en-US";
 
     private static string NormalizeTheme(string? value) =>
         string.Equals(value, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";

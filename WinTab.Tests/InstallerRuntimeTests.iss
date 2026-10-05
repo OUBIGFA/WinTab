@@ -16,6 +16,7 @@ OutputBaseFilename=RuntimeTests_{#TestArchitecture}
 
 #include "..\installers\Runtime.iss"
 #include "..\installers\RecycleBin.iss"
+#include "..\installers\Startup.iss"
 
 [Code]
 procedure Check(Condition: Boolean; Message: String);
@@ -64,10 +65,21 @@ var
   ExpectedHash: String;
   ResultPath: String;
   Report: String;
+  AppPath: String;
 begin
   Result := False;
   ResultPath := ExpandConstant('{param:ResultFile}');
   try
+    AppPath := ResultPath + '.old-app.exe';
+    Check(not FileExists(AppPath), 'The startup probe must own its temporary app path');
+    DetectUpdateInstall(AppPath);
+    if ExpandConstant('{param:UPDATE|0}') = '1' then
+      Check(GetAppLaunchParameters('') = '--background', 'An in-app update must resume in the tray')
+    else
+      Check(GetAppLaunchParameters('') = '', 'A first install must still open the main window');
+    Check(SaveStringToFile(AppPath, 'old version', False), 'Could not prepare the manual upgrade probe');
+    DetectUpdateInstall(AppPath);
+    Check(GetAppLaunchParameters('') = '--background', 'A manual upgrade must resume in the tray');
     CheckRecycleCleanup(HKCU32);
     if IsWin64 then CheckRecycleCleanup(HKCU64);
 #ifdef Arch
