@@ -30,6 +30,7 @@ internal static class TaskbarButtonTests
         yield return ("taskbar restoration failure retains the recovery record until retry succeeds", RestorationFailureIsRetried);
         yield return ("taskbar restoration failure survives shell identity retirement", RestorationFailureSurvivesShellRetirement);
         yield return ("shell identity retirement releases windows without recovery records", ShellRetirementReleasesUntrackedIdentity);
+        yield return ("busy taskbar recovery cannot hold up recovery of another window", BusyRecoveryDoesNotBlockOtherWindows);
         yield return ("taskbar recovery retains minimized placement and does not activate the window", RecoveryPreservesPlacement);
         yield return ("a concealed window has no taskbar button until it is restored", ConcealedWindowHasNoButton);
         yield return ("a frame concealed before it is shown gets no taskbar button when Explorer shows it", ConcealedFrameShownLaterHasNoButton);
@@ -46,6 +47,46 @@ internal static class TaskbarButtonTests
         Check.Equal(expectedCall, called, "Only success or E_NOTIMPL from HrInit permits the operation.");
         Check.Equal(expectedCall ? operation : initialization, result, "The actual operation's failure must remain observable.");
         return Task.CompletedTask;
+    }
+
+    private static async Task BusyRecoveryDoesNotBlockOtherWindows()
+    {
+        using var first = new RemoteExplorerFrame(visible: false);
+        using var second = new RemoteExplorerFrame(visible: false);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var firstIdentity = WindowIdentity.Capture(first.Handle);
+        var secondIdentity = WindowIdentity.Capture(second.Handle);
+        var removal = ExplorerWindowVisibility.Hide(firstIdentity, _ =>
+        {
+            entered.Set();
+            return release.Wait(5_000);
+        });
+        await ExplorerWindowVisibility.Hide(secondIdentity, _ => true);
+        Task? recovery = null;
+        try
+        {
+            Check.That(entered.Wait(2_000), "The first window must have a blocked taskbar request.");
+            recovery = Task.Run(() =>
+            {
+                ExplorerWindowVisibility.Restore(firstIdentity, true, _ => true);
+                ExplorerWindowVisibility.Restore(secondIdentity, true, _ => true);
+            });
+            await Task.WhenAny(recovery, Task.Delay(1_000));
+            Check.That(recovery.IsCompleted, "A taskbar request must not hold the recovery caller indefinitely.");
+            Check.That((WinApi.GetWindowLong(second.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+                "The next source must regain its opacity before the first taskbar request finishes.");
+            Check.That(WindowVisibilitySnapshot.Read(first.Handle) != null,
+                "A bounded wait must retain the first window's unfinished recovery record.");
+        }
+        finally
+        {
+            release.Set();
+            await removal;
+            if (recovery != null) await recovery;
+            ExplorerWindowVisibility.Restore(firstIdentity, true, _ => true);
+            ExplorerWindowVisibility.Restore(secondIdentity, true, _ => true);
+        }
     }
 
     private static Task RemovalFailureIsRetried() => WithTaskbarWindow(async (window, _) =>

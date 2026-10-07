@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -19,9 +20,11 @@ public static class ExplorerWindowVisibility
         public readonly object TaskbarGate = new();
         public bool ButtonRemovalPending;
         public Task ButtonRemoval = Task.CompletedTask;
+        public Task<bool>? ButtonRestoration;
     }
 
     private static readonly ConcurrentDictionary<nint, VisibilityState> HiddenWindows = new();
+    private static readonly ConcurrentDictionary<nint, Lazy<Task<bool>>> RecoveryWorkers = new();
 
     public static IEnumerable<nint> HiddenWindowHandles => HiddenWindows.Keys;
 
@@ -121,16 +124,33 @@ public static class ExplorerWindowVisibility
         }
     }
 
-    public static int RestoreAll()
-    {
-        var restored = 0;
-        foreach (var handle in HiddenWindows.Keys.Concat(ExplorerWindowDiscovery.GetAllExplorerWindows()).Distinct().ToArray())
-        {
-            if (Restore(handle))
-                restored++;
-        }
+    public static int RestoreAll() => RestoreAll(HiddenWindows.Keys.Concat(ExplorerWindowDiscovery.GetAllExplorerWindows()));
 
-        return restored;
+    /// <summary>Restores the supplied native windows; callers can scope discovery to their own desktop.</summary>
+    internal static int RestoreAll(IEnumerable<nint> handles)
+    {
+        var recoveries = handles.Distinct().Select(StartRecovery).ToArray();
+        // SetWindowLong/ShowWindow can themselves wait for a foreign window thread. Start every
+        // source independently before waiting, and keep unfinished work/records for a later retry.
+        Task.WhenAll(recoveries).Wait(750);
+        return recoveries.Count(task => task.IsCompletedSuccessfully && task.Result);
+    }
+
+    private static Task<bool> StartRecovery(nint handle)
+    {
+        var worker = RecoveryWorkers.GetOrAdd(handle, hWnd => new Lazy<Task<bool>>(() => Task.Run(() =>
+        {
+            try { return Restore(hWnd); }
+            catch (Exception exception)
+            {
+                Trace.TraceError($"Window recovery failed for {hWnd}: {exception.GetType().Name}:{exception.Message}");
+                return false;
+            }
+        })));
+        var task = worker.Value;
+        _ = task.ContinueWith(_ => RecoveryWorkers.TryRemove(new KeyValuePair<nint, Lazy<Task<bool>>>(handle, worker)),
+            TaskScheduler.Default);
+        return task;
     }
 
     public static bool Restore(nint hWnd, bool removeCache = true)
@@ -193,8 +213,37 @@ public static class ExplorerWindowVisibility
                 return false;
         }
 
-        // The removal worker either sees Recovering and does nothing, or finishes DeleteTab before
-        // AddTab. No visibility lock is held while Explorer answers these COM calls.
+        // Taskbar COM can stop answering. Keep one ordered worker per window and bound the caller's
+        // wait, so a stalled DeleteTab/AddTab cannot strand every other transparent source at exit.
+        Task<bool> recovery;
+        lock (state)
+        {
+            if (state.ButtonRestoration == null || state.ButtonRestoration.IsCompleted)
+                state.ButtonRestoration = Task.Run(() => RestoreTaskbarButton(state, removeCache, addButton));
+            recovery = state.ButtonRestoration;
+        }
+        return recovery.Wait(100) && recovery.GetAwaiter().GetResult();
+    }
+
+    private static bool RestoreTaskbarButton(VisibilityState state, bool removeCache, System.Func<nint, bool> addButton)
+    {
+        var identity = state.Identity;
+        try
+        {
+            return CompleteTaskbarRecovery(state, removeCache, addButton);
+        }
+        catch (System.Exception exception)
+        {
+            Trace.TraceError($"Taskbar recovery failed for {identity.Handle}: {exception.GetType().Name}:{exception.Message}");
+            return false;
+        }
+    }
+
+    private static bool CompleteTaskbarRecovery(VisibilityState state, bool removeCache, System.Func<nint, bool> addButton)
+    {
+        var identity = state.Identity;
+        // The removal worker either sees Recovering and does nothing, or finishes DeleteTab first.
+        // A delayed completion still checks the exact state and native identity before adding a button.
         lock (state.TaskbarGate)
         {
             // Another recovery may have completed while this one waited for COM. A newly concealed

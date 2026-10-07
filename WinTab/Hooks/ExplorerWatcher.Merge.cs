@@ -211,6 +211,10 @@ public partial class ExplorerWatcher
             return;
         if (_currentMerge.Value is { } operation && operation.Identity != concealed.Identity)
             return;
+        // A browser's OnQuit/unregistration is not proof that Explorer destroyed its frame.
+        // Keep both recovery records until the native identity is gone; Explorer may reuse this HWND.
+        if (concealed.Identity.IsCurrent)
+            return;
         _mergeSourceHWnds.TryRemove(new KeyValuePair<nint, ConcealedWindow>(handle, concealed));
         RemoveClosingMergeSource(concealed.Identity);
         ExplorerWindowVisibility.Forget(concealed.Identity);
@@ -437,15 +441,19 @@ public partial class ExplorerWatcher
 
     private void RecoverHiddenExplorerWindows(string reason)
     {
-        var restored = 0;
-        foreach (var concealed in _mergeSourceHWnds.Values.ToArray())
+        var sources = _mergeSourceHWnds.Values.ToArray();
+        // Prevent new concealment before the independent native recovery workers start. Do not
+        // restore serially here: one unresponsive window must not hold every other source hostage.
+        foreach (var concealed in sources)
+            concealed.Recovering = true;
+        ExplorerDebugLog.Write($"Window recovery starting reason={reason} tracked={sources.Length}");
+        var restored = ExplorerWindowVisibility.RestoreAll(ExplorerWindowVisibility.HiddenWindowHandles.Concat(_getExplorerWindows()));
+        foreach (var concealed in sources)
         {
-            if (RestoreConcealedWindow(concealed))
-                restored++;
+            if (!concealed.Identity.IsCurrent || !ExplorerWindowVisibility.Contains(concealed.Identity.Handle))
+                RestoreConcealedWindow(concealed);
         }
-        restored += ExplorerWindowVisibility.RestoreAll();
         _closingMergeSourceHWnds.Clear();
-        if (restored > 0)
-            ExplorerDebugLog.Write($"RecoverHiddenExplorerWindows reason={reason} restored={restored}");
+        ExplorerDebugLog.Write($"RecoverHiddenExplorerWindows reason={reason} restored={restored} pending={ExplorerWindowVisibility.HiddenWindowHandles.Count()}");
     }
 }

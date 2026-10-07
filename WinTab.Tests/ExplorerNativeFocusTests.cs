@@ -65,6 +65,7 @@ internal static class ExplorerNativeFocusTests
             fixture.Window.SetActive(0);
             await EstablishViewFocusAsync(fixture, view);
             await (Task)fixture.Invoke("TryActivateNativeFocusedTabAsync", view, unchecked((uint)Environment.TickCount))!;
+            RequireTestForeground(fixture);
             Check.Equal(target, fixture.Window.ActiveTab, $"Native focus in an inactive file view must activate its exact tab, even without a new window or navigation. attempt={attempt} parent={fixture.Window.Handle} foreground={WinApi.GetForegroundWindow()} liveFocus={fixture.Invoke("HasNativeViewFocus", view, fixture.Window.Handle)}");
             Check.Equal(3, ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Window.Handle).Count(), "Native reuse must not create or close tabs.");
         }
@@ -87,6 +88,7 @@ internal static class ExplorerNativeFocusTests
             unchecked((uint)Environment.TickCount));
         var active = await Helper.DoUntilConditionAsync(() => fixture.Window.ActiveTab,
             handle => handle == target, 1_500, 20);
+        RequireTestForeground(fixture);
         Check.Equal(target, active, "A native file selection must activate its hidden tab even without a client-focus notification.");
         Check.Equal(3, ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Window.Handle).Count(), "Native reuse must not create duplicate tabs.");
     }, tabCount: 3);
@@ -226,10 +228,19 @@ internal static class ExplorerNativeFocusTests
         Helper.RestoreWindowToForeground(fixture.Window.Handle);
         var foreground = await Helper.DoUntilConditionAsync(WinApi.GetForegroundWindow,
             handle => handle == fixture.Window.Handle, 1_000, 20);
-        Check.Equal(fixture.Window.Handle, foreground, "The owned test frame must be foreground before arranging file-view focus.");
+        if (foreground != fixture.Window.Handle)
+            throw new TestSkippedException("Another window owned the foreground before the native focus test started");
         SetFocus(view);
         Check.That((bool)fixture.Invoke("HasNativeViewFocus", view, fixture.Window.Handle)!,
             "The intended view must actually hold native focus before exercising reuse.");
+    }
+
+    private static void RequireTestForeground(ExplorerTabLifetimeTests.Fixture fixture)
+    {
+        // These operations must yield when another application takes focus. As with session tests,
+        // report host interference explicitly; never weaken the tab assertion while focus is retained.
+        if (WinApi.GetForegroundWindow() != fixture.Window.Handle)
+            throw new TestSkippedException("Another window took the foreground during the native focus test");
     }
 
     [DllImport("user32.dll")] private static extern nint SetFocus(nint window);

@@ -38,7 +38,8 @@ public partial class ExplorerWatcher
     {
         public long ExpiresAt = MergeBudgetNotStarted;
         public int RestoreAttempts;
-        public bool Recovering;
+        public long RetryAfter;
+        public volatile bool Recovering;
         /// <summary>Explorer picked up a close request but has not answered since; the window may still be closing.</summary>
         public bool ClosePending;
     }
@@ -238,7 +239,7 @@ public partial class ExplorerWatcher
                     if (!keptOpen && open && !concealed.Recovering && _isForcingTabs && concealed.Generation == _hookGeneration &&
                         Environment.TickCount64 < Interlocked.Read(ref concealed.ExpiresAt))
                         continue;
-                    if (concealed.RestoreAttempts >= 8)
+                    if (Environment.TickCount64 < concealed.RetryAfter)
                         continue;
 
                     concealed.RestoreAttempts++;
@@ -250,8 +251,14 @@ public partial class ExplorerWatcher
                         else if (open)
                             status = "A merge exceeded its time limit; the source window was restored.";
                     }
-                    else if (concealed.RestoreAttempts == 8)
-                        status = "Explorer did not accept window recovery; stop WinTab and check the source window.";
+                    else
+                    {
+                        // A transient failure must never turn into a permanently abandoned transparent
+                        // window. Back off after repeated failures while retaining the recovery record.
+                        concealed.RetryAfter = Environment.TickCount64 + (concealed.RestoreAttempts >= 8 ? 2_000 : 250);
+                        if (concealed.RestoreAttempts == 8)
+                            status = "Explorer window recovery is still pending; recovery will continue in the background.";
+                    }
                 }
                 if (status != null)
                     ReportStatus(status);

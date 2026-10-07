@@ -70,6 +70,7 @@ public partial class App : Application
         _showMainWindowEvent?.Dispose();
         _openRecycleBinEvent?.Dispose();
         base.OnExit(e);
+        ExplorerDebugLog.Write($"WinTab exiting code={e.ApplicationExitCode} pendingWindowRecovery={ExplorerWindowVisibility.HiddenWindowHandles.Count()}");
         if (!ExplorerDebugLog.Complete(TimeSpan.FromMilliseconds(100)))
             System.Diagnostics.Debug.WriteLine("Diagnostic logging is still pending; shutdown will not wait longer.");
         _mutex?.Dispose();

@@ -27,6 +27,32 @@ internal static class WindowSafetyTests
         yield return ("hiding again after restart preserves the original recovery record", () => RecoverySurvivesProcessExit(true, true));
         yield return ("window recovery leaves unowned transparent windows unchanged", RecoveryLeavesUnownedWindowAlone);
         yield return ("window class checks reject a longer class that shares the expected prefix", ClassCheckRejectsLongerClass);
+        yield return ("bulk recovery restores responsive windows while another native thread is blocked", BulkRecoverySurvivesBlockedWindow);
+    }
+
+    private static async Task BulkRecoverySurvivesBlockedWindow()
+    {
+        using var first = new RemoteExplorerFrame(visible: false);
+        using var second = new RemoteExplorerFrame(visible: false);
+        var firstIdentity = WindowIdentity.Capture(first.Handle);
+        var secondIdentity = WindowIdentity.Capture(second.Handle);
+        await ExplorerWindowVisibility.Hide(firstIdentity, _ => true);
+        await ExplorerWindowVisibility.Hide(secondIdentity, _ => true);
+        await first.BlockMessagesAsync(2_000);
+        var recovery = Task.Run(() => ExplorerWindowVisibility.RestoreAll([first.Handle, second.Handle]));
+        try
+        {
+            await Task.WhenAny(recovery, Task.Delay(1_200));
+            Check.That(recovery.IsCompleted, "Bulk recovery must not wait indefinitely for one native window thread.");
+            Check.That((WinApi.GetWindowLong(second.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+                "Responsive windows must regain opacity before the blocked window starts answering.");
+        }
+        finally
+        {
+            await recovery;
+            ExplorerWindowVisibility.Restore(firstIdentity, true, _ => true);
+            ExplorerWindowVisibility.Restore(secondIdentity, true, _ => true);
+        }
     }
 
     private static async Task ClassCheckRejectsLongerClass()

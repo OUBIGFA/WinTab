@@ -61,7 +61,57 @@ internal static class ExplorerTabLifetimeTests
         yield return ("a live selection disconnect triggers recovery before the next folder open", LiveSelectionDisconnectRetiresConnection);
         yield return ("a concealed merge source is not offered for tab reuse", ConcealedSourceIsNotReused);
         yield return ("a merge source being closed is not offered for tab reuse", ClosingSourceIsNotReused);
+        yield return ("retiring a closing tab retains recovery until its native frame is gone", ClosingTabRetainsNativeRecovery);
+        yield return ("source recovery continues after repeated earlier failures", RecoveryContinuesAfterFailures);
     }
+
+    private static Task RecoveryContinuesAfterFailures() => WithFixture(fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        fixture.EnableMerging();
+        fixture.Invoke("HideMergeSourceWindow", frame.Handle);
+        Check.That(ExplorerWindowVisibility.Contains(frame.Handle) &&
+            WinApi.GetLayeredWindowAttributes(frame.Handle, out _, out var alpha, out _) && alpha == 0,
+            "The source must actually be concealed before simulating earlier failures.");
+        var sources = (System.Collections.IEnumerable)typeof(ExplorerWatcher)
+            .GetField("_mergeSourceHWnds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Watcher)!;
+        foreach (var pair in sources)
+        {
+            var source = pair.GetType().GetProperty("Value")!.GetValue(pair)!;
+            source.GetType().GetField("RestoreAttempts")!.SetValue(source, 8);
+            source.GetType().GetField("Recovering")!.SetValue(source, true);
+        }
+        fixture.DisableMerging();
+        fixture.RunMergeSafetyTimer();
+        Check.Equal(0, fixture.MergeSourceCount, "Recovery must retire the recovered source despite earlier failures.");
+        Check.That((WinApi.GetWindowLong(frame.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+            "A window must recover when Explorer answers again, regardless of earlier failure count.");
+        return Task.CompletedTask;
+    }, tabCount: 1);
+
+    private static Task ClosingTabRetainsNativeRecovery() => WithFixture(fixture =>
+    {
+        using var frame = new RemoteExplorerFrame(visible: true, explorerClass: true);
+        var browser = fixture.AddBrowser(out var info, frame.Tab, handle: frame.Handle);
+        fixture.EnableMerging();
+        fixture.Invoke("HideMergeSourceWindow", frame.Handle);
+        var closing = (ConcurrentDictionary<nint, MergeOperation>)typeof(ExplorerWatcher)
+            .GetField("_closingMergeSourceHWnds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Watcher)!;
+        using var operation = new MergeOperation(info.Identity, 0, CancellationToken.None, () => true, 5_000);
+        closing[frame.Handle] = operation;
+
+        // Explorer can retire its browser before destroying (or recycling) the native frame.
+        fixture.Invoke("RemoveWindowAndUnhookEvents", browser, info, true, true);
+        Check.That(frame.IsAlive, "The native frame must still exist after its tab registration retires.");
+        Check.That(WindowVisibilitySnapshot.Read(frame.Handle) != null && ExplorerWindowVisibility.Contains(frame.Handle),
+            "A still-concealed live frame must retain its persistent and in-memory recovery records.");
+        fixture.DisableMerging();
+        fixture.RunMergeSafetyTimer();
+        Check.That((WinApi.GetWindowLong(frame.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+            "Stopping must restore the frame even though its browser is already unregistered.");
+        Check.Equal(0, fixture.MergeSourceCount, "Recovery must finish without needing the old browser registration.");
+        return Task.CompletedTask;
+    }, tabCount: 1);
 
     private static Task ReopenedFirstTabsReplaceRetiredOwners() => WithFixture(fixture =>
     {
