@@ -40,9 +40,9 @@ internal static class UiStrings
     public static string ReuseTabsTitle => Pick("复用同一标签页", "Reuse opened tabs");
     public static string ReuseTabsDescription => Pick("重复打开同一文件夹时直接跳转", "Switch to existing tab instead of opening duplicate");
     public static string RestoreTabsTitle => Pick("自动恢复上次标签组", "Auto-restore last tab group");
-    public static string RestoreTabsDescription => Pick("无其他资源管理器窗口时，下次打开自动恢复已保存的标签组", "Automatically restore the saved group on launch when no other Explorer windows are open");
-    public static string RestoreSingleTabTitle => Pick("恢复单个标签", "Restore single-tab windows");
-    public static string RestoreSingleTabDescription => Pick("默认关闭；关闭时仅保存和恢复含两个及以上标签的窗口", "Off by default; only save and restore windows with two or more tabs when off");
+    public static string RestoreTabsDescription => Pick("无其他资源管理器窗口时自动恢复，关闭不影响快捷键与恢复按钮", "Restore automatically when no other Explorer windows are open; shortcuts and buttons still work when off");
+    public static string RestoreSingleTabTitle => Pick("标签组包含单标签窗口", "Include single-tab windows");
+    public static string RestoreSingleTabDescription => Pick("默认关闭，仅保存和恢复多标签窗口，不影响最近关闭标签的恢复", "Off by default; save and restore only multi-tab groups, without affecting closed-tab recovery");
     public static string RestoreNormalLaunchOnly => Pick("仅普通启动", "Normal launch only");
     public static string RestoreAnyFolder => Pick("打开任意文件夹", "Any folder");
     public static string RestoreModeHint(bool anyFolder) => anyFolder
@@ -98,10 +98,11 @@ internal static class UiStrings
 
     // Manual recovery, independent of automatic restoration.
     public static string RecoveryTitle => Pick("会话与标签恢复", "Session & tab recovery");
-    public static string RecoveryDescription => Pick("后台持续保存标签组；关机或资源管理器崩溃后保留最后使用的窗口", "Groups are saved continuously; recover the last-used window after shutdown or an Explorer crash");
+    public static string RecoveryDescription => Pick("快捷键与恢复按钮可独立使用，后台持续保存标签组", "Use shortcuts or buttons on demand; tab groups are saved continuously");
     public static string RestoreGroupCommand => Pick("恢复上次标签组", "Restore last tab group");
     public static string ReopenTabCommand => Pick("恢复上一个标签页", "Reopen last closed tab");
     public static string RecordClosedTabs => Pick("记住最近关闭的标签页", "Remember recently closed tabs");
+    public static string RecordClosedTabsHint => Pick("快捷键开启时自动记录，关闭快捷键后可单独关闭记录", "The shortcut keeps history on; turn it off to disable recording");
     public static string RestoreNow => Pick("立即恢复", "Restore now");
     public static string ShortcutEnabled => Pick("启用快捷键", "Enable shortcut");
     public static string ShortcutSave => Pick("应用快捷键", "Apply shortcuts");

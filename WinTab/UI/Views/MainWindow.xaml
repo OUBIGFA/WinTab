@@ -354,10 +354,52 @@
                             <StackPanel>
                                 <Border Style="{StaticResource SettingRowStyle}">
                                     <StackPanel>
+                                        <TextBlock x:Name="RecoveryDescriptionText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,0,0,10" />
+                                        <DockPanel>
+                                            <Button x:Name="RestoreGroupButton" Tag="{StaticResource RotateCcwIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
+                                            <TextBlock x:Name="RestoreGroupTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <CheckBox x:Name="GroupShortcutToggle" Style="{StaticResource LabeledCheckBoxStyle}" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <controls:ShortcutTextBox x:Name="GroupShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=RestoreGroupTitleText}" />
+                                        </StackPanel>
+                                        <DockPanel Margin="0,10,0,0">
+                                            <CheckBox x:Name="RestoreSingleTabToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
+                                                      AutomationProperties.LabeledBy="{Binding ElementName=RestoreSingleTabTitleText}" />
+                                            <StackPanel>
+                                                <TextBlock x:Name="RestoreSingleTabTitleText" Text="Include single-tab windows" Style="{StaticResource SettingTitleStyle}" />
+                                                <TextBlock x:Name="RestoreSingleTabDescText" Style="{StaticResource SettingDescriptionStyle}" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </StackPanel>
+                                </Border>
+                                <Border Style="{StaticResource SettingRowStyle}">
+                                    <StackPanel>
+                                        <DockPanel>
+                                            <Button x:Name="ReopenTabButton" Tag="{StaticResource RotateCcwIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
+                                            <CheckBox x:Name="RecordClosedTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
+                                                      AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" Margin="12,0,16,0" ToolTipService.ShowOnDisabled="True" />
+                                            <TextBlock x:Name="ReopenTabTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <CheckBox x:Name="TabShortcutToggle" Style="{StaticResource LabeledCheckBoxStyle}" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <controls:ShortcutTextBox x:Name="TabShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" />
+                                        </StackPanel>
+                                        <TextBlock x:Name="RecordClosedTabsHintText" Style="{StaticResource SettingDescriptionStyle}" />
+                                        <DockPanel Margin="0,10,0,0">
+                                            <Button x:Name="SaveShortcutsButton" Tag="{StaticResource CheckIcon}" DockPanel.Dock="Right" Style="{StaticResource PrimaryButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center" />
+                                            <TextBlock x:Name="ShortcutHintText" Style="{StaticResource SettingDescriptionStyle}" />
+                                        </DockPanel>
+                                        <TextBlock x:Name="SessionFeedbackText" Style="{StaticResource SettingDescriptionStyle}" AutomationProperties.LiveSetting="Polite" />
+                                    </StackPanel>
+                                </Border>
+                                <!-- Automatic reopening is optional, not the master switch for manual recovery. -->
+                                <Border Style="{StaticResource LastSettingRowStyle}">
+                                    <StackPanel>
                                         <DockPanel>
                                             <CheckBox x:Name="RestoreTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                             <StackPanel>
-                                                <TextBlock x:Name="RestoreTabsTitleText" Text="Restore last tab group" Style="{StaticResource SettingTitleStyle}" />
+                                                <TextBlock x:Name="RestoreTabsTitleText" Text="Auto-restore last tab group" Style="{StaticResource SettingTitleStyle}" />
                                                 <TextBlock x:Name="RestoreTabsDescText" Style="{StaticResource SettingDescriptionStyle}" />
                                             </StackPanel>
                                         </DockPanel>
@@ -370,47 +412,7 @@
                                             </Border>
                                             <TextBlock x:Name="RestoreModeHintText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,6,0,0" />
                                             <TextBlock x:Name="RestoreExclusionsText" Style="{StaticResource SettingDescriptionStyle}" />
-                                            <DockPanel Margin="0,10,0,0">
-                                                <CheckBox x:Name="RestoreSingleTabToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
-                                                          AutomationProperties.LabeledBy="{Binding ElementName=RestoreSingleTabTitleText}" />
-                                                <StackPanel>
-                                                    <TextBlock x:Name="RestoreSingleTabTitleText" Text="Restore single-tab windows" Style="{StaticResource SettingTitleStyle}" />
-                                                    <TextBlock x:Name="RestoreSingleTabDescText" Style="{StaticResource SettingDescriptionStyle}" />
-                                                </StackPanel>
-                                            </DockPanel>
                                         </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                                <Border Style="{StaticResource SettingRowStyle}">
-                                    <StackPanel>
-                                        <TextBlock x:Name="RecoveryDescriptionText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,0,0,10" />
-                                        <DockPanel>
-                                            <Button x:Name="RestoreGroupButton" Tag="{StaticResource RotateCcwIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
-                                            <TextBlock x:Name="RestoreGroupTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <CheckBox x:Name="GroupShortcutToggle" Style="{StaticResource LabeledCheckBoxStyle}" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                            <controls:ShortcutTextBox x:Name="GroupShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=RestoreGroupTitleText}" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                                <Border Style="{StaticResource LastSettingRowStyle}">
-                                    <StackPanel>
-                                        <DockPanel>
-                                            <Button x:Name="ReopenTabButton" Tag="{StaticResource RotateCcwIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
-                                            <CheckBox x:Name="RecordClosedTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
-                                                      AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" Margin="12,0,16,0" />
-                                            <TextBlock x:Name="ReopenTabTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <CheckBox x:Name="TabShortcutToggle" Style="{StaticResource LabeledCheckBoxStyle}" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0" Foreground="{DynamicResource TextPrimaryBrush}" />
-                                            <controls:ShortcutTextBox x:Name="TabShortcutText" Style="{StaticResource ShortcutTextStyle}" AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" />
-                                        </StackPanel>
-                                        <DockPanel Margin="0,10,0,0">
-                                            <Button x:Name="SaveShortcutsButton" Tag="{StaticResource CheckIcon}" DockPanel.Dock="Right" Style="{StaticResource PrimaryButtonStyle}" Margin="16,0,0,0" VerticalAlignment="Center" />
-                                            <TextBlock x:Name="ShortcutHintText" Style="{StaticResource SettingDescriptionStyle}" />
-                                        </DockPanel>
-                                        <TextBlock x:Name="SessionFeedbackText" Style="{StaticResource SettingDescriptionStyle}" AutomationProperties.LiveSetting="Polite" />
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

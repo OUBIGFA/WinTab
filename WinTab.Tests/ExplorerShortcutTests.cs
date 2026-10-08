@@ -25,6 +25,7 @@ internal static class ExplorerShortcutTests
         yield return ("session recovery shortcut defaults apply to configurations without shortcut fields", MissingShortcutDefaults);
         yield return ("session recovery default Alt shortcuts survive a storage round-trip", DefaultPersistence);
         yield return ("session recovery shortcut settings survive a storage round-trip", Persistence);
+        yield return ("session recovery shortcut-only settings survive a restart without enabling automatic restore", ShortcutOnlyPersistence);
     }
     private static Task Parsing()
     {
@@ -203,6 +204,32 @@ internal static class ExplorerShortcutTests
         }
         finally { TestCleanup.DeleteDirectory(directory); }
     }
+    private static async Task ShortcutOnlyPersistence()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"));
+        var path = Path.Combine(directory, "settings.json");
+        try
+        {
+            using (var store = new SettingsStore(path))
+            {
+                store.Update(settings => settings with
+                {
+                    RestoreTabs = false, ReopenClosedTab = false,
+                    RestoreGroupShortcutEnabled = true, ReopenTabShortcutEnabled = true
+                });
+                Check.That(await store.FlushAsync(), "Shortcut-only recovery settings must be saved.");
+            }
+            using var loaded = new SettingsStore(path);
+            Check.That(!loaded.Snapshot.RestoreTabs && !loaded.Snapshot.ReopenClosedTab,
+                "Enabling shortcuts must not rewrite the user's automatic-restore or recording preferences.");
+            Check.That(loaded.Snapshot.RestoreGroupShortcutEnabled && loaded.Snapshot.ReopenTabShortcutEnabled,
+                "Both shortcuts remain independently enabled after restart.");
+            Check.That(loaded.Snapshot.ShouldRecordClosedTabs,
+                "The enabled tab shortcut still has the history it needs after restart.");
+        }
+        finally { TestCleanup.DeleteDirectory(directory); }
+    }
+
     private static async Task Persistence()
     {
         var directory = Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"));

@@ -144,7 +144,7 @@ public sealed class HookManager : IDisposable
         System.Diagnostics.Process.Start(start)?.Dispose();
     }
 
-    /// <summary>Restoration and its capture lifecycle remain independent of the merge/reuse toggle pair.</summary>
+    /// <summary>Only controls automatic reopening; capture, buttons and shortcuts remain available when off.</summary>
     public void SetRestoreTabs(bool enabled)
     {
         SettingsManager.RestoreTabs = enabled;
@@ -170,7 +170,6 @@ public sealed class HookManager : IDisposable
     public void SetReopenClosedTab(bool enabled)
     {
         SettingsManager.ReopenClosedTab = enabled;
-        _explorerWatcher.SetRecordClosedTabs(enabled);
         ApplySessionShortcuts();
         RaiseStateChanged();
     }
@@ -195,17 +194,24 @@ public sealed class HookManager : IDisposable
         return ShortcutError == null;
     }
 
-    private void ApplySessionShortcuts()
+    private void ApplySessionShortcuts() => ApplySessionShortcuts(SettingsManager.Snapshot);
+
+    /// <summary>
+    /// Apply one settings snapshot so history and bindings agree. An enabled tab shortcut keeps recording
+    /// alive without requiring the separate history toggle; automatic-restore options never gate either key.
+    /// </summary>
+    internal void ApplySessionShortcuts(AppSettings settings)
     {
+        _explorerWatcher.SetRecordClosedTabs(settings.ShouldRecordClosedTabs);
         ShortcutError = null;
-        var groupValid = ExplorerShortcut.TryParse(SettingsManager.RestoreGroupShortcut, out var group);
-        var tabValid = ExplorerShortcut.TryParse(SettingsManager.ReopenTabShortcut, out var tab);
+        var groupValid = ExplorerShortcut.TryParse(settings.RestoreGroupShortcut, out var group);
+        var tabValid = ExplorerShortcut.TryParse(settings.ReopenTabShortcut, out var tab);
         if (!groupValid || !tabValid || group == tab)
             ShortcutError = groupValid && tabValid ? UiStrings.ShortcutDuplicate : UiStrings.ShortcutInvalid;
         try
         {
-            _sessionShortcuts.Configure(ShortcutError == null && SettingsManager.RestoreGroupShortcutEnabled ? group : null,
-                ShortcutError == null && SettingsManager.ReopenClosedTab && SettingsManager.ReopenTabShortcutEnabled ? tab : null);
+            _sessionShortcuts.Configure(ShortcutError == null && settings.RestoreGroupShortcutEnabled ? group : null,
+                ShortcutError == null && settings.ReopenTabShortcutEnabled ? tab : null);
         }
         catch (Exception exception)
         {

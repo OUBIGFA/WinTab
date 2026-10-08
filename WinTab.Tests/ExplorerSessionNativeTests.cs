@@ -68,12 +68,23 @@ internal static class ExplorerSessionNativeTests
 
     private static Task RequestedRestoreIsIndependent() => WithNative(async (fixture, environment, _) =>
     {
-        Set(fixture.Watcher, "_restoreTabs", false);
-        Set(fixture.Watcher, "_sessionGeneration", 99);
-        environment.EnsureUnchanged();
-        Check.That(await environment.SelectTabAsync(environment.InitialTab), "A manual command is independent of auto-restore options.");
-        Set(fixture.Watcher, "_captureSessions", false);
-        Check.Throws<OperationCanceledException>(environment.EnsureUnchanged, "Stopping the watcher still cancels manual restoration.");
+        Set(fixture.Watcher, "_sessionLifetime", new CancellationTokenSource());
+        try
+        {
+            fixture.Watcher.SetRestoreTabs(false);
+            fixture.Watcher.SetRestoreOnAnyFolder(true);
+            Set(fixture.Watcher, "_sessionGeneration", 99);
+            environment.EnsureUnchanged();
+            Check.That(await environment.SelectTabAsync(environment.InitialTab),
+                "Changing automatic-restore options must not cancel a requested restore or its native operation.");
+            Set(fixture.Watcher, "_captureSessions", false);
+            Check.Throws<OperationCanceledException>(environment.EnsureUnchanged, "Stopping the watcher still cancels manual restoration.");
+        }
+        finally
+        {
+            ((CancellationTokenSource)typeof(ExplorerWatcher).GetField("_sessionLifetime", PrivateInstance)!
+                .GetValue(fixture.Watcher)!).Dispose();
+        }
     }, requested: true);
 
     private static Task IndependentFromMergeLifetime() => WithNative(async (fixture, environment, _) =>

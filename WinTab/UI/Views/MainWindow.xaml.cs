@@ -137,13 +137,15 @@ public partial class MainWindow : Window
         RestoreAnyFolder.IsChecked = SettingsManager.RestoreOnAnyFolder;
         RestoreNormalLaunchOnly.IsEnabled = SettingsManager.RestoreTabs;
         RestoreAnyFolder.IsEnabled = SettingsManager.RestoreTabs;
-        RecordClosedTabsToggle.IsChecked = SettingsManager.ReopenClosedTab;
+        RecordClosedTabsToggle.IsChecked = SettingsManager.ShouldRecordClosedTabs;
+        // Show the effective prerequisite instead of an off switch beside a working recovery shortcut.
+        RecordClosedTabsToggle.IsEnabled = !SettingsManager.ReopenTabShortcutEnabled;
         GroupShortcutToggle.IsChecked = SettingsManager.RestoreGroupShortcutEnabled;
         TabShortcutToggle.IsChecked = SettingsManager.ReopenTabShortcutEnabled;
         GroupShortcutText.SyncSavedShortcut(SettingsManager.RestoreGroupShortcut);
         TabShortcutText.SyncSavedShortcut(SettingsManager.ReopenTabShortcut);
         RestoreGroupButton.IsEnabled = _hookManager.IsShellReady;
-        ReopenTabButton.IsEnabled = _hookManager.IsShellReady && SettingsManager.ReopenClosedTab;
+        ReopenTabButton.IsEnabled = _hookManager.IsShellReady && SettingsManager.ShouldRecordClosedTabs;
         if (_hookManager.ShortcutError != null) SessionFeedbackText.Text = _hookManager.ShortcutError;
         RestoreModeHintText.Text = UiStrings.RestoreModeHint(SettingsManager.RestoreOnAnyFolder);
         DoubleClickCloseToggle.IsChecked = SettingsManager.DoubleClickCloseTab;
@@ -222,7 +224,8 @@ public partial class MainWindow : Window
         ReopenTabTitleText.Text = UiStrings.ReopenTabCommand;
         RestoreGroupButton.Content = UiStrings.RestoreNow;
         ReopenTabButton.Content = UiStrings.RestoreNow;
-        RecordClosedTabsToggle.ToolTip = UiStrings.RecordClosedTabs;
+        RecordClosedTabsToggle.ToolTip = UiStrings.RecordClosedTabsHint;
+        RecordClosedTabsHintText.Text = UiStrings.RecordClosedTabsHint;
         GroupShortcutToggle.Content = UiStrings.ShortcutEnabled;
         TabShortcutToggle.Content = UiStrings.ShortcutEnabled;
         SaveShortcutsButton.Content = UiStrings.ShortcutSave;

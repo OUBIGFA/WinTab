@@ -15,6 +15,8 @@ public static class SettingsManager
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "WinTab", Constants.SettingsFileName));
 
+    internal static AppSettings Snapshot => Store.Snapshot;
+
     public static event EventHandler<PropertyChangedEventArgs>? StaticPropertyChanged;
     public static event Action? StorageErrorChanged;
     public static Exception? StorageError => Store.LastError;
@@ -47,6 +49,9 @@ public static class SettingsManager
         get => Store.Snapshot.ReopenClosedTab;
         set => SetProperty(settings => settings with { ReopenClosedTab = value });
     }
+
+    /// <summary>Effective recording state, including history required by the independently enabled shortcut.</summary>
+    public static bool ShouldRecordClosedTabs => Store.Snapshot.ShouldRecordClosedTabs;
 
     public static bool RestoreGroupShortcutEnabled => Store.Snapshot.RestoreGroupShortcutEnabled;
     public static string RestoreGroupShortcut => Store.Snapshot.RestoreGroupShortcut;

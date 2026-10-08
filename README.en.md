@@ -34,14 +34,18 @@ The last two days of logs are recorded in the background at `%LOCALAPPDATA%\WinT
 
 ## Restore last tab group
 
-WinTab records tab groups while running and restores only the last-used window: normal closure saves the last closed window, while shutdown or a crash restores the latest record of the last-used window. **Restore single-tab windows** is off by default: only windows with two or more tabs are recorded, and closing a single-tab window does not replace the saved group.
+WinTab records tab groups while running and restores only the last-used window: normal closure saves the last closed window, while shutdown or a crash restores the latest record of the last-used window. **Include single-tab windows** is off by default: only windows with two or more tabs are recorded, and closing a single-tab window does not replace the saved group. This option does not affect reopening recently closed tabs.
 
 The tray's recovery section and the settings page provide:
 
 - **Restore last tab group**: restore the group in a new window, keeping tab order and the saved active tab. Default shortcut `Alt + E`, works globally
 - **Reopen last closed tab**: reopen the most recently closed tab, preferring the current window. Enabled by default; default shortcut `Alt + W`, works only while Explorer is in the foreground. Up to 25 closures are kept until WinTab exits. When the most recently closed location can no longer be opened (a network location or an unplugged drive, for example), the newest tab that can be opened is reopened instead and the skip is reported
 
-Both can be disabled or re-bound in settings; shortcuts use `Ctrl` / `Alt` with a letter, top-row digit or `F1`–`F24`, and `Shift` is optional. Folder records live in `%APPDATA%\WinTab\session.json` and its backups; treat them as personal folder information.
+Each shortcut can be enabled or re-bound independently, without enabling automatic restoration. Turning **Auto-restore last tab group** off only stops automatic reopening; background recording, shortcuts and recovery buttons keep working.
+
+Enabling the closed-tab shortcut automatically keeps recently closed tabs, without requiring the separate recording toggle. After disabling the shortcut, you can keep history for button or tray recovery; recording stops and history is cleared only when both the shortcut and **Remember recently closed tabs** are off.
+
+Shortcuts use `Ctrl` / `Alt` with a letter, top-row digit or `F1`–`F24`, and `Shift` is optional. Folder records live in `%APPDATA%\WinTab\session.json` and its backups; treat them as personal folder information.
 
 ### Automatic restoration (optional)
 

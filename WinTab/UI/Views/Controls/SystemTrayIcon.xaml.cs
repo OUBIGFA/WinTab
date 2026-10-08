@@ -65,6 +65,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         RestoreGroupMenu.Header = UiStrings.RestoreGroupCommand;
         ReopenTabMenu.Header = UiStrings.ReopenTabCommand;
         RecordClosedTabsMenu.Header = UiStrings.RecordClosedTabs;
+        RecordClosedTabsMenu.ToolTip = UiStrings.RecordClosedTabsHint;
         StartupMenu.Header = UiStrings.TrayStartup;
         AutoUpdateMenu.Header = UiStrings.TrayAutoUpdate;
         ShowTrayIconMenu.Header = UiStrings.TrayShowTrayIcon;
@@ -80,10 +81,11 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         MiddleClickForegroundMenu.IsChecked = SettingsManager.MiddleClickForegroundTab;
         WheelSwitchMenu.IsChecked = SettingsManager.WheelSwitchTab;
         RestoreGroupMenu.IsEnabled = _hookManager.IsShellReady;
-        ReopenTabMenu.IsEnabled = _hookManager.IsShellReady && SettingsManager.ReopenClosedTab;
-        RecordClosedTabsMenu.IsChecked = SettingsManager.ReopenClosedTab;
+        ReopenTabMenu.IsEnabled = _hookManager.IsShellReady && SettingsManager.ShouldRecordClosedTabs;
+        RecordClosedTabsMenu.IsChecked = SettingsManager.ShouldRecordClosedTabs;
+        RecordClosedTabsMenu.IsEnabled = !SettingsManager.ReopenTabShortcutEnabled;
         RestoreGroupMenu.InputGestureText = SettingsManager.RestoreGroupShortcutEnabled ? SettingsManager.RestoreGroupShortcut : string.Empty;
-        ReopenTabMenu.InputGestureText = SettingsManager.ReopenTabShortcutEnabled && SettingsManager.ReopenClosedTab ? SettingsManager.ReopenTabShortcut : string.Empty;
+        ReopenTabMenu.InputGestureText = SettingsManager.ReopenTabShortcutEnabled ? SettingsManager.ReopenTabShortcut : string.Empty;
         StartupMenu.IsChecked = RegistryManager.IsStartupEnabled;
         AutoUpdateMenu.IsChecked = SettingsManager.AutoUpdate;
         ShowTrayIconMenu.IsChecked = SettingsManager.ShowTrayIcon;
