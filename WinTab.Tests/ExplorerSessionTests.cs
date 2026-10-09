@@ -49,7 +49,7 @@ internal static class ExplorerSessionTests
         yield return ("session restore with no usable paths keeps the initial tab", NoUsablePathsKeepsInitial);
         yield return ("session restore appends in order then closes the still-active placeholder before selecting", OrderedRestoreClosesActivePlaceholder);
         yield return ("session restore any-folder normal launch keeps the start page tab first and active", AnyFolderNormalLaunchKeepsStartPage);
-        yield return ("session restore requests every tab before confirming any location", RequestsAllTabsBeforeConfirming);
+        yield return ("session restore waits for each tab before requesting the next", WaitsForEachTabBeforeContinuing);
         yield return ("session restore an unconfirmed location stops before closing or selecting", UnconfirmedLocationStops);
         yield return ("session restore reuses a matching placeholder as the first saved tab", MatchingFirstTabReusesPlaceholder);
         yield return ("session restore never switches tabs before every tab is added and confirmed", SelectsOnlyAfterConfirming);
@@ -339,7 +339,7 @@ internal static class ExplorerSessionTests
         Check.That(result.Completed && result.RestoredCount == 3, "Every planned tab must be confirmed.");
         Check.That(environment.Tabs.Values.SequenceEqual([@"C:\A", @"C:\B", @"C:\C"]), "Tabs must be restored in saved order without an extra placeholder.");
         Check.Equal(@"C:\B", environment.Tabs[environment.Active], "The saved active tab must be selected.");
-        Check.That(environment.Events.SequenceEqual(["append:C:\\A", "append:C:\\B", "append:C:\\C", "confirm:2,3,4", "close:1", "select:3"]),
+        Check.That(environment.Events.SequenceEqual(["append:C:\\A", "confirm:2", "append:C:\\B", "confirm:3", "append:C:\\C", "confirm:4", "confirm:2,3,4", "close:1", "select:3"]),
             "Creation is serial and confirmed; the placeholder closes while it is still active, then the saved tab is selected.");
     }
 
@@ -361,20 +361,31 @@ internal static class ExplorerSessionTests
             "A saved start page is supplied by the opened one instead of being duplicated.");
     }
 
-    private static async Task RequestsAllTabsBeforeConfirming()
+    private static async Task WaitsForEachTabBeforeContinuing()
     {
-        var environment = new RestoreEnvironment(Home);
-        var result = await ExplorerSessionRestorer.RestoreAsync(Plan(Session(active: 0))!, environment, CancellationToken.None);
+        var confirming = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var environment = new RestoreEnvironment(Home)
+        {
+            BeforeConfirmation = async () => { confirming.TrySetResult(); await ready.Task; }
+        };
+        var restore = ExplorerSessionRestorer.RestoreAsync(Plan(Session(active: 0))!, environment, CancellationToken.None);
+        await confirming.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var tabsWhileLoading = environment.Tabs.Count;
+        var activeWhileLoading = environment.Active;
+        ready.SetResult();
+        var result = await restore;
+        Check.Equal(2, tabsWhileLoading, "Only the initial tab and one loading tab may exist before readiness is confirmed.");
+        Check.Equal(environment.InitialTab, activeWhileLoading, "A loading tab must not be selected.");
         Check.That(result.Completed, "The restore must complete.");
-        Check.That(environment.Events.SequenceEqual(["append:C:\\A", "append:C:\\B", "append:C:\\C", "confirm:2,3,4", "close:1", "select:2"]),
-            "Tabs are requested back to back and confirmed together, so they appear at once rather than one per navigation.");
     }
 
     private static async Task UnconfirmedLocationStops()
     {
         var environment = new RestoreEnvironment(Home) { RejectConfirmation = true };
         var result = await ExplorerSessionRestorer.RestoreAsync(Plan(Session())!, environment, CancellationToken.None);
-        Check.That(!result.Completed && result.RestoredCount == 3, "The added tabs are reported, but the restore is incomplete.");
+        Check.That(!result.Completed && result.RestoredCount == 1 && environment.Tabs.Count == 2,
+            "An unready first tab must stop further creation and report the one tab already added.");
         Check.That(environment.CloseRequests == 0 && environment.Active == environment.InitialTab &&
             !environment.Events.Any(item => item.StartsWith("select", StringComparison.Ordinal)),
             "A tab that did not reach its location must stop the restore before the placeholder is closed or a tab selected.");
@@ -403,7 +414,7 @@ internal static class ExplorerSessionTests
         Check.That(result.Completed && environment.Tabs.Values.SequenceEqual([@"C:\A", @"C:\B", @"C:\C", @"C:\D"]),
             "Every saved tab is restored in saved order.");
         Check.Equal(@"C:\B", environment.Tabs[environment.Active], "The saved active tab ends up selected.");
-        Check.That(environment.Events.SequenceEqual(["append:C:\\B", "append:C:\\C", "append:C:\\D", "confirm:2,3,4", "select:2"]),
+        Check.That(environment.Events.SequenceEqual(["append:C:\\B", "confirm:2", "append:C:\\C", "confirm:3", "append:C:\\D", "confirm:4", "confirm:2,3,4", "select:2"]),
             "Switching to a tab Explorer is still creating crashes Explorer, so selection comes after confirmation.");
     }
 
@@ -527,6 +538,7 @@ internal static class ExplorerSessionTests
         public bool RejectClose;
         public bool RejectConfirmation;
         public Action? AfterAppend;
+        public Func<Task>? BeforeConfirmation;
         private int _appends;
         private int _inFlight;
 
@@ -549,12 +561,14 @@ internal static class ExplorerSessionTests
             return handle;
         }
 
-        public Task<bool> ConfirmTabsAsync(IReadOnlyList<(nint Tab, string Location)> tabs)
+        public async Task<bool> ConfirmTabsAsync(IReadOnlyList<(nint Tab, string Location)> tabs)
         {
             Events.Add("confirm:" + string.Join(",", tabs.Select(tab => tab.Tab)));
+            if (BeforeConfirmation != null)
+                await BeforeConfirmation();
             Check.That(tabs.All(tab => Tabs.TryGetValue(tab.Tab, out var location) && location == tab.Location),
                 "Every created tab must be confirmed at its own location.");
-            return Task.FromResult(!RejectConfirmation);
+            return !RejectConfirmation;
         }
 
         public Task<bool> SelectTabAsync(nint tab)

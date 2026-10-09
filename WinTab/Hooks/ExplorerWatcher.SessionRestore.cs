@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using SHDocVw;
@@ -20,6 +21,8 @@ public partial class ExplorerWatcher
     /// </summary>
     private sealed class NativeSessionRestore : IExplorerSessionRestoreEnvironment, IDisposable
     {
+        // Cold folder views need more time than a location-only check; the operation still has a total deadline.
+        private const int TabReadyWaitMs = 5_000;
         private readonly ExplorerWatcher _owner;
         private readonly InternetExplorer _initialWindow;
         private readonly WindowInfo _initialInfo;
@@ -112,8 +115,8 @@ public partial class ExplorerWatcher
         }
 
         /// <summary>
-        /// Returns as soon as Explorer has created the tab. Its location is confirmed later together with the
-        /// others, so the next tab is requested without waiting for this one's navigation.
+        /// Returns the new HWND. The restorer must confirm its view is ready before requesting another tab;
+        /// HWND creation alone does not mean Explorer has finished initializing its browser.
         /// </summary>
         public async Task<nint> AppendTabAsync(string location)
         {
@@ -141,20 +144,42 @@ public partial class ExplorerWatcher
         public async Task<bool> ConfirmTabsAsync(IReadOnlyList<(nint Tab, string Location)> tabs)
         {
             EnsureUnchanged();
-            ExplorerDebugLog.Write($"Session restore confirming {tabs.Count} tab locations hwnd={_frame.Handle}");
+            var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+            ExplorerDebugLog.Write($"Session restore waiting for {tabs.Count} ready tab(s) hwnd={_frame.Handle}");
             var confirmations = await Task.WhenAll(tabs.Select(async tab =>
             {
                 var window = await Helper.DoUntilNotDefaultAsync(
                     () => _owner.FindShellWindowByTabHandle(tab.Tab, _frame.Handle), NewTabWaitMs, 50, Operation.Token);
-                var arrived = window != null && await _owner.WaitForNavigation(window, tab.Location, NavigationVerificationWaitMs);
+                var arrived = window != null && await Helper.DoUntilConditionAsync(
+                    () => _owner.RunInStaThread(() =>
+                    {
+                        EnsureUnchanged();
+                        return IsTabReady(window, tab.Location);
+                    }), ready => ready, TabReadyWaitMs, 50, Operation.Token);
                 if (!arrived)
-                    ExplorerDebugLog.Write($"Session restore tab unconfirmed tab={tab.Tab} shellWindow={window != null} target={tab.Location}");
+                    ExplorerDebugLog.Write($"Session restore tab not ready tab={tab.Tab} shellWindow={window != null} target={tab.Location}");
                 return arrived;
             }));
             EnsureUnchanged();
             var confirmed = confirmations.All(arrived => arrived);
-            ExplorerDebugLog.Write($"Session restore locations confirmed={confirmed} hwnd={_frame.Handle}");
+            ExplorerDebugLog.Write($"Session restore tabs ready={confirmed} count={tabs.Count} hwnd={_frame.Handle} elapsedMs={System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0}");
             return confirmed;
+        }
+
+        private bool IsTabReady(InternetExplorer window, string location)
+        {
+            try
+            {
+                // LocationURL is published before the view finishes loading. Both navigation signals must
+                // agree before a later BrowseObject can make Explorer select a still-initializing browser.
+                return _owner.AreLocationsEquivalent(TryGetLocation(window), location) &&
+                    !window.Busy && window.ReadyState == tagREADYSTATE.READYSTATE_COMPLETE;
+            }
+            catch (COMException exception) when (!IsDisconnectedShell(exception))
+            {
+                ExplorerDebugLog.Write($"Session restore readiness temporarily unavailable error={exception.HResult:X8}");
+                return false;
+            }
         }
 
         public async Task<bool> SelectTabAsync(nint tab)

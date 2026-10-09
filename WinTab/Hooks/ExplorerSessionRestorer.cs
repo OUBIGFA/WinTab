@@ -9,9 +9,9 @@ namespace WinTab.Hooks;
 internal readonly record struct SessionRestoreResult(int RestoredCount, bool Completed);
 
 /// <summary>
-/// Non-destructive restore in two passes. Every saved tab is requested first, one after another in saved
-/// order, each as soon as Explorer has created the previous one; only then are their locations confirmed, all
-/// at once. The tabs therefore appear together instead of one per navigation. The initial tab is never
+/// Non-destructive restore in saved order. Each new tab must finish navigation before the next request:
+/// Explorer publishes its HWND before its folder view exists, and another request can dispatch a native
+/// selection into that unfinished view and crash Explorer. Recheck all tabs before finalizing. The initial tab is never
 /// navigated, and a normal-launch placeholder is only removed after every addition has been confirmed, while it
 /// is still the active tab: Explorer can apply a close command sent to a background tab to its active tab, and
 /// closing the active placeholder cannot reach a restored tab either way. The saved active tab is selected last:
@@ -31,6 +31,10 @@ internal static class ExplorerSessionRestorer
             if (handle == 0)
                 return new SessionRestoreResult(created.Count, false);
             created.Add((tab.SavedIndex, handle, tab.Location));
+            cancellationToken.ThrowIfCancellationRequested();
+            environment.EnsureUnchanged();
+            if (!await environment.ConfirmTabsAsync([(handle, tab.Location)]))
+                return new SessionRestoreResult(created.Count, false);
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -62,7 +66,7 @@ internal interface IExplorerSessionRestoreEnvironment
     void EnsureUnchanged();
     /// <summary>Requests a tab at the location and returns it once Explorer has created it; 0 when it could not be created.</summary>
     Task<nint> AppendTabAsync(string location);
-    /// <summary>Waits until every appended tab has arrived at its location; false when one has not.</summary>
+    /// <summary>Waits until every supplied tab has finished loading its location; false when one has not.</summary>
     Task<bool> ConfirmTabsAsync(IReadOnlyList<(nint Tab, string Location)> tabs);
     Task<bool> SelectTabAsync(nint tab);
     /// <summary>Closes the initial tab while it is still active; false when that could not be confirmed.</summary>

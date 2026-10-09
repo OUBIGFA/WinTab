@@ -749,7 +749,8 @@ internal static class ExplorerTabLifetimeTests
 
         public object AddBrowser(out WindowInfo info, nint? tab = null, bool unavailableLocation = false,
             bool failDetach = false, bool unreadableHandle = false, bool track = true, Action? readLocation = null,
-            Exception? documentFailure = null, nint? handle = null, Action<string>? onCall = null)
+            Exception? documentFailure = null, nint? handle = null, Action<string>? onCall = null,
+            Func<bool>? isBusy = null, Func<int>? readyState = null)
         {
             var parentHandle = handle ?? Window.Handle;
             var browser = ShellDispatchStub.Create(_dictionaryType.GetGenericArguments()[0], (method, arguments) =>
@@ -769,7 +770,9 @@ internal static class ExplorerTabLifetimeTests
                         : "file:///C:/WinTab-lifetime",
                     "get_Document" => documentFailure != null ? throw documentFailure : null,
                     "get_LocationName" => Location,
-                    "get_Busy" => false,
+                    "get_Busy" => isBusy?.Invoke() ?? false,
+                    "get_ReadyState" => Enum.ToObject(typeof(ExplorerWatcher).Assembly.GetType("SHDocVw.tagREADYSTATE", true)!,
+                        readyState?.Invoke() ?? 4),
                     "add_OnQuit" or "remove_OnQuit" or "add_NavigateComplete2" or "remove_NavigateComplete2" => null,
                     _ => throw new InvalidOperationException("Unexpected browser call: " + method)
                 };

@@ -30,6 +30,8 @@ internal static class ExplorerSessionNativeTests
         yield return ("session native restore rejects a recycled frame identity", () => GuardRejects((_, info) => info.Identity.Release()));
         yield return ("session native restore yields when another window takes foreground", ForegroundChangeCancels);
         yield return ("session native restore does not navigate or foreground an already active initial tab", InitialSelectionIsNonDestructive);
+        yield return ("session native confirmation waits when a matching tab is busy", () => ConfirmationWaitsForReadyTab(true));
+        yield return ("session native confirmation waits when a matching tab view is incomplete", () => ConfirmationWaitsForReadyTab(false));
         yield return ("session native restore closes only the active placeholder and retains the restored tabs", () => CloseActivePlaceholder(0));
         yield return ("session native restore waits for a delayed placeholder close without resending it", () => CloseActivePlaceholder(300));
         yield return ("session native placeholder close leaves the shell callback thread responsive", CloseDoesNotBlockShellCallbacks);
@@ -124,6 +126,27 @@ internal static class ExplorerSessionNativeTests
         Check.That(await environment.SelectTabAsync(environment.InitialTab), "An already active initial tab needs no navigation.");
         Check.Equal(environment.InitialTab, fixture.Window.ActiveTab, "The native active handle must be unchanged.");
         Check.Equal("selected-file", info.SelectedItems[0], "The native initial selection must be retained.");
+    });
+
+    private static Task ConfirmationWaitsForReadyTab(bool busy) => WithNative(async (fixture, environment, _) =>
+    {
+        fixture.Window.AddTab();
+        var tab = ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Window.Handle)
+            .Single(handle => handle != environment.InitialTab);
+        var ready = false;
+        var locationRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.AddBrowser(out _, tab, readLocation: () => locationRead.TrySetResult(),
+            isBusy: () => busy && !ready, readyState: () => busy || ready ? 4 : 3);
+        var expected = (List<WindowIdentity>)environment.GetType().GetField("_expected", PrivateInstance)!.GetValue(environment)!;
+        expected.Add(WindowIdentity.Capture(tab));
+        var confirmation = environment.ConfirmTabsAsync([(tab, Fixture.Location)]);
+        await locationRead.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.Yield();
+        var completedWhileLoading = confirmation.IsCompleted;
+        ready = true;
+        Check.That(await confirmation, "The matching tab must confirm once its view is ready.");
+        Check.That(!completedWhileLoading, "Publishing the target location does not mean the tab view is ready.");
+        Check.Equal(environment.InitialTab, fixture.Window.ActiveTab, "Readiness checks must never activate the loading tab.");
     });
 
     private static Task CloseActivePlaceholder(int delayMs) => WithRestoredNativeTabs(async (frame, environment) =>
