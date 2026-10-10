@@ -1,166 +1,136 @@
 using System;
 using System.Drawing;
+using System.Threading;
 
 namespace WinTab.Hooks;
 
+/// <summary>
+/// Consumes non-overlapping down/up pairs using Windows' double-click settings. Recognition never waits
+/// for a tab close or a bounds refresh; an unknown hit is validated by the worker without consuming input.
+/// </summary>
 internal sealed class ExplorerTabDoubleClickCloseController(IExplorerTabDoubleClickEnvironment environment)
 {
-    private const int CloseChainFallbackMs = 1_500;
-
     private ClickCandidate? _lastClickCandidate;
-    private ClickCandidate? _pendingNativeClose;
-    private ClickCandidate? _recentNativeClose;
+    private ClickCandidate? _pendingClose;
+    private ClickCandidate? _recentClose;
+    private bool _leftDown;
+    private bool _firstClickReleased;
     private bool _suppressNextLeftUp;
+    private int _interactionVersion;
+
+    /// <summary>Unrelated input cancels queued actions, but the next pair at the same tab position does not.</summary>
+    public int InteractionVersion => Volatile.Read(ref _interactionVersion);
 
     public MouseHookDecision HandleLeftMouseDown(Point currentPoint, long now)
     {
-        if (!environment.IsEnabled)
-        {
-            ResetClickState();
+        // A repeated down without an up is not a second click. In particular, a drag must not arm a close.
+        if (_leftDown)
             return MouseHookDecision.Native;
+        _leftDown = true;
+
+        var window = environment.IsEnabled ? environment.ResolveExplorerWindow(currentPoint) : 0;
+        if (window == 0 || !environment.IsExplorerWindow(window))
+        {
+            CancelGesture();
+            return MouseHookDecision.Native;
+        }
+
+        var hit = environment.IsPointOnTabStrip(currentPoint, window);
+        if (hit == false)
+        {
+            CancelGesture();
+            return MouseHookDecision.Native;
+        }
+
+        if (_recentClose == null || _recentClose.ExplorerWindow != window ||
+            !IsWithinDoubleClickWindow(_recentClose, currentPoint, now))
+        {
+            Interlocked.Increment(ref _interactionVersion);
+            _recentClose = null;
         }
 
         var previous = _lastClickCandidate;
-        var explorerWindow = environment.ResolveExplorerWindow(currentPoint);
-        if (explorerWindow == 0)
+        if (previous != null && _firstClickReleased && previous.ExplorerWindow == window &&
+            IsWithinDoubleClickWindow(previous, currentPoint, now))
         {
-            if (previous != null &&
-                IsWithinDoubleClickWindow(previous, currentPoint, now) &&
-                environment.IsExplorerWindow(previous.ExplorerWindow))
-            {
-                explorerWindow = previous.ExplorerWindow;
-            }
-            else if (TryGetCloseChainWindow(currentPoint, now, out var chainedWindow))
-            {
-                explorerWindow = chainedWindow;
-            }
-            else
-            {
-                ResetClickState();
-                return MouseHookDecision.Native;
-            }
-        }
-
-        if (!environment.IsExplorerWindow(explorerWindow))
-        {
-            ResetClickState();
-            return MouseHookDecision.Native;
-        }
-
-        // Notepad is not watched by Explorer's bounds cache. Recognize its gesture without blocking
-        // the input hook; the worker validates the tab before sending input. Editor clicks stay native.
-        var deferred = environment.ShouldDeferHitTest(explorerWindow);
-        var onTabStrip = deferred || IsPointOnTabStrip(currentPoint, explorerWindow, now);
-        if (previous != null &&
-            previous.ExplorerWindow == explorerWindow &&
-            IsWithinDoubleClickWindow(previous, currentPoint, now) &&
-            onTabStrip &&
-            previous.OnTabStrip)
-        {
-            _suppressNextLeftUp = !deferred;
-            _pendingNativeClose = new ClickCandidate(explorerWindow, currentPoint, now) { OnTabStrip = true };
+            // Unknown means a cold/rebuilding strip, not a negative hit. Keep its native input intact,
+            // then let the worker resolve the live tab before acting, for Explorer as well as Notepad.
+            _suppressNextLeftUp = hit == true;
+            _pendingClose = new ClickCandidate(window, currentPoint, now);
             _lastClickCandidate = null;
-            return new MouseHookDecision(!deferred, null);
+            _firstClickReleased = false;
+            return new MouseHookDecision(_suppressNextLeftUp, null);
         }
 
-        _lastClickCandidate = onTabStrip
-            ? new ClickCandidate(explorerWindow, currentPoint, now) { OnTabStrip = true }
-            : null;
-
+        _lastClickCandidate = new ClickCandidate(window, currentPoint, now);
+        _firstClickReleased = false;
         return MouseHookDecision.Native;
     }
 
-    public MouseHookDecision HandleLeftMouseUp(long now)
+    public MouseHookDecision HandleLeftMouseUp(long now, Point? currentPoint = null)
     {
-        if (!_suppressNextLeftUp && _pendingNativeClose == null)
-            return MouseHookDecision.Native;
+        if (currentPoint is { } point)
+            HandleMouseMove(point);
+        _leftDown = false;
+        _firstClickReleased = _lastClickCandidate != null;
 
         var handled = _suppressNextLeftUp;
         _suppressNextLeftUp = false;
-
-        var pending = _pendingNativeClose;
-        _pendingNativeClose = null;
+        var pending = _pendingClose;
+        _pendingClose = null;
         if (pending == null || !environment.IsEnabled)
-        {
-            _recentNativeClose = null;
             return new MouseHookDecision(handled, null);
-        }
 
-        _recentNativeClose = new ClickCandidate(pending.ExplorerWindow, pending.Point, now) { OnTabStrip = true };
-        return new MouseHookDecision(
-            handled,
-            new ExplorerTabCloseRequest(pending.ExplorerWindow, pending.Point));
+        _recentClose = pending with { Tick = now };
+        return new MouseHookDecision(handled, new ExplorerTabCloseRequest(pending.ExplorerWindow, pending.Point));
     }
 
-    private bool IsPointOnTabStrip(Point currentPoint, nint explorerWindow, long now)
+    public void HandleMouseMove(Point point)
     {
-        return environment.IsPointOnTabStrip(currentPoint, explorerWindow) ||
-               IsWithinCloseChain(explorerWindow, currentPoint, now);
+        if (!_leftDown)
+            return;
+        var pressed = _pendingClose ?? _lastClickCandidate;
+        if (pressed != null && !IsWithinDoubleClickDistance(pressed.Point, point))
+            CancelGesture();
     }
 
-    private bool TryGetCloseChainWindow(Point currentPoint, long now, out nint explorerWindow)
+    /// <summary>Cancel an interrupted pair, but still consume the up matching an already consumed down.</summary>
+    public void CancelGesture()
     {
-        explorerWindow = 0;
-        if (_recentNativeClose == null || !IsWithinCloseChain(_recentNativeClose.ExplorerWindow, currentPoint, now))
-            return false;
-
-        explorerWindow = _recentNativeClose.ExplorerWindow;
-        return true;
-    }
-
-    private bool IsWithinCloseChain(nint explorerWindow, Point currentPoint, long now)
-    {
-        var anchor = _recentNativeClose;
-        if (anchor == null ||
-            anchor.ExplorerWindow != explorerWindow ||
-            now - anchor.Tick > CloseChainFallbackMs)
-        {
-            return false;
-        }
-
-        if (!environment.IsExplorerWindow(anchor.ExplorerWindow))
-        {
-            _recentNativeClose = null;
-            return false;
-        }
-
-        return IsWithinDoubleClickDistance(anchor.Point, currentPoint);
-    }
-
-    private bool IsWithinDoubleClickWindow(ClickCandidate previous, Point currentPoint, long now)
-    {
-        return now - previous.Tick <= Math.Max(200, environment.DoubleClickTimeMs) &&
-               IsWithinDoubleClickDistance(previous.Point, currentPoint);
-    }
-
-    private bool IsWithinDoubleClickDistance(Point previousPoint, Point currentPoint)
-    {
-        var maxX = Math.Max(4, environment.DoubleClickWidth);
-        var maxY = Math.Max(4, environment.DoubleClickHeight);
-
-        return Math.Abs(currentPoint.X - previousPoint.X) <= maxX &&
-               Math.Abs(currentPoint.Y - previousPoint.Y) <= maxY;
+        Interlocked.Increment(ref _interactionVersion);
+        _lastClickCandidate = null;
+        _pendingClose = null;
+        _recentClose = null;
+        _firstClickReleased = false;
     }
 
     public void Reset()
     {
-        _lastClickCandidate = null;
-        _pendingNativeClose = null;
-        _recentNativeClose = null;
+        CancelGesture();
+        _leftDown = false;
         _suppressNextLeftUp = false;
     }
 
-    private void ResetClickState()
+    private bool IsWithinDoubleClickWindow(ClickCandidate previous, Point currentPoint, long now) =>
+        now >= previous.Tick && now - previous.Tick <= environment.DoubleClickTimeMs &&
+        IsWithinDoubleClickDistance(previous.Point, currentPoint);
+
+    private bool IsWithinDoubleClickDistance(Point previousPoint, Point currentPoint) =>
+        IsWithinDoubleClickDistance(previousPoint, currentPoint, environment.DoubleClickWidth, environment.DoubleClickHeight);
+
+    internal static bool IsWithinDoubleClickDistance(Point previousPoint, Point currentPoint, int width, int height)
     {
-        _lastClickCandidate = null;
-        if (!_suppressNextLeftUp)
-            _pendingNativeClose = null;
+        // SM_CXDOUBLECLK/SM_CYDOUBLECLK are the full rectangle sizes, not a radius. Use wide arithmetic
+        // so coordinates on the virtual desktop cannot overflow when calculating the rectangle edges.
+        width = Math.Max(1, width);
+        height = Math.Max(1, height);
+        var left = (long)previousPoint.X - width / 2;
+        var top = (long)previousPoint.Y - height / 2;
+        return currentPoint.X >= left && currentPoint.X < left + width &&
+               currentPoint.Y >= top && currentPoint.Y < top + height;
     }
 
-    private sealed record ClickCandidate(nint ExplorerWindow, Point Point, long Tick)
-    {
-        public bool OnTabStrip { get; init; }
-    }
+    private sealed record ClickCandidate(nint ExplorerWindow, Point Point, long Tick);
 }
 
 /// <summary>The environment resolves windows in the feature's scope: Explorer frames, plus Notepad when included.</summary>
@@ -172,8 +142,8 @@ internal interface IExplorerTabDoubleClickEnvironment
     int DoubleClickHeight { get; }
     nint ResolveExplorerWindow(Point point);
     bool IsExplorerWindow(nint explorerWindow);
-    bool IsPointOnTabStrip(Point point, nint explorerWindow);
-    bool ShouldDeferHitTest(nint window) => false;
+    /// <summary>Null means unavailable bounds; false is a confirmed non-tab hit.</summary>
+    bool? IsPointOnTabStrip(Point point, nint explorerWindow);
 }
 
 internal readonly record struct ExplorerTabCloseRequest(nint ExplorerWindow, Point Point);

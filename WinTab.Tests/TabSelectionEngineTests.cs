@@ -18,6 +18,29 @@ internal static class TabSelectionEngineTests
         yield return ("TabSelectionEngine honors the total timeout even with many tabs", HonorsTotalTimeout);
         yield return ("TabSelectionEngine does not revisit indexes during cycling", DoesNotRevisitIndexes);
         yield return ("TabSelectionEngine still converges when each Explorer step is slow", SlowExplorerStillConverges);
+        yield return ("TabSelectionEngine selects an appended tab beyond the ninth position in background replay", SelectsBeyondNinth);
+        yield return ("TabSelectionEngine cancellation sends no delayed selection after the current command", CancellationStopsCommands);
+    }
+
+    private static async Task SelectsBeyondNinth()
+    {
+        var fixture = new TabSelectionFixture(Enumerable.Range(1, 12).Select(index => (nint)index).ToArray(), activeIndex: 0);
+        fixture.OnSelectByIndex = fixture.SetActiveIndex;
+        Check.That(await TabSelectionEngine.CycleToTabAsync(12, fixture.GetTabs, fixture.GetActive,
+            fixture.SendSelectByIndex, totalTimeoutMs: 500, pollSleepMs: 1), "Later tabs must remain reachable without a native window");
+        Check.Equal((nint)12, fixture.GetActive());
+        Check.That(fixture.SelectionCalls.All(index => index >= 0 && index < 12), "Replay must never request a new tab");
+    }
+
+    private static async Task CancellationStopsCommands()
+    {
+        using var lifetime = new System.Threading.CancellationTokenSource();
+        var fixture = new TabSelectionFixture(new nint[] { 11, 22, 33 }, activeIndex: 0);
+        fixture.OnSelectByIndex = _ => lifetime.Cancel();
+        Check.That(!await TabSelectionEngine.CycleToTabAsync(33, fixture.GetTabs, fixture.GetActive,
+            fixture.SendSelectByIndex, cancellationToken: lifetime.Token), "Cancellation must not report a completed selection");
+        Check.Equal(1, fixture.SelectionCalls.Count, "No further command may follow cancellation");
+        Check.Equal((nint)11, fixture.GetActive());
     }
 
     private static async Task AlreadyActiveReturnsImmediately()

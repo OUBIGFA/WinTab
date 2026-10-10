@@ -22,7 +22,7 @@ public sealed class HookManager : IDisposable
     private readonly ExplorerTabDoubleClickHook _doubleClickHook;
     private readonly ExplorerNavigationMiddleClickHook _middleClickHook;
     private readonly ExplorerTabWheelSwitchHook _wheelSwitchHook;
-    private readonly ExplorerSessionShortcutHook _sessionShortcuts;
+    private readonly IExplorerSessionShortcutHook _sessionShortcuts;
     private readonly System.Windows.SessionEndingCancelEventHandler _sessionEndingHandler;
     private bool _disposed;
 
@@ -30,6 +30,11 @@ public sealed class HookManager : IDisposable
     public event Action? ShellInitialized;
     public event Action<SessionCommandResult>? SessionCommandFinished;
     public string? ShortcutError { get; private set; }
+    internal uint SettingsUiProcessId
+    {
+        get => _sessionShortcuts.SettingsUiProcessId;
+        set => _sessionShortcuts.SettingsUiProcessId = value;
+    }
 
     public HookManager()
     {

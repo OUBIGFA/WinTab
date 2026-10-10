@@ -249,7 +249,7 @@ public partial class ExplorerWatcher
             if (!_disposed && !concealed.Recovering && _isForcingTabs &&
                 concealed.Generation == _hookGeneration && concealed.Identity.IsCurrent &&
                 (concealed.ClosePending || Environment.TickCount64 < concealed.ExpiresAt))
-                ExplorerWindowVisibility.Hide(concealed.Identity);
+                _ = ExplorerWindowVisibility.Hide(concealed.Identity, TaskbarButton.Remove, _windowOpacity);
         }
         finally
         {

@@ -14,16 +14,20 @@ internal static class ExplorerTabDoubleClickCloseTests
     {
         yield return ("double-click deferred hit testing preserves cold gestures and native input", DeferredHitTestPreservesColdGesture);
         yield return ("double-click close can continue after a tab-strip hit-test refresh gap", ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick);
-        yield return ("double-click close chain ignores points outside the double-click geometry", CloseChainFallbackIgnoresDifferentPoints);
+        yield return ("double-click close ignores confirmed non-tab points after a close", ConfirmedNonTabHitsStayNative);
+        yield return ("double-click pairs immediately rearm across cold and relocated tab titles", ConsecutivePairsAtDifferentPoints);
+        yield return ("double-click pairing follows system time and geometry without overlapping pairs", PairingFollowsSystemSettings);
+        yield return ("double-click drag and unrelated input cancel only their interrupted pair", InterruptedPairsStayNative);
+        yield return ("double-click close continuation does not cancel the preceding close", ConsecutivePairsPreserveOwnership);
         yield return ("double-click close is inert while the feature is disabled", DisabledEnvironmentNeverSwallowsClicks);
         yield return ("disabling double-click close cancels an already pending close", DisablingCancelsPendingClose);
         yield return ("double-click restart discards the previous click and pending release", RestartDiscardsClickState);
-        yield return ("queued double-click close rechecks ownership after its delay", QueuedCloseRechecksOwnership);
         yield return ("double-click close scope recognizes Notepad windows only when included", NotepadScopeGatesDoubleClickTargets);
         yield return ("double-click return follows activation order across tab moves and duplicate titles", ReturnFollowsActivationOrder);
         yield return ("double-click return skips closed tabs and isolates window histories", ReturnSkipsClosedTabs);
         yield return ("double-click return waits for exactly its own tab to close", ReturnRequiresConfirmedClose);
         yield return ("double-click return preserves history across incomplete snapshots", IncompleteSnapshotKeepsHistory);
+        foreach (var test in ExplorerTabCloseQueueTests.All()) yield return test;
     }
 
     private static ExplorerTabAutomation.Tab[] Tabs(string selected, params string[] ids) =>
@@ -118,22 +122,22 @@ internal static class ExplorerTabDoubleClickCloseTests
         RecordClose(controller.HandleLeftMouseUp(1_100), closeRequests);
         Check.Equal(1, closeRequests.Count, "The first double-click should close one tab.");
 
-        environment.HitTestResults.Enqueue(false);
+        environment.HitTestResults.Enqueue(null);
         Check.That(!controller.HandleLeftMouseDown(point, 1_220).Handled,
             "The first click after closing should still arm the next tab even while the tab-strip hit-test cache is refreshing.");
         Check.That(!controller.HandleLeftMouseUp(1_240).Handled,
             "The first mouse-up in the next pair should not be swallowed.");
 
-        environment.HitTestResults.Enqueue(false);
-        Check.That(controller.HandleLeftMouseDown(point, 1_300).Handled,
-            "The second click after the refresh gap should close the next tab without requiring an intermediate click.");
-        RecordClose(controller.HandleLeftMouseUp(1_320), closeRequests);
+        environment.HitTestResults.Enqueue(null);
+        Check.That(!controller.HandleLeftMouseDown(point, 1_300).Handled,
+            "Unknown geometry must keep native input intact, not discard the second close request.");
+        RecordClose(controller.HandleLeftMouseUp(1_320), closeRequests, handled: false);
         Check.Equal(2, closeRequests.Count, "Two consecutive double-clicks should close two tabs.");
 
         return Task.CompletedTask;
     }
 
-    private static Task CloseChainFallbackIgnoresDifferentPoints()
+    private static Task ConfirmedNonTabHitsStayNative()
     {
         var environment = new FakeDoubleClickEnvironment();
         var controller = new ExplorerTabDoubleClickCloseController(environment);
@@ -166,9 +170,9 @@ internal static class ExplorerTabDoubleClickCloseTests
         return Task.CompletedTask;
     }
 
-    private static void RecordClose(MouseHookDecision decision, ICollection<ExplorerTabCloseRequest> closeRequests)
+    private static void RecordClose(MouseHookDecision decision, ICollection<ExplorerTabCloseRequest> closeRequests, bool handled = true)
     {
-        Check.That(decision.Handled, "The matching mouse-up should be swallowed.");
+        Check.Equal(handled, decision.Handled, "Only a confirmed tab hit may swallow the matching mouse-up.");
         var closeRequest = decision.CloseRequest;
         Check.That(closeRequest.HasValue, "The matching mouse-up should emit a native close request.");
         closeRequests.Add(closeRequest.GetValueOrDefault());
@@ -225,18 +229,103 @@ internal static class ExplorerTabDoubleClickCloseTests
         return Task.CompletedTask;
     }
 
-    private static async Task QueuedCloseRechecksOwnership()
+    private static Task ConsecutivePairsAtDifferentPoints()
     {
-        var current = true;
-        var clicks = 0;
-        var pending = ExplorerTabDoubleClickHook.ExecuteCloseWhenCurrentAsync(() => current, () => clicks++);
-        current = false;
-        Check.That(!await pending, "A disabled, moved, covered or retired request must not inject a late click.");
-        Check.Equal(0, clicks, "Cancelled work must emit no input.");
-        current = true;
-        Check.That(await ExplorerTabDoubleClickHook.ExecuteCloseWhenCurrentAsync(() => current, () => clicks++),
-            "A current close must still execute.");
-        Check.Equal(1, clicks, "A current request must emit exactly one click.");
+        var environment = new FakeDoubleClickEnvironment { DefaultHit = true };
+        var controller = new ExplorerTabDoubleClickCloseController(environment);
+        for (var pair = 0; pair < 1_000; pair++)
+        {
+            var point = new Point(240 + pair % 5 * 120, 48);
+            var time = 1_000 + pair * 140;
+            Check.That(!controller.HandleLeftMouseDown(point, time).Handled, "Every pair starts with a native click");
+            Check.That(controller.HandleLeftMouseUp(time + 10).CloseRequest == null, "One click cannot close a tab");
+            controller.HandleLeftMouseDown(point, time + 70);
+            var up = controller.HandleLeftMouseUp(time + 80);
+            Check.That(up.CloseRequest.HasValue, "No extra click or cooldown is allowed, pair=" + pair);
+            Check.Equal(point, up.CloseRequest!.Value.Point, "A relocating title must use its new point");
+            // All later pairs deliberately run with no cached rectangles, at different tab positions.
+            environment.DefaultHit = null;
+        }
+        return Task.CompletedTask;
+    }
+
+    private static Task PairingFollowsSystemSettings()
+    {
+        foreach (var limit in new[] { 100, 200, 500, 900 })
+        {
+            foreach (var gap in new[] { limit, limit + 1 })
+            {
+                var controller = new ExplorerTabDoubleClickCloseController(new FakeDoubleClickEnvironment
+                    { DefaultHit = true, DoubleClickTimeMs = limit });
+                var point = new Point(-200, 48);
+                controller.HandleLeftMouseDown(point, 1_000);
+                controller.HandleLeftMouseUp(1_010);
+                controller.HandleLeftMouseDown(new Point(-197, 45), 1_000 + gap);
+                var up = controller.HandleLeftMouseUp(1_010 + gap);
+                Check.Equal(gap == limit, up.CloseRequest.HasValue, "Use the configured threshold, including values below 200 ms");
+            }
+        }
+        var environment = new FakeDoubleClickEnvironment { DefaultHit = true };
+        var repeated = new ExplorerTabDoubleClickCloseController(environment);
+        var closes = 0;
+        for (var click = 0; click < 7; click++)
+        {
+            repeated.HandleLeftMouseDown(new Point(240, 48), 2_000 + click * 50);
+            if (repeated.HandleLeftMouseUp(2_010 + click * 50).CloseRequest.HasValue) closes++;
+            Check.Equal((click + 1) / 2, closes, "Triple and rapid multi-clicks must not reuse a click in two pairs");
+        }
+        Check.That(!ExplorerTabDoubleClickCloseController.IsWithinDoubleClickDistance(new Point(240, 48), new Point(245, 48), 8, 8),
+            "The system metric is a full rectangle size, not a radius");
+        Check.That(ExplorerTabDoubleClickCloseController.IsWithinDoubleClickDistance(new Point(int.MinValue, int.MaxValue),
+            new Point(int.MinValue + 1, int.MaxValue - 1), 8, 8), "Virtual desktop coordinates must not overflow");
+        return Task.CompletedTask;
+    }
+
+    private static Task InterruptedPairsStayNative()
+    {
+        var controller = new ExplorerTabDoubleClickCloseController(new FakeDoubleClickEnvironment { DefaultHit = true });
+        var point = new Point(240, 48);
+        controller.HandleLeftMouseDown(point, 1_000);
+        controller.HandleMouseMove(new Point(320, 48));
+        controller.HandleMouseMove(point);
+        controller.HandleLeftMouseUp(1_020);
+        Check.That(!controller.HandleLeftMouseDown(point, 1_080).Handled, "A drag cannot provide the first click of a close");
+        Check.That(controller.HandleLeftMouseUp(1_100).CloseRequest == null, "Returning to the original point does not undo a drag");
+        controller.CancelGesture();
+        controller.HandleLeftMouseDown(point, 1_200);
+        controller.HandleLeftMouseUp(1_220);
+        controller.HandleLeftMouseDown(point, 1_280);
+        controller.CancelGesture();
+        var cancelled = controller.HandleLeftMouseUp(1_300);
+        Check.That(cancelled.Handled && cancelled.CloseRequest == null,
+            "An interruption cancels the action but still balances an already consumed down");
+        controller.HandleLeftMouseDown(point, 1_320);
+        Check.That(!controller.HandleLeftMouseDown(point, 1_340).Handled, "Two downs without an up are not a double-click");
+        Check.That(controller.HandleLeftMouseUp(1_360).CloseRequest == null, "An incomplete pair must not close");
+        return Task.CompletedTask;
+    }
+
+    private static Task ConsecutivePairsPreserveOwnership()
+    {
+        var controller = new ExplorerTabDoubleClickCloseController(new FakeDoubleClickEnvironment { DefaultHit = true });
+        var point = new Point(240, 48);
+        controller.HandleLeftMouseDown(point, 1_000);
+        controller.HandleLeftMouseUp(1_020);
+        controller.HandleLeftMouseDown(point, 1_080);
+        controller.HandleLeftMouseUp(1_100);
+        var version = controller.InteractionVersion;
+        controller.HandleLeftMouseDown(new Point(241, 48), 1_150);
+        controller.HandleLeftMouseUp(1_170);
+        controller.HandleLeftMouseDown(point, 1_210);
+        Check.That(controller.HandleLeftMouseUp(1_230).CloseRequest.HasValue, "The next pair must also close");
+        Check.Equal(version, controller.InteractionVersion, "Same-position repeated pairs must not cancel an in-flight close");
+        controller.HandleLeftMouseDown(new Point(420, 48), 1_260);
+        Check.That(version != controller.InteractionVersion, "A different tab selection must cancel the earlier ownership");
+        controller.HandleLeftMouseUp(1_280);
+        version = controller.InteractionVersion;
+        controller.CancelGesture();
+        Check.That(version != controller.InteractionVersion, "Wheel or another button must cancel pending ownership");
+        return Task.CompletedTask;
     }
 
     private static async Task NotepadScopeGatesDoubleClickTargets()
@@ -307,17 +396,17 @@ internal static class ExplorerTabDoubleClickCloseTests
     {
         private readonly nint _explorerWindow = 42;
 
-        public Queue<bool> HitTestResults { get; } = new();
+        public Queue<bool?> HitTestResults { get; } = new();
+        public bool? DefaultHit { get; set; } = false;
         public bool IsEnabled { get; set; } = true;
         public bool DeferHitTest { get; set; }
-        public bool ShouldDeferHitTest(nint window) => DeferHitTest;
-        public int DoubleClickTimeMs => 500;
+        public int DoubleClickTimeMs { get; set; } = 500;
         public int DoubleClickWidth => 8;
         public int DoubleClickHeight => 8;
 
         public nint ResolveExplorerWindow(Point point) => _explorerWindow;
         public bool IsExplorerWindow(nint explorerWindow) => explorerWindow == _explorerWindow;
-        public bool IsPointOnTabStrip(Point point, nint explorerWindow) =>
-            HitTestResults.Count > 0 && HitTestResults.Dequeue();
+        public bool? IsPointOnTabStrip(Point point, nint explorerWindow) => DeferHitTest ? null :
+            HitTestResults.Count > 0 ? HitTestResults.Dequeue() : DefaultHit;
     }
 }

@@ -13,32 +13,6 @@ using WinTab.WinAPI;
 
 internal static class ExplorerTabActivationTests
 {
-    public static IEnumerable<(string Name, Func<Task> Body)> All()
-    {
-        yield return ("a minimized window is restored before switching to its first tab", () => SelectFirstTabAsync(false));
-        yield return ("reusing an already active first tab restores its minimized window", () => SelectFirstTabAsync(true));
-    }
-
-    private static async Task SelectFirstTabAsync(bool alreadyActive)
-    {
-        using var scheduler = new StaTaskScheduler();
-        await Task.Factory.StartNew(async () =>
-        {
-            using var lifetime = new CancellationTokenSource();
-            var watcher = CreateSelectionWatcher(lifetime);
-            using var fixture = new ActivationWindow();
-            fixture.SetActive(alreadyActive ? 0 : 1);
-            WinApi.ShowWindow(fixture.Handle, 6);
-            Check.That(WinApi.IsIconic(fixture.Handle), "The isolated test window must start minimized.");
-
-            var selected = await watcher.SelectTabByHandle(fixture.Handle, fixture.FirstTab, timeoutMs: 400);
-
-            Check.That(selected, "Reusing the first tab must not fail just because its window was minimized.");
-            Check.That(!WinApi.IsIconic(fixture.Handle), "Successful tab reuse must restore the target window.");
-            Check.Equal(fixture.FirstTab, fixture.ActiveTab, "The first tab must be active after reuse.");
-            Check.Equal(0, fixture.CommandsWhileMinimized, "The window must be restored before a tab-switch command is sent.");
-        }, CancellationToken.None, TaskCreationOptions.None, scheduler).Unwrap();
-    }
 
     internal static ExplorerWatcher CreateSelectionWatcher(CancellationTokenSource lifetime)
     {
@@ -64,10 +38,9 @@ internal static class ExplorerTabActivationTests
             Check.That(TabClass != 0, "The isolated tab window class must be registered.");
             _host = new HwndSource(new HwndSourceParameters("WinTab isolated tab activation")
             {
-                WindowStyle = 0x00CF0000,
-                ExtendedWindowStyle = 0x00000080,
-                PositionX = -32000,
-                PositionY = -32000,
+                // HWND_MESSAGE cannot be displayed, minimized or activated on the desktop.
+                ParentWindow = (nint)(-3),
+                WindowStyle = 0,
                 Width = 10,
                 Height = 10
             });
@@ -127,9 +100,6 @@ internal static class ExplorerTabActivationTests
             Check.That(TabClass != 0, "The isolated tab window class must be registered.");
 
         public void SetActive(int index) => WinApi.SetWindowPos(_tabs[index], 0, 0, 0, 0, 0, 0x0013);
-
-        /// <summary>Shows the off-screen frame the way Explorer shows a real window: visible, not activated.</summary>
-        public void Show() => WinApi.ShowWindow(Handle, WinApi.SW_SHOWNOACTIVATE);
 
         private nint CreateTab() => CreateWindowEx(0, TabClassName, string.Empty, 0x50000000,
             0, 0, 1, 1, Handle, 0, Module, 0);

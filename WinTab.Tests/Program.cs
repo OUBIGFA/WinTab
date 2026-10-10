@@ -17,34 +17,22 @@ Environment.SetEnvironmentVariable(WinTab.Hooks.ExplorerDebugLog.FileOverrideVar
 if (args.Length == 3 && args[0] == "--conceal-test-window")
     return WindowSafetyTests.ConcealRecoveryWindow(args[1], args[2]);
 
-if (args.Length == 2 && args[0] == "--notepad-owned-window")
-    return await NotepadTabAutomationTests.RunGestureProbe((nint)long.Parse(args[1]));
-
-if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--session-restore-stress"))
-    return await ExplorerStressTest.RunSessionRestoreAsync(args);
-if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--stress"))
-    return await ExplorerStressTest.RunAsync(args);
-if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--activation-stress"))
-    return await ExplorerStressTest.RunActivationAsync(args);
-if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--recovery-stress"))
-    return await ExplorerStressTest.RunRecoveryAsync(args);
-if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--reuse-stress"))
-    return await ExplorerStressTest.RunReuseAsync(args);
-if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--default-location-stress"))
-    return await ExplorerStressTest.RunDefaultLocationAsync(args);
-if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--user-default-stress"))
-    return await ExplorerStressTest.RunUserDefaultAsync(args);
-if (args.Length > 0 && StringComparer.OrdinalIgnoreCase.Equals(args[0], "--mixed-default-folder-stress"))
-    return await ExplorerStressTest.RunMixedDefaultFolderAsync(args);
+if (args.Length == 3 && args[0] == "--desktop-pipe-peer")
+    return await DesktopUiProcessTests.RunPeerAsync(args[1], int.Parse(args[2]));
 
 string? filter = null;
 string? exclude = null;
-for (var i = 0; i < args.Length - 1; i++)
+for (var i = 0; i < args.Length; i++)
 {
-    if (StringComparer.OrdinalIgnoreCase.Equals(args[i], "--filter"))
-        filter = args[i + 1];
-    else if (StringComparer.OrdinalIgnoreCase.Equals(args[i], "--exclude"))
-        exclude = args[i + 1];
+    if (StringComparer.OrdinalIgnoreCase.Equals(args[i], "--filter") && i + 1 < args.Length)
+        filter = args[++i];
+    else if (StringComparer.OrdinalIgnoreCase.Equals(args[i], "--exclude") && i + 1 < args.Length)
+        exclude = args[++i];
+    else
+    {
+        Console.Error.WriteLine("Unsupported test argument: " + args[i]);
+        return 2;
+    }
 }
 
 return await UnitTestRunner.RunAll(filter, exclude);
@@ -69,6 +57,8 @@ internal static class UnitTestRunner
             .Concat(ExplorerSessionJournalTests.All())
             .Concat(ExplorerShortcutTests.All())
             .Concat(ShortcutTextBoxTests.All())
+            .Concat(DesktopBridgeTests.All())
+            .Concat(DesktopUiProcessTests.All())
             .Concat(MainWindowSizingTests.All())
             .Concat(RegistryManagerTests.All())
             .Concat(RecycleBinOpenRegistrationTests.All())
@@ -84,15 +74,12 @@ internal static class UnitTestRunner
             .Concat(NavigationNativeSelectionTests.All())
             .Concat(MergeSourceConcealPulseTests.All())
             .Concat(ExplorerTabDoubleClickCloseTests.All())
-            .Concat(ExplorerDoubleClickNativeTests.All())
             .Concat(NotepadTabAutomationTests.All())
             .Concat(ExplorerTabWheelSwitchTests.All())
             .Concat(ExplorerTabRegistrationTests.All())
             .Concat(ExplorerTabLifetimeTests.All())
             .Concat(ExplorerTabReuseTests.All())
-            .Concat(ExplorerTabActivationTests.All())
             .Concat(ExplorerReuseSelectionTests.All())
-            .Concat(ExplorerNativeFocusTests.All())
             .Concat(ExplorerNativeFocusActivationTests.All())
             .Concat(ExplorerDesktopFlowTests.All())
             .Concat(ExplorerDesktopOpenTests.All())
@@ -148,19 +135,8 @@ internal static class UnitTestRunner
         Console.WriteLine($"{tests.Count - failed - unavailable}/{tests.Count - unavailable} passed" +
             (skipped + unavailable > 0 ? $" ({skipped + unavailable} skipped)" : string.Empty));
         Console.Out.Flush();
-        // Explorer-facing tests leave live windows and STA/COM apartments behind; that leftover state can
-        // deadlock the CLR shutdown path - Main returning and even Environment.Exit have both been observed
-        // to hang after the summary above. Terminate the process directly so the verdict is always delivered
-        // and the build does not stall. TerminateProcess (unlike Process.Kill) also preserves the exit code.
-        TerminateProcess(GetCurrentProcess(), failed == 0 ? 0u : 1u);
         return failed == 0 ? 0 : 1;
     }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool TerminateProcess(nint process, uint exitCode);
-
-    [DllImport("kernel32.dll")]
-    private static extern nint GetCurrentProcess();
 
     /// <summary>Splits a <c>|</c>-separated substring list, or null when nothing was given.</summary>
     private static string[]? Split(string? value)

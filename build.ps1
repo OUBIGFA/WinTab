@@ -17,7 +17,7 @@
     Skip the Inno Setup compile step.
 
 .PARAMETER SkipTests
-    Skip building and running WinTab.Tests before publishing.
+    Skip the .NET, frontend, Go bridge and installer tests.
 
 .PARAMETER Combined
     Also build the combined (auto-detect) installer in addition to per-arch installers.
@@ -252,6 +252,13 @@ if (-not $SkipPublish) {
             /v:minimal
         if ($LASTEXITCODE -ne 0) { throw "MSBuild publish failed for win-$a (exit $LASTEXITCODE)" }
     }
+
+    # The 32-bit build keeps WPF; supported MyGo architectures ship a separate renderer
+    # beside the resident executable so closing settings does not stop Explorer hooks.
+    $desktopArchitectures = @($Arch | Where-Object { $_ -ne 'x86' })
+    if ($desktopArchitectures.Count -gt 0) {
+        & (Join-Path $RepoRoot 'WinTab.Desktop/build.ps1') -Arch $desktopArchitectures -Version $Version -PublishRoot $PublishRoot -SkipTests:$SkipTests
+    }
 }
 else {
     Write-Host "`n==> SkipPublish: using existing publish output" -ForegroundColor Yellow
@@ -275,6 +282,9 @@ foreach ($a in $Arch) {
     $publishArchDir = Join-Path $PublishRoot $a
     if (-not (Test-Path (Join-Path $publishArchDir 'WinTab.exe'))) {
         throw "Missing publish output for $a at $publishArchDir. Run without -SkipPublish first."
+    }
+    if ($a -ne 'x86' -and -not (Test-Path (Join-Path $publishArchDir 'WinTab.UI.exe'))) {
+        throw "Missing settings renderer for $a. Run without -SkipPublish first."
     }
     Write-Host "    - $a installer"
     & $iscc `

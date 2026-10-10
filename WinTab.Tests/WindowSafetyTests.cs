@@ -36,22 +36,22 @@ internal static class WindowSafetyTests
         using var second = new RemoteExplorerFrame(visible: false);
         var firstIdentity = WindowIdentity.Capture(first.Handle);
         var secondIdentity = WindowIdentity.Capture(second.Handle);
-        await ExplorerWindowVisibility.Hide(firstIdentity, _ => true);
-        await ExplorerWindowVisibility.Hide(secondIdentity, _ => true);
+        await BackgroundWindowVisibility.Hide(firstIdentity, _ => true);
+        await BackgroundWindowVisibility.Hide(secondIdentity, _ => true);
         await first.BlockMessagesAsync(2_000);
         var recovery = Task.Run(() => ExplorerWindowVisibility.RestoreAll([first.Handle, second.Handle]));
         try
         {
             await Task.WhenAny(recovery, Task.Delay(1_200));
             Check.That(recovery.IsCompleted, "Bulk recovery must not wait indefinitely for one native window thread.");
-            Check.That((WinApi.GetWindowLong(second.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+            Check.That((TestWindowOpacity.Instance.ReadStyle(second.Handle) & WinApi.WS_EX_LAYERED) == 0,
                 "Responsive windows must regain opacity before the blocked window starts answering.");
         }
         finally
         {
             await recovery;
-            ExplorerWindowVisibility.Restore(firstIdentity, true, _ => true);
-            ExplorerWindowVisibility.Restore(secondIdentity, true, _ => true);
+            BackgroundWindowVisibility.Restore(firstIdentity, true, _ => true);
+            BackgroundWindowVisibility.Restore(secondIdentity, true, _ => true);
         }
     }
 
@@ -126,15 +126,15 @@ internal static class WindowSafetyTests
 
     private static Task RecoveryPreservesOpacity() => WithVisibilityWindow(handle =>
     {
-        ExplorerWindowVisibility.UpdateLayeredStyle(handle, remove: false);
-        Check.That(WinApi.SetLayeredWindowAttributes(handle, 0, 128, WinApi.LWA_ALPHA), "Set up the original opacity.");
+        BackgroundWindowVisibility.UpdateLayeredStyle(handle, remove: false);
+        Check.That(TestWindowOpacity.Instance.TryWrite(handle, 0, 128, WinApi.LWA_ALPHA), "Set up the original opacity.");
         var identity = WindowIdentity.Capture(handle);
-        ExplorerWindowVisibility.Hide(identity);
-        ExplorerWindowVisibility.Hide(identity);
-        Check.That(WinApi.GetLayeredWindowAttributes(handle, out _, out var hiddenAlpha, out _) && hiddenAlpha == 0,
+        BackgroundWindowVisibility.Hide(identity);
+        BackgroundWindowVisibility.Hide(identity);
+        Check.That(TestWindowOpacity.Instance.TryRead(handle, out _, out var hiddenAlpha, out _) && hiddenAlpha == 0,
             "A merge must conceal its own source window.");
-        Check.That(ExplorerWindowVisibility.Restore(identity), "The owned source must be restored.");
-        Check.That(WinApi.GetLayeredWindowAttributes(handle, out _, out var restoredAlpha, out _) && restoredAlpha == 128,
+        Check.That(BackgroundWindowVisibility.Restore(identity), "The owned source must be restored.");
+        Check.That(TestWindowOpacity.Instance.TryRead(handle, out _, out var restoredAlpha, out _) && restoredAlpha == 128,
             "Recovery must preserve the original opacity rather than remove unrelated window styling.");
         Check.That(!WinApi.IsWindowVisible(handle), "Recovery must not show a window that was already hidden.");
         Check.That(!ExplorerWindowVisibility.Contains(handle), "Successful recovery must release its tracking entry.");
@@ -145,14 +145,14 @@ internal static class WindowSafetyTests
         foreach (var original in new[] { 0, 0x80, 0x40000, 0x40080 })
             await WithVisibilityWindowAsync(async handle =>
             {
-                WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, original);
+                TestWindowOpacity.Instance.WriteStyle(handle, original);
                 var identity = WindowIdentity.Capture(handle);
-                await ExplorerWindowVisibility.Hide(identity, _ => true);
-                Check.Equal(0x80, WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WindowVisibilitySnapshot.TaskbarStyleMask,
+                await BackgroundWindowVisibility.Hide(identity, _ => true);
+                Check.Equal(0x80, TestWindowOpacity.Instance.ReadStyle(handle) & WindowVisibilitySnapshot.TaskbarStyleMask,
                     "A concealed window must be excluded even when taskbar COM is a no-op.");
-                WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) | 0x200);
-                Check.That(ExplorerWindowVisibility.Restore(identity, true, _ => true), "Restore the owned styles.");
-                var restored = WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE);
+                TestWindowOpacity.Instance.WriteStyle(handle, TestWindowOpacity.Instance.ReadStyle(handle) | 0x200);
+                Check.That(BackgroundWindowVisibility.Restore(identity, true, _ => true), "Restore the owned styles.");
+                var restored = TestWindowOpacity.Instance.ReadStyle(handle);
                 Check.Equal(original, restored & WindowVisibilitySnapshot.TaskbarStyleMask, "Both original taskbar style bits must return.");
                 Check.That((restored & 0x200) != 0, "Recovery must not replace unrelated style changes made while concealed.");
             });
@@ -160,27 +160,27 @@ internal static class WindowSafetyTests
 
     private static Task RecoveryReadsLegacySnapshot() => WithVisibilityWindow(handle =>
     {
-        WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, 0x40000);
-        var snapshot = WindowVisibilitySnapshot.Capture(handle)!;
+        TestWindowOpacity.Instance.WriteStyle(handle, 0x40000);
+        var snapshot = WindowVisibilitySnapshot.Capture(handle, TestWindowOpacity.Instance)!;
         Check.That(snapshot.Save(handle), "Create the old ownership record.");
         WinApi.RemoveProp(handle, "WinTab.HiddenWindow.TaskbarStyle.v1");
-        ExplorerWindowVisibility.UpdateLayeredStyle(handle, remove: false);
-        WinApi.SetLayeredWindowAttributes(handle, 0, 0, WinApi.LWA_ALPHA);
-        ExplorerWindowVisibility.Hide(handle);
-        Check.That(ExplorerWindowVisibility.Restore(handle), "An opacity-only record must still be recoverable after another hide.");
-        Check.Equal(0x40000, WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WindowVisibilitySnapshot.TaskbarStyleMask,
+        BackgroundWindowVisibility.UpdateLayeredStyle(handle, remove: false);
+        TestWindowOpacity.Instance.TryWrite(handle, 0, 0, WinApi.LWA_ALPHA);
+        BackgroundWindowVisibility.Hide(handle);
+        Check.That(BackgroundWindowVisibility.Restore(handle), "An opacity-only record must still be recoverable after another hide.");
+        Check.Equal(0x40000, TestWindowOpacity.Instance.ReadStyle(handle) & WindowVisibilitySnapshot.TaskbarStyleMask,
             "Upgrading the recovery record must retain the original taskbar style.");
     });
 
     private static Task RecoveryRejectsReplacement() => WithVisibilityWindow(handle =>
     {
         var original = WindowIdentity.Capture(handle);
-        ExplorerWindowVisibility.Hide(original);
+        BackgroundWindowVisibility.Hide(original);
         original.Release();
         var replacement = WindowIdentity.Capture(handle);
-        Check.That(WinApi.SetLayeredWindowAttributes(handle, 0, 192, WinApi.LWA_ALPHA), "Set up replacement opacity.");
-        Check.That(!ExplorerWindowVisibility.Restore(original), "A stale registration must not restore another window.");
-        Check.That(WinApi.GetLayeredWindowAttributes(handle, out _, out var alpha, out _) && alpha == 192,
+        Check.That(TestWindowOpacity.Instance.TryWrite(handle, 0, 192, WinApi.LWA_ALPHA), "Set up replacement opacity.");
+        Check.That(!BackgroundWindowVisibility.Restore(original), "A stale registration must not restore another window.");
+        Check.That(TestWindowOpacity.Instance.TryRead(handle, out _, out var alpha, out _) && alpha == 192,
             "A replacement window must keep its own opacity.");
         replacement.Release();
     });
@@ -193,8 +193,8 @@ internal static class WindowSafetyTests
         if (processId != expectedProcessId || !WinApi.IsWindowHasClassName(handle, "STATIC") ||
             WinApi.IsWindowVisible(handle))
             return 1;
-        ExplorerWindowVisibility.Hide(handle);
-        return WinApi.GetLayeredWindowAttributes(handle, out _, out var alpha, out _) && alpha == 0 ? 0 : 1;
+        BackgroundWindowVisibility.Hide(handle);
+        return TestWindowOpacity.Instance.TryRead(handle, out _, out var alpha, out _) && alpha == 0 ? 0 : 1;
     }
 
     private static Task RecoverySurvivesProcessExit(bool wasLayered, bool concealAgain) => WithVisibilityWindowAsync(async handle =>
@@ -202,11 +202,11 @@ internal static class WindowSafetyTests
         const uint originalColorKey = 0x563412;
         const byte originalAlpha = 137;
         const uint originalFlags = 3;
-        WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, 0x40000);
+        TestWindowOpacity.Instance.WriteStyle(handle, 0x40000);
         if (wasLayered)
         {
-            ExplorerWindowVisibility.UpdateLayeredStyle(handle, remove: false);
-            Check.That(WinApi.SetLayeredWindowAttributes(handle, originalColorKey, originalAlpha, originalFlags),
+            BackgroundWindowVisibility.UpdateLayeredStyle(handle, remove: false);
+            Check.That(TestWindowOpacity.Instance.TryWrite(handle, originalColorKey, originalAlpha, originalFlags),
                 "Set up the original color key and opacity.");
         }
         var startInfo = new ProcessStartInfo(Path.ChangeExtension(typeof(WindowSafetyTests).Assembly.Location, ".exe"))
@@ -222,14 +222,14 @@ internal static class WindowSafetyTests
         {
             await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Check.Equal(0, child.ExitCode, "The helper must hide only the test window before exiting.");
-            Check.That(WinApi.GetLayeredWindowAttributes(handle, out _, out var hiddenAlpha, out _) && hiddenAlpha == 0,
+            Check.That(TestWindowOpacity.Instance.TryRead(handle, out _, out var hiddenAlpha, out _) && hiddenAlpha == 0,
                 "The source must remain concealed after the hiding process exits.");
             if (concealAgain)
-                ExplorerWindowVisibility.Hide(handle);
-            Check.That(ExplorerWindowVisibility.Restore(handle), "A new process must recover an owned window without the old in-memory record.");
+                BackgroundWindowVisibility.Hide(handle);
+            Check.That(BackgroundWindowVisibility.Restore(handle), "A new process must recover an owned window without the old in-memory record.");
             if (wasLayered)
             {
-                Check.That(WinApi.GetLayeredWindowAttributes(handle, out var colorKey, out var alpha, out var flags),
+                Check.That(TestWindowOpacity.Instance.TryRead(handle, out var colorKey, out var alpha, out var flags),
                     "The original layered styling must remain.");
                 Check.Equal(originalColorKey, colorKey, "Recovery must preserve the original color key.");
                 Check.Equal(originalAlpha, alpha, "Recovery must preserve the original opacity.");
@@ -237,13 +237,13 @@ internal static class WindowSafetyTests
             }
             else
             {
-                Check.That((WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+                Check.That((TestWindowOpacity.Instance.ReadStyle(handle) & WinApi.WS_EX_LAYERED) == 0,
                     "Recovery must remove only the layered style introduced by WinTab.");
             }
-            Check.Equal(0x40000, WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WindowVisibilitySnapshot.TaskbarStyleMask,
+            Check.Equal(0x40000, TestWindowOpacity.Instance.ReadStyle(handle) & WindowVisibilitySnapshot.TaskbarStyleMask,
                 "Recovery after process exit must restore the persisted original taskbar style.");
             Check.That(!WinApi.IsWindowVisible(handle), "Recovery must not show a previously hidden window.");
-            Check.That(!ExplorerWindowVisibility.Restore(handle), "Successful recovery must clear its persistent ownership record.");
+            Check.That(!BackgroundWindowVisibility.Restore(handle), "Successful recovery must clear its persistent ownership record.");
         }
         finally
         {
@@ -257,10 +257,10 @@ internal static class WindowSafetyTests
 
     private static Task RecoveryLeavesUnownedWindowAlone() => WithVisibilityWindow(handle =>
     {
-        ExplorerWindowVisibility.UpdateLayeredStyle(handle, remove: false);
-        Check.That(WinApi.SetLayeredWindowAttributes(handle, 0, 0, WinApi.LWA_ALPHA), "Set up unowned transparency.");
-        Check.That(!ExplorerWindowVisibility.Restore(handle), "An unmarked window must not be claimed by recovery.");
-        Check.That(WinApi.GetLayeredWindowAttributes(handle, out _, out var alpha, out _) && alpha == 0,
+        BackgroundWindowVisibility.UpdateLayeredStyle(handle, remove: false);
+        Check.That(TestWindowOpacity.Instance.TryWrite(handle, 0, 0, WinApi.LWA_ALPHA), "Set up unowned transparency.");
+        Check.That(!BackgroundWindowVisibility.Restore(handle), "An unmarked window must not be claimed by recovery.");
+        Check.That(TestWindowOpacity.Instance.TryRead(handle, out _, out var alpha, out _) && alpha == 0,
             "Recovery must leave another application's transparency unchanged.");
     });
 
@@ -275,7 +275,7 @@ internal static class WindowSafetyTests
         using var scheduler = new StaTaskScheduler();
         await Task.Factory.StartNew(async () =>
         {
-            var handle = CreateWindowEx(0, "STATIC", "WinTab isolated opacity test", 0, 0, 0, 20, 20, 0, 0, 0, 0);
+            var handle = CreateWindowEx(0, "STATIC", "WinTab isolated opacity test", 0, 0, 0, 20, 20, (nint)(-3), 0, 0, 0);
             Check.That(handle != 0, "The test must create its own hidden window.");
             try { await action(handle); }
             finally

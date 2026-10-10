@@ -390,5 +390,13 @@ FodyWeavers.xsd
 AGENTS.md
 CLAUDE.md
 
+# Desktop frontend/tooling and generated Windows resources
+node_modules/
+*.tsbuildinfo
+*.syso
+/WinTab.Desktop/frontend/test-results/
+/WinTab.Desktop/frontend/playwright-report/
+/WinTab.Desktop/winres/
+
 # Keep local temporary work out of Git at every depth, after all allow rules
 _temp/

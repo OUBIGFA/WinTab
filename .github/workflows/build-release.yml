@@ -61,19 +61,25 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      - name: Build solution and run unit tests
-        shell: pwsh
-        run: |
-          msbuild WinTab.sln /restore /t:Build /p:Configuration=Release /nologo /v:minimal
-          if ($LASTEXITCODE -ne 0) { throw "Build failed (exit $LASTEXITCODE)" }
-          & "WinTab.Tests\bin\Release\net9.0-windows\WinTab.Tests.exe"
-          if ($LASTEXITCODE -ne 0) { throw "Unit tests failed (exit $LASTEXITCODE)" }
+      - name: Setup Node.js
+        if: matrix.arch != 'x86'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: WinTab.Desktop/frontend/package-lock.json
 
-      - name: Publish app
+      - name: Setup Go
+        if: matrix.arch != 'x86'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: WinTab.Desktop/go.mod
+          cache-dependency-path: WinTab.Desktop/go.sum
+
+      - name: Test and publish app with bundled settings
         shell: pwsh
         run: |
-          $outputDir = "../publish/net9.0-windows/${{ matrix.arch }}"
-          msbuild "${{ env.PROJECT_NAME }}/${{ env.PROJECT_NAME }}.csproj" /restore /t:Publish /p:Configuration=Release /p:TargetFramework=net9.0-windows /p:RuntimeIdentifier=win-${{ matrix.arch }} /p:SelfContained=false /p:PublishDir=$outputDir /p:DebugType=none
+          ./build.ps1 -Arch ${{ matrix.arch }} -Version $env:RELEASE_TAG -SkipInstaller
 
       - name: Upload publish output
         uses: actions/upload-artifact@v4
@@ -106,12 +112,7 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-            /DMyAppVersion="${{ env.RELEASE_TAG }}" `
-            /DPublishRoot="..\publish\net9.0-windows" `
-            /DOutputDir="..\dist" `
-            /DArch="${{ matrix.arch }}" `
-            "installers\installer.iss"
+          ./build.ps1 -Arch ${{ matrix.arch }} -Version $env:RELEASE_TAG -SkipPublish
 
       - name: Upload installer
         uses: actions/upload-artifact@v4

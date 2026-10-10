@@ -10,6 +10,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\WinTab\WinTab.csproj" />
+        <Content Include="..\WinTab.Desktop\frontend\tests\fixtures\state.json" Link="DesktopState.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
 </Project>

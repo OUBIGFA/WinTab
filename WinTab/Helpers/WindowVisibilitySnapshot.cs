@@ -13,22 +13,24 @@ internal sealed record WindowVisibilitySnapshot(bool WasLayered, uint ColorKey, 
     private const string TokenProperty = "WinTab.HiddenWindow.Token.v1";
     private const int StateMarker = 0x1000;
 
-    public static WindowVisibilitySnapshot? Capture(nint handle)
+    public static WindowVisibilitySnapshot? Capture(nint handle, IWindowOpacity? opacity = null)
     {
-        var wasLayered = (WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) != 0;
+        opacity ??= NativeWindowOpacity.Instance;
+        var style = opacity.ReadStyle(handle);
+        var wasLayered = (style & WinApi.WS_EX_LAYERED) != 0;
         uint colorKey = 0, flags = WinApi.LWA_ALPHA;
         byte alpha = 255;
-        if (wasLayered && (!WinApi.GetLayeredWindowAttributes(handle, out colorKey, out alpha, out flags) ||
+        if (wasLayered && (!opacity.TryRead(handle, out colorKey, out alpha, out flags) ||
             flags == 0 || (flags & ~3u) != 0))
         {
             Trace.TraceError($"Could not capture window opacity: {handle}");
             return null;
         }
         return new WindowVisibilitySnapshot(wasLayered, colorKey, alpha, flags, Random.Shared.Next(1, int.MaxValue),
-            WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & TaskbarStyleMask);
+            style & TaskbarStyleMask);
     }
 
-    public static WindowVisibilitySnapshot? Read(nint handle)
+    public static WindowVisibilitySnapshot? Read(nint handle, IWindowOpacity? opacity = null)
     {
         var token = WinApi.GetProp(handle, TokenProperty);
         var state = WinApi.GetProp(handle, StateProperty).ToInt64();
@@ -41,7 +43,7 @@ internal sealed record WindowVisibilitySnapshot(bool WasLayered, uint ColorKey, 
         var savedStyle = WinApi.GetProp(handle, TaskbarStyleProperty).ToInt64();
         // Older concealments did not alter these style bits, so their current bits are the original ones.
         var taskbarStyle = (savedStyle & ~TaskbarStyleMask) == 1
-            ? (int)savedStyle & TaskbarStyleMask : WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & TaskbarStyleMask;
+            ? (int)savedStyle & TaskbarStyleMask : (opacity ?? NativeWindowOpacity.Instance).ReadStyle(handle) & TaskbarStyleMask;
         if (WinApi.GetProp(handle, TokenProperty) != token)
             return null;
         return new WindowVisibilitySnapshot((state & 1) != 0, colorKey, (byte)((state >> 1) & 255), flags, token, taskbarStyle);

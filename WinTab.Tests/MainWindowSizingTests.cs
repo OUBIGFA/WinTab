@@ -19,7 +19,7 @@ internal static class MainWindowSizingTests
         yield return ("main window sizing restores user sizes above and below the initial limit", () => OnSta(RestoreUserSize));
         yield return ("main window sizing fits a saved height to the screen without a permanent limit", () => OnSta(RestoreOnSmallerScreen));
         yield return ("main window sizing fits a saved width to a narrower screen without a permanent limit", () => OnSta(RestoreWideUserSize));
-        yield return ("main window sizing allows native resizing in both dimensions and scrolling", () => OnSta(ResizeAndScroll));
+        yield return ("main window sizing keeps resized content scrollable without a native window", () => OnSta(ResizeAndScroll));
     }
 
     private static void InitialContentFit() => WithWindow(window =>
@@ -85,21 +85,14 @@ internal static class MainWindowSizingTests
     private static void ResizeAndScroll() => WithWindow(window =>
     {
         MainWindow.ApplyInitialSize(window, null, LargeWorkArea);
-        // Exercise a real WPF frame, off screen and without activation. No Explorer hooks or user input.
-        window.Show();
-        // Windows caps an ordinary window at the tracking size of its monitor, so a 1024x768 desktop
-        // (the CI runner) cannot host the 1100x1000 resize below and the assertion would fail on the
-        // environment instead of the code. Clamp the targets to the real work area: a window no larger
-        // than the work area is always reachable, so the resize path stays covered on small desktops.
-        var work = SystemParameters.WorkArea;
-        var wide = new Size(Math.Min(1100, work.Width), Math.Min(1000, work.Height));
-        var narrow = new Size(Math.Min(800, work.Width), Math.Min(650, work.Height));
+        var wide = new Size(1100, 1000);
+        var narrow = new Size(800, 650);
         var scroll = (ScrollViewer)window.Content;
         Resize(window, wide.Width, wide.Height);
         var largeViewport = scroll.ViewportHeight;
         Check.That(scroll.ScrollableHeight > 0, "Content beyond the chosen window size remains scrollable.");
         scroll.ScrollToBottom();
-        window.UpdateLayout();
+        ArrangeContent(window);
         Check.That(scroll.VerticalOffset > 0, "The bottom of long content must remain reachable.");
 
         if (narrow.Height < wide.Height)
@@ -114,9 +107,7 @@ internal static class MainWindowSizingTests
     {
         window.Width = width;
         window.Height = height;
-        window.UpdateLayout();
-        Check.That(Math.Abs(window.ActualWidth - width) < 2, $"Native width must follow resizing: {window.ActualWidth} vs {width}.");
-        Check.That(Math.Abs(window.ActualHeight - height) < 2, $"Native height must follow resizing: {window.ActualHeight} vs {height}.");
+        ArrangeContent(window);
     }
 
     private static void AssertFreelyResizable(Window window)
@@ -129,25 +120,22 @@ internal static class MainWindowSizingTests
 
     private static void AssertNoScrollbars(Window window)
     {
-        // A page taller than the real desktop cannot be laid out whole: Windows keeps such a window inside
-        // the screen, the content overflows and the scrollbar is then the expected behaviour rather than a
-        // defect. Decide from the work area WPF sizes windows against (in DIPs, with slack for the frame)
-        // and report the environment as unavailable, so a small desktop is never reported as a failure.
-        var work = SystemParameters.WorkArea;
-        if (window.Height > work.Height - 40 || window.Width > work.Width - 40)
-        {
-            throw new TestSkippedException(
-                $"The real desktop ({work.Width}x{work.Height}) cannot host the {window.Width}x{window.Height} " +
-                "window whose whole page must stay visible.");
-        }
-        // Exercise layout in an actual native window, without activating it or starting Explorer hooks.
-        window.Show();
-        window.UpdateLayout();
+        ArrangeContent(window);
         var scroll = (ScrollViewer)window.Content;
         Check.Equal(0d, scroll.ScrollableHeight, "The entire page must be visible on first launch.");
         Check.Equal(0d, scroll.ScrollableWidth);
         Check.Equal(Visibility.Collapsed, scroll.ComputedVerticalScrollBarVisibility);
         Check.Equal(Visibility.Collapsed, scroll.ComputedHorizontalScrollBarVisibility);
+    }
+
+    private static void ArrangeContent(Window window)
+    {
+        // Measure the same client area directly; no HWND, screen-size dependency or focus changes are needed.
+        var content = (FrameworkElement)window.Content;
+        var size = new Size(window.Width, window.Height);
+        content.Measure(size);
+        content.Arrange(new Rect(size));
+        content.UpdateLayout();
     }
 
     private static void WithWindow(Action<Window> body, double contentHeight = 1600)

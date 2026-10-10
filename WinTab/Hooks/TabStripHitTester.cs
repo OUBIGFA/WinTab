@@ -26,16 +26,22 @@ internal sealed class TabStripHitTester : IDisposable
     private sealed record TabStripBounds(DrawingRectangle[] TabRects, DrawingRectangle TabRow, RECT WindowRect, long RefreshedAt, WindowIdentity Identity);
 
     /// <summary>Whether the point is on one of the window's tab titles.</summary>
-    public bool IsPointOnTabStrip(DrawingPoint screenPoint, nint explorerWindow)
+    public bool IsPointOnTabStrip(DrawingPoint screenPoint, nint explorerWindow) =>
+        HitTestTab(screenPoint, explorerWindow) == true;
+
+    /// <summary>Null distinguishes a cold/in-flight lookup from a confirmed point outside the tab titles.</summary>
+    public bool? HitTestTab(DrawingPoint screenPoint, nint explorerWindow)
     {
         if (!TryGetWindowRect(explorerWindow, out var windowRect))
             return false;
 
-        if (screenPoint.X < windowRect.Left || screenPoint.X >= windowRect.Right || screenPoint.Y < windowRect.Top)
+        if (screenPoint.X < windowRect.Left || screenPoint.X >= windowRect.Right ||
+            screenPoint.Y < windowRect.Top || screenPoint.Y >= windowRect.Bottom)
             return false;
 
-        return TryGetBounds(explorerWindow, windowRect, out var bounds) &&
-               bounds.TabRects.Any(rectangle => rectangle.Contains(screenPoint));
+        return TryGetBounds(explorerWindow, windowRect, out var bounds)
+            ? bounds.TabRects.Any(rectangle => rectangle.Contains(screenPoint))
+            : null;
     }
 
     /// <summary>The band of the window that holds its tab titles, including the space beside them; false while it is not known yet.</summary>

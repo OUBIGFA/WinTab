@@ -10,7 +10,7 @@ namespace WinTab.Helpers;
 
 public static class ExplorerWindowVisibility
 {
-    private sealed record VisibilityState(WindowIdentity Identity, WindowVisibilitySnapshot Snapshot)
+    private sealed record VisibilityState(WindowIdentity Identity, WindowVisibilitySnapshot Snapshot, IWindowOpacity Opacity)
     {
         public bool Recovering;
         /// <summary>The taskbar button was removed for this concealment; it is not requested again on every re-hide.</summary>
@@ -60,7 +60,7 @@ public static class ExplorerWindowVisibility
 
     internal static void Hide(WindowIdentity identity) => _ = Hide(identity, TaskbarButton.Remove);
 
-    internal static Task Hide(WindowIdentity identity, System.Func<nint, bool> removeButton)
+    internal static Task Hide(WindowIdentity identity, System.Func<nint, bool> removeButton, IWindowOpacity? opacity = null)
     {
         if (!identity.IsCurrent)
             return Task.CompletedTask;
@@ -69,10 +69,11 @@ public static class ExplorerWindowVisibility
             Forget(stale.Identity);
         if (!HiddenWindows.TryGetValue(hWnd, out var state))
         {
-            var snapshot = WindowVisibilitySnapshot.Read(hWnd) ?? WindowVisibilitySnapshot.Capture(hWnd);
+            opacity ??= NativeWindowOpacity.Instance;
+            var snapshot = WindowVisibilitySnapshot.Read(hWnd, opacity) ?? WindowVisibilitySnapshot.Capture(hWnd, opacity);
             if (snapshot == null)
                 return Task.CompletedTask;
-            state = HiddenWindows.GetOrAdd(hWnd, new VisibilityState(identity, snapshot));
+            state = HiddenWindows.GetOrAdd(hWnd, new VisibilityState(identity, snapshot, opacity));
         }
         lock (state)
         {
@@ -83,11 +84,11 @@ public static class ExplorerWindowVisibility
                 Trace.TraceError($"Window recovery record could not be saved; the source was not hidden: {hWnd}");
                 return Task.CompletedTask;
             }
-            UpdateLayeredStyle(hWnd, remove: false);
-            WinApi.SetLayeredWindowAttributes(hWnd, 0, 0, WinApi.LWA_ALPHA);
+            UpdateLayeredStyle(hWnd, remove: false, state.Opacity);
+            state.Opacity.TryWrite(hWnd, 0, 0, WinApi.LWA_ALPHA);
             // Newer taskbars may acknowledge DeleteTab without removing the button. Exclude the
             // concealed frame natively as well; the persisted snapshot owns only these two style bits.
-            SetTaskbarStyle(hWnd, 0x80); // WS_EX_TOOLWINDOW, without WS_EX_APPWINDOW
+            SetTaskbarStyle(hWnd, 0x80, state.Opacity); // WS_EX_TOOLWINDOW, without WS_EX_APPWINDOW
             // Never call Explorer's taskbar COM from the WinEvent thread, or hold the opacity lock
             // across it. A busy taskbar must not delay concealing this frame or the next one.
             if (!state.ButtonRemoved && !state.ButtonRemovalPending)
@@ -153,18 +154,21 @@ public static class ExplorerWindowVisibility
         return task;
     }
 
-    public static bool Restore(nint hWnd, bool removeCache = true)
+    public static bool Restore(nint hWnd, bool removeCache = true) =>
+        Restore(hWnd, removeCache, NativeWindowOpacity.Instance, TaskbarButton.Add);
+
+    internal static bool Restore(nint hWnd, bool removeCache, IWindowOpacity opacity, Func<nint, bool> addButton)
     {
         if (HiddenWindows.TryGetValue(hWnd, out var state))
-            return Restore(state.Identity, removeCache);
-        var snapshot = WindowVisibilitySnapshot.Read(hWnd);
+            return Restore(state.Identity, removeCache, addButton);
+        var snapshot = WindowVisibilitySnapshot.Read(hWnd, opacity);
         if (snapshot == null)
             return false;
         var identity = WindowIdentity.Capture(hWnd);
         if (!identity.IsCurrent)
             return false;
-        HiddenWindows.TryAdd(hWnd, new VisibilityState(identity, snapshot));
-        return Restore(identity, removeCache);
+        HiddenWindows.TryAdd(hWnd, new VisibilityState(identity, snapshot, opacity));
+        return Restore(identity, removeCache, addButton);
     }
 
     internal static bool Restore(WindowIdentity identity, bool removeCache = true) =>
@@ -186,8 +190,8 @@ public static class ExplorerWindowVisibility
             state.Recovering = true;
             bool restored;
             var snapshot = state.Snapshot;
-            var wasToolWindow = (WinApi.GetWindowLong(identity.Handle, WinApi.GWL_EXSTYLE) & 0x80) != 0;
-            if (!SetTaskbarStyle(identity.Handle, snapshot.TaskbarStyle))
+            var wasToolWindow = (state.Opacity.ReadStyle(identity.Handle) & 0x80) != 0;
+            if (!SetTaskbarStyle(identity.Handle, snapshot.TaskbarStyle, state.Opacity))
                 return false;
             if (wasToolWindow && (snapshot.TaskbarStyle & 0x80) == 0 && WinApi.IsWindowVisible(identity.Handle))
             {
@@ -200,14 +204,14 @@ public static class ExplorerWindowVisibility
             }
             if (snapshot.WasLayered)
             {
-                UpdateLayeredStyle(identity.Handle, remove: false);
-                restored = WinApi.SetLayeredWindowAttributes(identity.Handle, snapshot.ColorKey, snapshot.Alpha, snapshot.Flags);
+                UpdateLayeredStyle(identity.Handle, remove: false, state.Opacity);
+                restored = state.Opacity.TryWrite(identity.Handle, snapshot.ColorKey, snapshot.Alpha, snapshot.Flags);
             }
             else
             {
-                WinApi.SetLayeredWindowAttributes(identity.Handle, 0, 255, WinApi.LWA_ALPHA);
-                UpdateLayeredStyle(identity.Handle, remove: true);
-                restored = (WinApi.GetWindowLong(identity.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0;
+                state.Opacity.TryWrite(identity.Handle, 0, 255, WinApi.LWA_ALPHA);
+                UpdateLayeredStyle(identity.Handle, remove: true, state.Opacity);
+                restored = (state.Opacity.ReadStyle(identity.Handle) & WinApi.WS_EX_LAYERED) == 0;
             }
             if (!restored)
                 return false;
@@ -258,25 +262,28 @@ public static class ExplorerWindowVisibility
         }
     }
 
-    private static bool SetTaskbarStyle(nint handle, int taskbarStyle)
+    private static bool SetTaskbarStyle(nint handle, int taskbarStyle, IWindowOpacity opacity)
     {
-        var style = WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE);
+        var style = opacity.ReadStyle(handle);
         var restored = (style & ~WindowVisibilitySnapshot.TaskbarStyleMask) | taskbarStyle;
         if (style != restored)
-            WinApi.SetWindowLong(handle, WinApi.GWL_EXSTYLE, restored);
-        return (WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WindowVisibilitySnapshot.TaskbarStyleMask) == taskbarStyle;
+            opacity.WriteStyle(handle, restored);
+        return (opacity.ReadStyle(handle) & WindowVisibilitySnapshot.TaskbarStyleMask) == taskbarStyle;
     }
 
-    public static void UpdateLayeredStyle(nint hWnd, bool remove)
+    public static void UpdateLayeredStyle(nint hWnd, bool remove) =>
+        UpdateLayeredStyle(hWnd, remove, NativeWindowOpacity.Instance);
+
+    internal static void UpdateLayeredStyle(nint hWnd, bool remove, IWindowOpacity opacity)
     {
-        var exStyle = WinApi.GetWindowLong(hWnd, WinApi.GWL_EXSTYLE);
+        var exStyle = opacity.ReadStyle(hWnd);
         var isLayered = (exStyle & WinApi.WS_EX_LAYERED) != 0;
 
         if (remove && isLayered)
-            WinApi.SetWindowLong(hWnd, WinApi.GWL_EXSTYLE, exStyle & ~WinApi.WS_EX_LAYERED);
+            opacity.WriteStyle(hWnd, exStyle & ~WinApi.WS_EX_LAYERED);
 
         if (!remove && !isLayered)
-            WinApi.SetWindowLong(hWnd, WinApi.GWL_EXSTYLE, exStyle | WinApi.WS_EX_LAYERED);
+            opacity.WriteStyle(hWnd, exStyle | WinApi.WS_EX_LAYERED);
     }
 
 }

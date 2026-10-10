@@ -13,13 +13,13 @@ using WinTab.UI.Views.Controls;
 
 namespace WinTab.UI.Views;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, WinTab.UI.Desktop.IApplicationUi
 {
     private const int WM_ENTERSIZEMOVE = 0x0231;
     private const int WM_EXITSIZEMOVE = 0x0232;
 
     private readonly HookManager _hookManager;
-    internal System.Threading.Tasks.Task OpenRecycleBinAsync() => _hookManager.OpenRecycleBinAsync();
+    public System.Threading.Tasks.Task OpenRecycleBinAsync() => _hookManager.OpenRecycleBinAsync();
     private readonly SystemTrayIcon _trayIcon;
     private nint _handle;
     private Size _sizeAtMoveStart;

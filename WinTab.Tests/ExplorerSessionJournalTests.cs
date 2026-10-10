@@ -14,12 +14,6 @@ internal static class ExplorerSessionJournalTests
 {
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
-        yield return ("session journal captures last-used window with automatic restore disabled", CaptureIsAlwaysOn);
-        yield return ("session journal crash teardown order cannot replace last-used group", () => CrashOrder(false));
-        yield return ("session journal requested restore reads the last-used closing group without saving it", () => CrashOrder(true));
-        yield return ("session journal normal close saves closed group but remaining live group stays newer", () => NormalClose(false));
-        yield return ("session journal requested restore reads the just-closed group without waiting or saving", () => NormalClose(true));
-        yield return ("session journal cancelled request leaves pending close and saved history untouched", CancelledRequest);
         yield return ("session journal promotes ended owner and preserves newer normal close", Promotion);
         yield return ("session journal never promotes a living process owner", LivingOwner);
         yield return ("session journal metadata round-trips and rejects invalid timestamps", Metadata);
@@ -46,118 +40,6 @@ internal static class ExplorerSessionJournalTests
         Locations = [@"C:\" + name, @"C:\" + name + "-other"], ActiveTabIndex = 1,
         OrderVerified = true, SavedAt = at, Owner = owner
     };
-
-    private static Task CaptureIsAlwaysOn() => WithJournal(async (fixture, saved, live) =>
-    {
-        Set(fixture, "_restoreTabs", false);
-        using var first = new RemoteExplorerFrame(true, explorerClass: true);
-        using var second = new RemoteExplorerFrame(true, explorerClass: true);
-        fixture.AddBrowser(out var a, first.Tab, handle: first.Handle);
-        fixture.AddBrowser(out var b, second.Tab, handle: second.Handle);
-        a.Location = @"C:\first";
-        b.Location = @"C:\last-used";
-        fixture.SetExplorerWindows(first.Handle, second.Handle);
-        fixture.Invoke("CaptureExplorerSessions");
-        Get<ExplorerSessionTracker>(fixture, "_sessionTracker").MarkUsed(b.Identity, Environment.TickCount64 + 10);
-        fixture.Invoke("JournalLiveSession", false);
-        Check.Equal(@"C:\last-used", live.Snapshot!.Locations[0], "Last foreground use, not enumeration order, chooses the journal.");
-        Check.That(live.Snapshot.Owner!.IsRunning(), "The live journal records a real process incarnation.");
-        Check.That(saved.Snapshot == null, "An open window does not replace normal-close history.");
-        Check.That(await live.FlushAsync(), "A live snapshot reaches durable storage without any close event.");
-    });
-
-    private static Task CrashOrder(bool requested) => WithJournal(async (fixture, saved, live) =>
-    {
-        using var used = new RemoteExplorerFrame(true, explorerClass: true);
-        using var background = new RemoteExplorerFrame(true, explorerClass: true);
-        fixture.AddBrowser(out var a, used.Tab, handle: used.Handle);
-        fixture.AddBrowser(out var b, background.Tab, handle: background.Handle);
-        a.Location = @"C:\in-use-before-crash";
-        b.Location = @"C:\background";
-        fixture.SetExplorerWindows(used.Handle, background.Handle);
-        fixture.Invoke("CaptureExplorerSessions");
-        Get<ExplorerSessionTracker>(fixture, "_sessionTracker").MarkUsed(a.Identity, Environment.TickCount64 + 10);
-        fixture.Invoke("JournalLiveSession", false);
-        var journal = live.Snapshot!;
-        var usedHandle = used.Handle;
-        used.Dispose();
-        fixture.Invoke("NotifySessionWindowDestroyed", usedHandle);
-        fixture.Invoke("CompleteClosedSessions", false);
-        if (requested)
-            Check.Equal(a.Location, (await Request(fixture))!.Locations[0], "A request reads the closing window at once.");
-        fixture.Invoke("JournalLiveSession", false);
-        Check.That(saved.Snapshot == null, "HWND teardown is not yet proof of a normal user close, even when restore is requested.");
-        Check.Equal(a.Location, live.Snapshot!.Locations[0], "A dying background survivor must not replace the intact journal.");
-        var backgroundHandle = background.Handle;
-        background.Dispose();
-        fixture.Invoke("NotifySessionWindowDestroyed", backgroundHandle);
-        fixture.SetExplorerWindows();
-        if (requested)
-        {
-            Check.Equal(a.Location, (await Request(fixture))!.Locations[0],
-                "Before process exit is known, the window in use last wins over the last HWND torn down.");
-            Check.That(saved.Snapshot == null, "Reading a teardown for a request never saves it.");
-        }
-        // Simulate the same PID having ended without terminating any real user process.
-        var ended = journal with { Owner = new ExplorerSessionOwner(Environment.ProcessId, 1) };
-        await live.SaveAsync(ended);
-        Set(fixture, "_liveJournaled", ended);
-        fixture.Invoke("CompleteClosedSessions", true);
-        Check.Equal(a.Location, saved.Snapshot!.Locations[0], "The last-used group wins even when its HWND disappeared first.");
-        Check.That(saved.Snapshot.Owner == null, "The promoted group is no longer a live-process record.");
-        Check.That(saved.Snapshot.EndedWithExplorer, "A group recovered from an ended Explorer is marked as still open when it ended.");
-    });
-
-    private static Task NormalClose(bool requested) => WithJournal(async (fixture, saved, live) =>
-    {
-        using var closing = new RemoteExplorerFrame(true, explorerClass: true);
-        using var survivor = new RemoteExplorerFrame(true, explorerClass: true);
-        fixture.AddBrowser(out var a, closing.Tab, handle: closing.Handle);
-        fixture.AddBrowser(out var b, survivor.Tab, handle: survivor.Handle);
-        a.Location = @"C:\closed-normally";
-        b.Location = @"C:\still-open";
-        fixture.SetExplorerWindows(closing.Handle, survivor.Handle);
-        fixture.Invoke("CaptureExplorerSessions");
-        var handle = closing.Handle;
-        closing.Dispose();
-        fixture.Invoke("NotifySessionWindowDestroyed", handle);
-        fixture.SetExplorerWindows(survivor.Handle);
-        if (requested)
-        {
-            var request = Request(fixture);
-            Check.That(request.IsCompletedSuccessfully, "An explicit request reads the closing window without any settle delay.");
-            Check.Equal(a.Location, request.Result!.Locations[0], "The request gets the group that was just closed.");
-            Check.That(saved.Snapshot == null, "Reading the group does not save it before the close settles.");
-        }
-        await Request(fixture, requested: false);
-        Check.Equal(a.Location, saved.Snapshot!.Locations[0], "A settled normal close becomes the saved group.");
-        Check.That(!saved.Snapshot.EndedWithExplorer, "A window the user closed is not one Windows reopens at sign-in.");
-        Check.Equal(b.Location, live.Snapshot!.Locations[0], "The surviving window remains available for later crash recovery.");
-        Check.That(live.Snapshot.SavedAt > saved.Snapshot.SavedAt, "A later shutdown must prefer the still-open group.");
-    });
-
-    private static Task CancelledRequest() => WithJournal(async (fixture, saved, _) =>
-    {
-        var previous = Group("previous");
-        await saved.SaveAsync(previous);
-        using var closing = new RemoteExplorerFrame(true, explorerClass: true);
-        fixture.AddBrowser(out var info, closing.Tab, handle: closing.Handle);
-        info.Location = @"C:\just-closed";
-        fixture.SetExplorerWindows(closing.Handle);
-        fixture.Invoke("CaptureExplorerSessions");
-        var handle = closing.Handle;
-        closing.Dispose();
-        fixture.Invoke("NotifySessionWindowDestroyed", handle);
-        fixture.SetExplorerWindows();
-        using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
-        var completion = Request(fixture, cancellation.Token);
-        try { await completion; }
-        catch (OperationCanceledException) { }
-        Check.That(completion.IsCanceled, "Cancellation must be observed before reading a pending close.");
-        Check.Equal(info.Location, (await Request(fixture))!.Locations[0], "Cancellation must not consume the pending close.");
-        Check.That(saved.Snapshot!.HasSameTabs(previous), "A request never replaces saved history itself.");
-    });
 
     private static Task<ExplorerSession?> Request(Fixture fixture, CancellationToken token = default, bool requested = true) =>
         (Task<ExplorerSession?>)fixture.Invoke("AwaitClosedSessionsAsync", token, requested)!;

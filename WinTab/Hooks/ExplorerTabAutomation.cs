@@ -123,32 +123,59 @@ internal static class ExplorerTabAutomation
     }
 
     /// <summary>
-    /// Prepare the exact tab's close button while it is still active, select its MRU successor, then close
-    /// the original tab in the background. Keeping both operations on this worker avoids an adjacent-tab flash.
+    /// Prepare the exact tab's close button, select its MRU successor when known, then close the original
+    /// tab. Keeping both operations on this worker avoids an adjacent-tab flash and never replays a mouse
+    /// click at coordinates whose owner could change during layout. No live UIA object leaves this call.
     /// </summary>
-    public static bool TryCloseTabReturningTo(nint window, string closingId, string returnId, Func<bool> isCurrent)
+    public static bool TryCloseTabReturningTo(nint window, string closingId, string? returnId, Func<bool> isCurrent)
     {
-        if (string.IsNullOrEmpty(closingId) || string.IsNullOrEmpty(returnId) || closingId == returnId) return false;
+        if (string.IsNullOrEmpty(closingId) || closingId == returnId) return false;
         var control = FindTabControl(window);
         if (control == null) return false;
         AutomationElement? closing = null, successor = null;
-        foreach (AutomationElement item in control.FindAll(TreeScope.Descendants, TabItemCondition))
+        // Bulk-fetch identities instead of one cross-process GetRuntimeId call per tab. Full references
+        // are intentional: unlike read-only session snapshots, these elements must still support actions.
+        var cache = new CacheRequest { TreeScope = TreeScope.Element, AutomationElementMode = AutomationElementMode.Full };
+        cache.Add(AutomationElement.RuntimeIdProperty);
+        using (cache.Activate())
         {
-            var id = string.Join(".", item.GetRuntimeId());
-            if (id == closingId) closing = item;
-            if (id == returnId) successor = item;
+            foreach (AutomationElement item in control.FindAll(TreeScope.Descendants, TabItemCondition))
+            {
+                if (item.GetCachedPropertyValue(AutomationElement.RuntimeIdProperty) is not int[] runtimeId) continue;
+                var id = string.Join(".", runtimeId);
+                if (id == closingId) closing = item;
+                if (id == returnId) successor = item;
+            }
         }
-        var button = closing?.FindFirst(TreeScope.Descendants, CloseButtonCondition);
-        if (button == null || successor == null ||
-            !button.TryGetCurrentPattern(InvokePattern.Pattern, out var closePattern) ||
-            !successor.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var returnPattern) || !isCurrent())
+        var buttonCache = new CacheRequest { TreeScope = TreeScope.Element, AutomationElementMode = AutomationElementMode.Full };
+        buttonCache.Add(InvokePattern.Pattern);
+        AutomationElement? button;
+        using (buttonCache.Activate())
+            button = closing?.FindFirst(TreeScope.Descendants, CloseButtonCondition);
+        if (button == null || !button.TryGetCachedPattern(InvokePattern.Pattern, out var closePattern)) return false;
+        var close = (InvokePattern)closePattern;
+        if (returnId == null)
+        {
+            if (!isCurrent()) return false;
+            close.Invoke();
+            return true;
+        }
+        if (successor == null || !successor.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var returnPattern))
             return false;
         var selection = (SelectionItemPattern)returnPattern;
-        selection.Select();
+        return SelectReturnTabThenClose(isCurrent, selection.Select, () => selection.Current.IsSelected, close.Invoke);
+    }
+
+    /// <summary>Keep selection and close ordered, with ownership rechecked across the remote selection call.</summary>
+    internal static bool SelectReturnTabThenClose(Func<bool> isCurrent, Action selectReturnTab,
+        Func<bool> isReturnTabSelected, Action closeOriginalTab)
+    {
+        if (!isCurrent()) return false;
+        selectReturnTab();
         // The tab being closed must already be in the background when the close reaches the application.
         // Invoke the captured tab-specific button; cursor coordinates can change when selection changes widths.
-        if (!selection.Current.IsSelected || !isCurrent()) return false;
-        ((InvokePattern)closePattern).Invoke();
+        if (!isReturnTabSelected() || !isCurrent()) return false;
+        closeOriginalTab();
         return true;
     }
 

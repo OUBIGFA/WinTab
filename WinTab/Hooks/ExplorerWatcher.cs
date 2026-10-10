@@ -51,6 +51,7 @@ public partial class ExplorerWatcher : IHook
     /// <summary>Windows' "Restore previous folder windows at logon" option, read when a restore needs it.</summary>
     private readonly Func<bool> _restoresFolderWindowsAtSignIn;
     private readonly Func<IEnumerable<nint>> _getExplorerWindows = ExplorerWindowDiscovery.GetAllExplorerWindows;
+    private readonly IWindowOpacity _windowOpacity = NativeWindowOpacity.Instance;
     private readonly ExplorerLaunchLocationResolver _locationResolver = new();
     private readonly ProcessWatcher _processWatcher;
     private int _mainExplorerProcessId;

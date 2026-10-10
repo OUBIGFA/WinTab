@@ -133,6 +133,12 @@ internal static class UiStrings
     public static string UpdateNoMatchingInstaller => Pick("发现新版本，但未找到适配安装包", "New version found, but no compatible installer");
     public static string UpdateOpening => Pick("发现新版本，正在准备更新", "Update found, opening updater");
 
+    // Desktop renderer errors are shown by the resident process when the UI cannot report them itself.
+    public static string DesktopUiMissing => Pick("界面文件缺失，请重新安装 WinTab，后台功能仍在运行", "The interface file is missing, reinstall WinTab; background features are still running");
+    public static string DesktopUiFailed => Pick("界面未能启动，请确认已安装 Microsoft Edge WebView2 运行时后重试，后台功能仍在运行", "The interface could not start, check the Microsoft Edge WebView2 Runtime and try again; background features are still running");
+    public static string DesktopCommandFailed => Pick("操作未完成，请重试或打开日志查看原因", "The action did not complete, try again or open the logs");
+    public static string DesktopStorageFailed => Pick("设置未能写入磁盘，请检查目录权限或可用空间", "Settings could not be saved, check folder permissions and available space");
+
     // Title bar buttons
     public static string LanguageToggleTooltip => IsChinese ? "Switch to English" : "切换到中文";
     public static string ThemeToggleTooltip(bool isDarkTheme) =>

@@ -141,14 +141,27 @@ internal static class HookManagerTests
     private static Task WithSessionShortcuts(Func<ExplorerTabLifetimeTests.Fixture, HookManager, ExplorerShortcutDispatch, Task> body) =>
         ExplorerTabLifetimeTests.WithFixture(async fixture =>
         {
-            // Avoid HookManager's real Explorer watcher and the user's persisted settings. Only the owned
-            // keyboard hook is configured; its dispatcher is exercised directly, never with desktop input.
-            using var shortcuts = new ExplorerSessionShortcutHook(_ => { });
+            // Exercise configuration and dispatch without installing a process-wide keyboard hook.
+            using var shortcuts = new ShortcutConfiguration();
             var manager = (HookManager)RuntimeHelpers.GetUninitializedObject(typeof(HookManager));
             Set(manager, "_explorerWatcher", fixture.Watcher);
             Set(manager, "_sessionShortcuts", shortcuts);
-            await body(fixture, manager, Get<ExplorerShortcutDispatch>(shortcuts, "_dispatch"));
+            await body(fixture, manager, shortcuts.Dispatch);
         });
+
+    private sealed class ShortcutConfiguration : IExplorerSessionShortcutHook
+    {
+        public ExplorerShortcutDispatch Dispatch { get; } = new();
+        public uint SettingsUiProcessId { get; set; }
+        public event Action<string>? Failed { add { } remove { } }
+        public void Configure(ExplorerShortcut? group, ExplorerShortcut? tab)
+        {
+            Dispatch.Group = group;
+            Dispatch.Tab = tab;
+            if (group == null && tab == null) Dispatch.Reset();
+        }
+        public void Dispose() { }
+    }
 
     private static T Get<T>(object owner, string name) =>
         (T)owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;

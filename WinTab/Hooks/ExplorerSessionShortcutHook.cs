@@ -9,8 +9,16 @@ using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
+/// <summary>Configuration boundary between recovery settings and the native keyboard observer.</summary>
+internal interface IExplorerSessionShortcutHook : IDisposable
+{
+    event Action<string>? Failed;
+    uint SettingsUiProcessId { get; set; }
+    void Configure(ExplorerShortcut? group, ExplorerShortcut? tab);
+}
+
 /// <summary>Global group recovery and Explorer-only tab recovery, without reserving unrelated browser shortcuts.</summary>
-internal sealed class ExplorerSessionShortcutHook : IDisposable
+internal sealed class ExplorerSessionShortcutHook : IExplorerSessionShortcutHook
 {
     private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
     private readonly HookProc _callback;
@@ -19,6 +27,12 @@ internal sealed class ExplorerSessionShortcutHook : IDisposable
     private nint _hook;
     private bool _disposed;
     public event Action<string>? Failed;
+
+    // The web renderer has its own process and reports DOM focus asynchronously. Let all chords
+    // reach that settings window to avoid a click-to-key race; its recovery buttons remain available.
+    public uint SettingsUiProcessId { get; set; }
+    internal static bool SuppressForSettings(uint foreground, uint renderer, bool wpfTextInput) =>
+        wpfTextInput || (renderer != 0 && foreground == renderer);
 
     public ExplorerSessionShortcutHook(Action<SessionAction> execute)
     {
@@ -58,8 +72,9 @@ internal sealed class ExplorerSessionShortcutHook : IDisposable
                 (Down(0x5B) || Down(0x5C) ? ShortcutModifiers.Windows : 0);
             // A shortcut field must receive the chord being entered, including the currently saved one.
             WinApi.GetWindowThreadProcessId(foreground, out var processId);
-            var editing = processId == (uint)Environment.ProcessId &&
-                Keyboard.FocusedElement is TextBoxBase { IsKeyboardFocusWithin: true };
+            var editing = SuppressForSettings(processId, SettingsUiProcessId,
+                processId == (uint)Environment.ProcessId &&
+                Keyboard.FocusedElement is TextBoxBase { IsKeyboardFocusWithin: true });
             var consumed = _dispatch.Handle((int)key.Key, down, modifiers, explorer, (key.Flags & 0x12) != 0,
                 out var action, suppressCommands: editing);
             if (action is { } command) QueueCommand(command, foreground);

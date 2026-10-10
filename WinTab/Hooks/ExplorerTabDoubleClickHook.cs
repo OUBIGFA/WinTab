@@ -14,20 +14,21 @@ public sealed class ExplorerTabDoubleClickHook : IHook
 {
     private const int SM_CXDOUBLECLK = 36;
     private const int SM_CYDOUBLECLK = 37;
+    // Bound stale requests, not the interval between gestures. There is no cooldown after delivery.
+    private const int CloseRequestLifetimeMs = 500;
 
     private readonly TabStripHitTester _tabStrip;
     private readonly ExplorerWatcher _watcher;
     private readonly CoalescingAsyncWork _activationWork;
-    private readonly SemaphoreSlim _activationGate = new(1);
+    private readonly object _historyGate = new();
     private readonly Dictionary<WindowIdentity, TabActivationHistory> _activationHistory = [];
     private readonly LowLevelMouseHook _lowLevelMouseHook;
     private readonly ExplorerTabDoubleClickCloseController _controller;
+    private readonly ExplorerTabCloseQueue _closeQueue;
     private readonly Func<bool> _isEnabled;
     private readonly Func<bool> _includeNotepad;
-    private readonly object _closeQueueGate = new();
-    private Task _closeQueueTail = Task.CompletedTask;
     private int _generation;
-    private int _clickSequence;
+    private int _closeRevision;
     private int _historyGeneration;
     private volatile bool _active;
     private bool _disposed;
@@ -40,14 +41,17 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         _isEnabled = isEnabled ?? (() => true);
         _includeNotepad = includeNotepad ?? (() => true);
         _controller = new ExplorerTabDoubleClickCloseController(new HookEnvironment(_tabStrip, () => _active && _isEnabled(), _includeNotepad));
+        _closeQueue = new ExplorerTabCloseQueue(new CloseEnvironment(this));
         _lowLevelMouseHook = new LowLevelMouseHook
         {
             AddKeyboardKeys = true,
-            Handling = true
+            Handling = true,
+            GenerateMouseMoveEvents = true
         };
         _lowLevelMouseHook.Down += OnMouseDown;
         _lowLevelMouseHook.Up += OnMouseUp;
-        _lowLevelMouseHook.Wheel += (_, _) => Interlocked.Increment(ref _clickSequence);
+        _lowLevelMouseHook.Move += (_, e) => _controller.HandleMouseMove(e.Position);
+        _lowLevelMouseHook.Wheel += (_, _) => _controller.CancelGesture();
         _watcher.TabActivity += OnTabActivity;
     }
 
@@ -73,12 +77,11 @@ public sealed class ExplorerTabDoubleClickHook : IHook
 
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
-        if (e.CurrentKey is Key.MouseRight or Key.RButton)
-            Interlocked.Increment(ref _clickSequence);
         if (!IsLeftMouse(e))
+        {
+            _controller.CancelGesture();
             return;
-
-        Interlocked.Increment(ref _clickSequence);
+        }
 
         var decision = _controller.HandleLeftMouseDown(e.Position, Environment.TickCount64);
         if (decision.Handled)
@@ -90,7 +93,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         if (!IsLeftMouse(e))
             return;
 
-        var decision = _controller.HandleLeftMouseUp(Environment.TickCount64);
+        var decision = _controller.HandleLeftMouseUp(Environment.TickCount64, e.Position);
         if (decision.Handled)
             e.IsHandled = true;
 
@@ -106,88 +109,30 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         if (!identity.IsCurrent || !WinApi.GetWindowRect(identity.Handle, out var initialRect)) return;
         var generation = Volatile.Read(ref _generation);
         var queuedAt = Environment.TickCount64;
-        var clickSequence = Volatile.Read(ref _clickSequence);
-        bool IsLifetimeCurrent() => _active && _isEnabled() && generation == Volatile.Read(ref _generation) &&
-            Environment.TickCount64 - queuedAt <= 500 && identity.IsCurrent &&
-            ExplorerWindowDiscovery.IsDoubleClickCloseTarget(identity.Handle, _includeNotepad());
-        bool IsCurrent() => IsLifetimeCurrent() &&
+        var interaction = _controller.InteractionVersion;
+        bool CanAct() => _active && _isEnabled() && generation == Volatile.Read(ref _generation) &&
+            Environment.TickCount64 - queuedAt <= CloseRequestLifetimeMs && identity.IsCurrent &&
+            interaction == _controller.InteractionVersion &&
+            ExplorerWindowDiscovery.IsDoubleClickCloseTarget(identity.Handle, _includeNotepad()) &&
+            WinApi.GetForegroundWindow() == identity.Handle &&
             WinApi.GetWindowRect(identity.Handle, out var rect) && rect.Equals(initialRect) &&
-            WinApi.GetCursorPos(out var point) && point == closeRequest.Point &&
-            GetDoubleClickTargetWindowForPoint(point, _includeNotepad()) == identity.Handle;
-        lock (_closeQueueGate)
-        {
-            // Preserve the order of rapid double-clicks. Independent thread-pool work items can otherwise
-            // issue tab closes out of order while Explorer is still rebuilding the tab strip.
-            _closeQueueTail = _closeQueueTail
-                .ContinueWith(_ => ExecuteCloseAsync(closeRequest, IsCurrent,
-                    // Once the close is delivered, moving the pointer is harmless. Only a new action
-                    // or leaving the window cancels returning to the previous tab.
-                    () => IsLifetimeCurrent() && clickSequence == Volatile.Read(ref _clickSequence) &&
-                        WinApi.GetForegroundWindow() == identity.Handle), CancellationToken.None,
-                    TaskContinuationOptions.None, TaskScheduler.Default)
-                .Unwrap();
-        }
+            GetDoubleClickTargetWindowForPoint(closeRequest.Point, _includeNotepad()) == identity.Handle;
+        bool IsCurrent() => CanAct() && WinApi.GetCursorPos(out var point) &&
+            ExplorerTabDoubleClickCloseController.IsWithinDoubleClickDistance(closeRequest.Point, point,
+                WinApi.GetSystemMetrics(SM_CXDOUBLECLK), WinApi.GetSystemMetrics(SM_CYDOUBLECLK));
+
+        Interlocked.Increment(ref _closeRevision);
+        _ = ReportCloseAsync(closeRequest, _closeQueue.QueueAsync(closeRequest, IsCurrent, CanAct), queuedAt);
     }
 
-    internal static async Task<bool> ExecuteCloseWhenCurrentAsync(Func<bool> isCurrent, Action close)
+    private async Task ReportCloseAsync(ExplorerTabCloseRequest request, Task<bool> work, long queuedAt)
     {
-        // Let the suppressed left-up drain, then recheck ownership immediately before synthesizing input.
-        await Task.Delay(10).ConfigureAwait(false);
-        if (!isCurrent()) return false;
-        close();
-        return true;
-    }
-
-    private async Task ExecuteCloseAsync(ExplorerTabCloseRequest closeRequest, Func<bool> isCurrent, Func<bool> canReturn)
-    {
-        await _activationGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!isCurrent())
-            {
-                ExplorerDebugLog.Write("Double-click close expired before reading tabs");
-                return;
-            }
-            var window = closeRequest.ExplorerWindow;
-            var before = ExplorerTabAutomation.ReadSessionTabs(window);
-            // The first click activates a background tab. Notepad can temporarily unpublish its strip
-            // during that activation too; keep the same gesture until its live hit test is available.
-            while (before.Length == 0 && isCurrent())
-            {
-                await Task.Delay(15).ConfigureAwait(false);
-                before = ExplorerTabAutomation.ReadSessionTabs(window);
-            }
-            var closing = before.Where(tab => tab.Bounds.Contains(closeRequest.Point.X, closeRequest.Point.Y)).ToArray();
-            if (closing.Length != 1 || !isCurrent())
-            {
-                ExplorerDebugLog.Write($"Double-click close no longer current after reading {before.Length} tabs hits={closing.Length}");
-                return;
-            }
-            var history = GetHistory(WindowIdentity.Capture(window));
-            history.Observe(before);
-            var returnOrder = history.GetReturnOrder(closing[0].Id);
-            bool delivered;
-            if (returnOrder.Length > 0)
-            {
-                // Drain the native left-up before selecting: it must not reactivate the closing tab.
-                await Task.Delay(10).ConfigureAwait(false);
-                delivered = canReturn() && ExplorerTabAutomation.TryCloseTabReturningTo(window,
-                    closing[0].Id, returnOrder[0], canReturn);
-            }
-            else
-            {
-                delivered = await ExecuteCloseWhenCurrentAsync(isCurrent,
-                    () => MouseSimulator.SendMiddleClick(closeRequest.Point));
-            }
-            if (delivered)
-            {
-                // Only observe completion here. Selecting after the close would expose the native adjacent
-                // tab first; the successor must have been selected before closing the original tab.
-                await ObserveCloseAsync(window, before, closing[0].Id, returnOrder, canReturn);
+            if (await work.ConfigureAwait(false))
                 StatusChanged?.Invoke("Tab close requested");
-            }
             else
-                ExplorerDebugLog.Write($"Double-click close cancelled or exact tab action unavailable hwnd={window}");
+                ExplorerDebugLog.Write($"Double-click close cancelled or exact tab unavailable hwnd={request.ExplorerWindow} elapsed={Environment.TickCount64 - queuedAt}ms");
         }
         catch (Exception exception)
         {
@@ -195,41 +140,11 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         }
         finally
         {
-            _activationGate.Release();
             _activationWork.Request();
-            try
-            {
-                if (ExplorerWindowDiscovery.IsFileExplorerWindow(closeRequest.ExplorerWindow))
-                    _tabStrip.Refresh(closeRequest.ExplorerWindow);
-            }
-            catch
-            {
-                // 忽略刷新失败，后续鼠标事件会重新计算。
-            }
-        }
-    }
-
-    private static async Task ObserveCloseAsync(nint window, ExplorerTabAutomation.Tab[] before,
-        string closingId, string[] order, Func<bool> isCurrent)
-    {
-        if (order.Length == 0) return;
-        while (isCurrent())
-        {
-            var after = ExplorerTabAutomation.ReadSessionTabs(window);
-            if (!isCurrent()) return;
-            if (after.Any(tab => tab.Id == closingId) || after.Length != before.Length - 1 ||
-                after.Count(tab => tab.Selected) != 1)
-            {
-                // Both apps briefly unpublish their tab items while rebuilding the strip after a close.
-                // An empty intermediate read is not confirmation that the surviving tabs disappeared.
-                await Task.Delay(15).ConfigureAwait(false);
-                continue;
-            }
-            var target = TabActivationHistory.FindReturnTab(order, closingId, before, after);
-            ExplorerDebugLog.Write($"Double-click return hwnd={window} targetIndex={Array.FindIndex(after, tab => tab.Id == target)} selectedIndex={Array.FindIndex(after, tab => tab.Selected)} candidates={order.Length}");
-            if (target != null && !after.Any(tab => tab.Id == target && tab.Selected))
-                ExplorerDebugLog.Write($"Double-click return selection not observed hwnd={window}");
-            return;
+            // Keep the last measured geometry usable until the new snapshot arrives. Clearing it after
+            // every close created a blind interval for the next pair, especially at a different position.
+            if (ExplorerWindowDiscovery.IsFileExplorerWindow(request.ExplorerWindow))
+                _tabStrip.ScheduleRefresh(request.ExplorerWindow);
         }
     }
 
@@ -242,24 +157,26 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             _activationWork.Request();
     }
 
-    private async Task ObserveActiveTabsAsync()
+    private Task ObserveActiveTabsAsync()
     {
+        if (!_active || !_isEnabled() || _closeQueue.HasPending) return Task.CompletedTask;
         var generation = Volatile.Read(ref _generation);
-        await _activationGate.WaitAsync().ConfigureAwait(false);
-        try
+        var revision = Volatile.Read(ref _closeRevision);
+        var window = WinApi.GetForegroundWindow();
+        if (!ExplorerWindowDiscovery.IsDoubleClickCloseTarget(window, _includeNotepad())) return Task.CompletedTask;
+        var identity = WindowIdentity.Capture(window);
+        // Never hold the history lock across UIA. A slow passive scan must not use up a close's lifetime.
+        var tabs = ExplorerTabAutomation.ReadSessionTabs(window);
+        lock (_historyGate)
         {
-            if (!_active || !_isEnabled() || generation != Volatile.Read(ref _generation)) return;
-            foreach (var retired in _activationHistory.Keys.Where(window => !window.IsCurrent).ToArray())
+            if (!_active || generation != Volatile.Read(ref _generation) || !identity.IsCurrent ||
+                WinApi.GetForegroundWindow() != window || _closeQueue.HasPending ||
+                revision != Volatile.Read(ref _closeRevision)) return Task.CompletedTask;
+            foreach (var retired in _activationHistory.Keys.Where(key => !key.IsCurrent).ToArray())
                 _activationHistory.Remove(retired);
-            var window = WinApi.GetForegroundWindow();
-            if (!ExplorerWindowDiscovery.IsDoubleClickCloseTarget(window, _includeNotepad())) return;
-            var identity = WindowIdentity.Capture(window);
-            var tabs = ExplorerTabAutomation.ReadSessionTabs(window);
-            if (_active && generation == Volatile.Read(ref _generation) && identity.IsCurrent &&
-                WinApi.GetForegroundWindow() == window)
-                GetHistory(identity).Observe(tabs);
+            GetHistory(identity).Observe(tabs);
         }
-        finally { _activationGate.Release(); }
+        return Task.CompletedTask;
     }
 
     private TabActivationHistory GetHistory(WindowIdentity window)
@@ -299,8 +216,33 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         public int DoubleClickHeight => WinApi.GetSystemMetrics(SM_CYDOUBLECLK);
         public nint ResolveExplorerWindow(Point point) => GetDoubleClickTargetWindowForPoint(point, includeNotepad());
         public bool IsExplorerWindow(nint explorerWindow) => ExplorerWindowDiscovery.IsDoubleClickCloseTarget(explorerWindow, includeNotepad());
-        public bool IsPointOnTabStrip(Point point, nint explorerWindow) => tabStrip.IsPointOnTabStrip(point, explorerWindow);
-        public bool ShouldDeferHitTest(nint window) => ExplorerWindowDiscovery.IsNotepadWindow(window);
+        public bool? IsPointOnTabStrip(Point point, nint explorerWindow)
+        {
+            if (ExplorerWindowDiscovery.IsNotepadWindow(explorerWindow)) return null;
+            var hit = tabStrip.HitTestTab(point, explorerWindow);
+            // A tab may expand into previously empty title-row space during close/selection layout.
+            // Revalidate such a hit off the hook rather than discarding the first pair at its new position.
+            return hit == false && tabStrip.TryGetTabRow(explorerWindow, out var row) && row.Contains(point)
+                ? null : hit;
+        }
+    }
+
+    private sealed class CloseEnvironment(ExplorerTabDoubleClickHook owner) : IExplorerTabCloseEnvironment
+    {
+        public ExplorerTabAutomation.Tab[] ReadTabs(nint window) => ExplorerTabAutomation.ReadSessionTabs(window);
+
+        public string? GetReturnTab(nint window, ExplorerTabAutomation.Tab[] tabs, string closingId)
+        {
+            lock (owner._historyGate)
+            {
+                var history = owner.GetHistory(WindowIdentity.Capture(window));
+                history.Observe(tabs);
+                return history.GetReturnOrder(closingId).FirstOrDefault();
+            }
+        }
+
+        public bool TryCloseTab(nint window, string closingId, string? returnId, Func<bool> isCurrent) =>
+            ExplorerTabAutomation.TryCloseTabReturningTo(window, closingId, returnId, isCurrent);
     }
 
     public void Dispose()

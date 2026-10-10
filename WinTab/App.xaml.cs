@@ -4,6 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Windows.Controls;
+using System.Runtime.InteropServices;
+using WinTab.UI.Desktop;
 using WinTab.UI.Views;
 using WinTab.Helpers;
 using WinTab.Hooks;
@@ -17,7 +19,7 @@ public partial class App : Application
     private Mutex? _mutex;
     private EventWaitHandle? _showMainWindowEvent;
     private EventWaitHandle? _openRecycleBinEvent;
-    private MainWindow? _mainWindow;
+    private IApplicationUi? _applicationUi;
     private bool _isExiting;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -36,11 +38,15 @@ public partial class App : Application
             _showMainWindowEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Constants.ShowMainWindowEventName);
             _openRecycleBinEvent = new EventWaitHandle(false, EventResetMode.AutoReset, Constants.OpenRecycleBinEventName);
 
-            _mainWindow = new MainWindow();
+            // MyGo currently targets Windows x64/arm64; x86 keeps the existing WPF interface.
+            // Do not silently substitute WPF when a 64-bit installation is missing its UI payload.
+            _applicationUi = RuntimeInformation.ProcessArchitecture == Architecture.X86
+                ? new MainWindow()
+                : new DesktopApplication();
             StartShowMainWindowRequestListener();
 
             if (!launchInBackground)
-                _mainWindow.Show();
+                _applicationUi.ShowMainWindow();
             if (openRecycleBin) _openRecycleBinEvent.Set();
 
             return;
@@ -54,7 +60,7 @@ public partial class App : Application
         }
 
         // The process launched by Shell owns the foreground grant; pass it on before signalling the resident app.
-        if (openRecycleBin) AllowSetForegroundWindow(uint.MaxValue);
+        AllowSetForegroundWindow(uint.MaxValue);
         if (!SignalRequest(openRecycleBin ? Constants.OpenRecycleBinEventName : Constants.ShowMainWindowEventName))
         {
             System.Diagnostics.Debug.WriteLine("The resident WinTab instance did not accept the launch request");
@@ -115,9 +121,9 @@ public partial class App : Application
 
                 Dispatcher.InvokeAsync(async () =>
                 {
-                    if (_isExiting || _mainWindow == null) return;
-                    if (request == 0) _mainWindow.ShowMainWindow();
-                    else await _mainWindow.OpenRecycleBinAsync();
+                    if (_isExiting || _applicationUi == null) return;
+                    if (request == 0) _applicationUi.ShowMainWindow();
+                    else await _applicationUi.OpenRecycleBinAsync();
                 });
             }
         })

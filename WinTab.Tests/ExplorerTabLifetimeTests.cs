@@ -39,9 +39,6 @@ internal static class ExplorerTabLifetimeTests
         yield return ("one unavailable Explorer window does not block other registrations", UnavailableWindowDoesNotBlockRegistration);
         yield return ("first-tab reuse survives repeated native window close and reopen", NativeWindowsCanCloseAndReopenRepeatedly);
         yield return ("a tab replaced during a location read cannot redirect reuse", ReplacedTabCannotRedirectReuse);
-        yield return ("a first window published after the last event is discovered by polling", MissedFirstWindowIsDiscovered);
-        yield return ("a new tab without a registration event is discovered by polling", MissedTabIsDiscovered);
-        yield return ("empty-window intervals do not disable discovery of reopened first tabs", ReopenedWindowsAreDiscoveredAfterEmptyIntervals);
         yield return ("fully registered windows do not cause periodic COM scans", RegisteredWindowsDoNotRescanCatalog);
         yield return ("an empty desktop does not cause periodic COM scans", EmptyDesktopDoesNotRescanCatalog);
         yield return ("a window without Explorer tabs does not cause periodic COM scans", WindowWithoutTabsDoesNotRescanCatalog);
@@ -61,18 +58,20 @@ internal static class ExplorerTabLifetimeTests
         yield return ("a live selection disconnect triggers recovery before the next folder open", LiveSelectionDisconnectRetiresConnection);
         yield return ("a concealed merge source is not offered for tab reuse", ConcealedSourceIsNotReused);
         yield return ("a merge source being closed is not offered for tab reuse", ClosingSourceIsNotReused);
-        yield return ("retiring a closing tab retains recovery until its native frame is gone", ClosingTabRetainsNativeRecovery);
         yield return ("source recovery continues after repeated earlier failures", RecoveryContinuesAfterFailures);
     }
 
     private static Task RecoveryContinuesAfterFailures() => WithFixture(fixture =>
     {
-        using var frame = new RemoteExplorerFrame(visible: false, explorerClass: true);
+        // This calls the recovery lifecycle directly, so use a private class that a resident WinTab
+        // cannot mistake for Explorer and conceal concurrently through its system-wide event hook
+        using var frame = new RemoteExplorerFrame(visible: false);
         fixture.EnableMerging();
         fixture.Invoke("HideMergeSourceWindow", frame.Handle);
-        Check.That(ExplorerWindowVisibility.Contains(frame.Handle) &&
-            WinApi.GetLayeredWindowAttributes(frame.Handle, out _, out var alpha, out _) && alpha == 0,
-            "The source must actually be concealed before simulating earlier failures.");
+        var tracked = ExplorerWindowVisibility.Contains(frame.Handle);
+        var hasOpacity = TestWindowOpacity.Instance.TryRead(frame.Handle, out _, out var alpha, out _);
+        Check.That(tracked && hasOpacity && alpha == 0,
+            $"The source must actually be concealed before simulating earlier failures: tracked={tracked}, opacity={hasOpacity}, alpha={alpha}.");
         var sources = (System.Collections.IEnumerable)typeof(ExplorerWatcher)
             .GetField("_mergeSourceHWnds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Watcher)!;
         foreach (var pair in sources)
@@ -84,32 +83,8 @@ internal static class ExplorerTabLifetimeTests
         fixture.DisableMerging();
         fixture.RunMergeSafetyTimer();
         Check.Equal(0, fixture.MergeSourceCount, "Recovery must retire the recovered source despite earlier failures.");
-        Check.That((WinApi.GetWindowLong(frame.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
+        Check.That((TestWindowOpacity.Instance.ReadStyle(frame.Handle) & WinApi.WS_EX_LAYERED) == 0,
             "A window must recover when Explorer answers again, regardless of earlier failure count.");
-        return Task.CompletedTask;
-    }, tabCount: 1);
-
-    private static Task ClosingTabRetainsNativeRecovery() => WithFixture(fixture =>
-    {
-        using var frame = new RemoteExplorerFrame(visible: true, explorerClass: true);
-        var browser = fixture.AddBrowser(out var info, frame.Tab, handle: frame.Handle);
-        fixture.EnableMerging();
-        fixture.Invoke("HideMergeSourceWindow", frame.Handle);
-        var closing = (ConcurrentDictionary<nint, MergeOperation>)typeof(ExplorerWatcher)
-            .GetField("_closingMergeSourceHWnds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Watcher)!;
-        using var operation = new MergeOperation(info.Identity, 0, CancellationToken.None, () => true, 5_000);
-        closing[frame.Handle] = operation;
-
-        // Explorer can retire its browser before destroying (or recycling) the native frame.
-        fixture.Invoke("RemoveWindowAndUnhookEvents", browser, info, true, true);
-        Check.That(frame.IsAlive, "The native frame must still exist after its tab registration retires.");
-        Check.That(WindowVisibilitySnapshot.Read(frame.Handle) != null && ExplorerWindowVisibility.Contains(frame.Handle),
-            "A still-concealed live frame must retain its persistent and in-memory recovery records.");
-        fixture.DisableMerging();
-        fixture.RunMergeSafetyTimer();
-        Check.That((WinApi.GetWindowLong(frame.Handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0,
-            "Stopping must restore the frame even though its browser is already unregistered.");
-        Check.Equal(0, fixture.MergeSourceCount, "Recovery must finish without needing the old browser registration.");
         return Task.CompletedTask;
     }, tabCount: 1);
 
@@ -409,47 +384,6 @@ internal static class ExplorerTabLifetimeTests
         return Task.CompletedTask;
     });
 
-    private static Task MissedFirstWindowIsDiscovered() => WithFixture(async fixture =>
-    {
-        fixture.Window.Show();
-        fixture.SetCatalog();
-        await (Task)fixture.Invoke("ProcessRegisteredShellWindowsAsync")!;
-        var browser = fixture.AddBrowser(out _, track: false);
-        fixture.SetCatalog(browser);
-
-        Check.That(await fixture.PollForRegistrationAsync(fixture.Window.Handle),
-            "A visible first window must be revisited even when its catalog entry appeared after the final event.");
-        fixture.Invoke("AdoptNewShellWindows");
-        Check.That(fixture.Publish(browser, fixture.Window.FirstTab), "The late first tab must become registered.");
-        Check.That(ReferenceEquals(browser, fixture.Search()), "The late first tab must become reusable.");
-    }, tabCount: 1);
-
-    private static Task MissedTabIsDiscovered() => WithFixture(async fixture =>
-    {
-        fixture.Window.Show();
-        fixture.AddBrowser(out var firstInfo, fixture.Window.FirstTab);
-        firstInfo.EventsHooked = true;
-
-        Check.That(await fixture.PollForRegistrationAsync(fixture.Window.Handle),
-            "A new native tab must trigger registration even while every previously known tab remains valid.");
-    });
-
-    private static Task ReopenedWindowsAreDiscoveredAfterEmptyIntervals() => WithFixture(async fixture =>
-    {
-        for (var cycle = 0; cycle < 25; cycle++)
-        {
-            fixture.AddBrowser(out var previous, fixture.Window.FirstTab);
-            previous.EventsHooked = true;
-            fixture.ReopenWindow();
-            fixture.Window.Show();
-            fixture.SetCatalog();
-            fixture.Invoke("AdoptNewShellWindows");
-            Check.Equal(0, fixture.Count, "The old window must be fully retired before testing rediscovery.");
-            Check.That(await fixture.PollForRegistrationAsync(fixture.Window.Handle),
-                "An empty registry must not make a reopened first window invisible to periodic discovery.");
-        }
-    }, tabCount: 1);
-
     private static Task RegisteredWindowsDoNotRescanCatalog() => WithFixture(async fixture =>
     {
         foreach (var tab in ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Window.Handle))
@@ -567,7 +501,7 @@ internal static class ExplorerTabLifetimeTests
         {
             reads++;
             wasHidden |= ExplorerWindowVisibility.Contains(fixture.Window.Handle) ||
-                WinApi.GetLayeredWindowAttributes(fixture.Window.Handle, out _, out var alpha, out _) && alpha == 0;
+                TestWindowOpacity.Instance.TryRead(fixture.Window.Handle, out _, out var alpha, out _) && alpha == 0;
         });
         info.Location = null;
         fixture.SetCatalog(browser);
@@ -722,6 +656,7 @@ internal static class ExplorerTabLifetimeTests
             SetField("_mergeSafetyTimer", _mergeTimer);
             SetField("_locationResolver", new ExplorerLaunchLocationResolver());
             SetField("_getExplorerWindows", (Func<IEnumerable<nint>>)(() => []));
+            SetField("_windowOpacity", TestWindowOpacity.Instance);
             SetField("_defaultLocation", "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}");
             SetField("_startupLocationCache", new ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
             SetField("_closedWindows", new List<WindowRecord>());

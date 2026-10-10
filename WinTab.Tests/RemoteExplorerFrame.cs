@@ -24,44 +24,33 @@ internal sealed class RemoteExplorerFrame : IDisposable
     private static readonly ConcurrentDictionary<string, bool> RegisteredClasses = new();
     private static readonly nint Module = GetModuleHandle(null);
     private readonly Thread _thread;
-    private nint _desktop;
-    private int _desktopError;
     private readonly ManualResetEventSlim _ready = new();
     private readonly TaskCompletionSource _blocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly ConcurrentQueue<string> _trace = new();
     private readonly long _createdAt = Stopwatch.GetTimestamp();
     private readonly int _tabCount;
-    private readonly bool _visible;
     private readonly string _className;
     private nint[] _tabs = [];
     private volatile int _closeDelayMs;
     private volatile int _switchDelayMs;
     private volatile bool _ignoreClose;
 
-    /// <param name="visible">Whether the frame starts shown, like a user window, or hidden, like a preloaded frame.</param>
+    /// <param name="visible">Must be false: this fixture provides messages only, never a displayed frame.</param>
     /// <param name="tabCount">Number of ShellTabWindowClass children.</param>
     /// <param name="explorerClass">Register the frame with Explorer's own window class name so class checks treat it as Explorer.</param>
     public RemoteExplorerFrame(bool visible, int tabCount = 1, bool explorerClass = false)
     {
         ExplorerTabActivationTests.ActivationWindow.EnsureTabClassRegistered();
-        _visible = visible;
+        if (visible) throw new ArgumentException("Displayed test frames are not supported", nameof(visible));
         _tabCount = tabCount;
         _className = explorerClass ? ExplorerClassName : OwnClassName;
-        if (explorerClass)
-        {
-            // Only fake Explorer frames live off the input desktop: an installed WinTab must not see
-            // their show events. The test runner stays on the real desktop for taskbar COM and focus tests.
-            _desktop = CreateDesktop("WinTabTestFrame-" + Guid.NewGuid().ToString("N"), 0, 0, 0, 0x01ff, 0);
-            if (_desktop == 0)
-                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-        }
         _thread = new Thread(Run) { IsBackground = true, Name = "WinTab remote test frame" };
         _thread.SetApartmentState(ApartmentState.STA);
         _thread.Start();
         try
         {
             Check.That(_ready.Wait(5_000) && Handle != 0 && _tabs.Length == tabCount,
-                $"The remote test frame must start with its tabs (desktop error: {_desktopError}).");
+                "The background message endpoint must start with its tab handles.");
         }
         catch
         {
@@ -116,19 +105,12 @@ internal sealed class RemoteExplorerFrame : IDisposable
 
     private void Run()
     {
-        if (_desktop != 0 && !SetThreadDesktop(_desktop))
-        {
-            _desktopError = Marshal.GetLastWin32Error();
-            _ready.Set();
-            return;
-        }
-        // The isolated test desktop has no text services. Without this, the first activation of the frame
-        // blocks its thread for about two seconds while the IME context is set up, which discards commands
-        // sent to it in the meantime and has nothing to do with Explorer.
+        // Message processing tests do not need text services or an input-method context.
         ImmDisableIME(0);
         RegisterFrameClass(_className);
-        Handle = CreateWindowEx(0x00000080, _className, "WinTab remote test frame", 0x00CF0000,
-            -32000, -32000, 10, 10, 0, 0, Module, 0);
+        // A message-only handle can exercise command acknowledgement and timeouts without any desktop surface.
+        Handle = CreateWindowEx(0, _className, "WinTab message endpoint", 0,
+            0, 0, 10, 10, (nint)(-3), 0, Module, 0);
         Frames[Handle] = this;
         var tabs = new nint[_tabCount];
         for (var index = 0; index < tabs.Length; index++)
@@ -139,8 +121,6 @@ internal sealed class RemoteExplorerFrame : IDisposable
             TabBaseProcedures[tabs[index]] = previous;
         }
         _tabs = tabs;
-        if (_visible)
-            WinApi.ShowWindow(Handle, WinApi.SW_SHOWNOACTIVATE);
         _ready.Set();
         while (WinApi.GetMessage(out var message, 0, 0, 0) > 0)
         {
@@ -235,9 +215,9 @@ internal sealed class RemoteExplorerFrame : IDisposable
     {
         if (!WinApi.IsWindowVisible(handle))
             return false;
-        if ((WinApi.GetWindowLong(handle, WinApi.GWL_EXSTYLE) & WinApi.WS_EX_LAYERED) == 0)
+        if ((TestWindowOpacity.Instance.ReadStyle(handle) & WinApi.WS_EX_LAYERED) == 0)
             return true;
-        return !WinApi.GetLayeredWindowAttributes(handle, out _, out var alpha, out var flags) ||
+        return !TestWindowOpacity.Instance.TryRead(handle, out _, out var alpha, out var flags) ||
             (flags & WinApi.LWA_ALPHA) == 0 || alpha != 0;
     }
 
@@ -265,21 +245,7 @@ internal sealed class RemoteExplorerFrame : IDisposable
         // A frame may still be sleeping through a block or a slow close; give it time to finish and exit.
         Check.That(_thread.Join(5_000), "The isolated frame thread must stop before its wait handle is disposed.");
         _ready.Dispose();
-        if (_desktop != 0)
-        {
-            Check.That(CloseDesktop(_desktop), "The isolated frame desktop must be released after its thread exits.");
-            _desktop = 0;
-        }
     }
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    private static extern nint CreateDesktop(string name, nint device, nint mode, uint flags, uint access, nint security);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetThreadDesktop(nint desktop);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool CloseDesktop(nint desktop);
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate nint WindowProcedure(nint handle, uint message, nint parameter, nint argument);
