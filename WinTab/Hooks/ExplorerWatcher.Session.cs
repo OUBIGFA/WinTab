@@ -364,9 +364,17 @@ public partial class ExplorerWatcher
         foreach (var group in entries.Where(entry => !entry.Value.Closed).GroupBy(entry => entry.Value.Identity))
         {
             var identity = group.Key;
-            if (!identity.IsCurrent || !ExplorerWindowDiscovery.IsShownExplorerWindow(identity.Handle) ||
+            if (!identity.IsCurrent || !_isShownExplorerWindow(identity.Handle) ||
                 IsMergeSourceWindow(identity.Handle) || _restoringSessionWindows.ContainsKey(identity))
                 continue;
+            // A user may navigate an already tracked folder to Control Panel. Discard its old snapshot as
+            // well, otherwise closing that native window could still replace the saved folder group.
+            if (group.Any(entry => ExplorerLocationPolicy.IsControlPanel(entry.Value.Location)))
+            {
+                _sessionTracker.Forget(identity);
+                _sessionWindows.TryRemove(new KeyValuePair<nint, WindowIdentity>(identity.Handle, identity));
+                continue;
+            }
             var native = ExplorerWindowDiscovery.GetStableExplorerTabs(identity.Handle, ExplorerSession.MaxTabs + 1);
             if (native is not { Length: > 0 })
                 continue;
@@ -556,7 +564,7 @@ public partial class ExplorerWatcher
             _closedTabs.Ignore(info.TabIdentity);
             return;
         }
-        if (!_recordClosedTabs || !_captureSessions)
+        if (!_recordClosedTabs || !_captureSessions || ExplorerLocationPolicy.IsControlPanel(info.Location))
             return;
         var frame = info.Identity;
         if (!_sessionWindows.TryGetValue(frame.Handle, out var tracked) || tracked != frame ||
@@ -571,12 +579,13 @@ public partial class ExplorerWatcher
         if (!_recordClosedTabs)
             return;
         foreach (var tab in _sessionTracker.TabsOf(frame))
-            if (!liveTabs.Contains(tab.Identity) && !_internalTabCloses.ContainsKey(tab.Identity))
+            if (!liveTabs.Contains(tab.Identity) && !_internalTabCloses.ContainsKey(tab.Identity) &&
+                !ExplorerLocationPolicy.IsControlPanel(tab.Location))
                 _closedTabs.Push(new ClosedTab(tab.Location, tab.Identity, frame));
     }
 
     private bool HasOtherShownSessionWindow(nint handle) =>
-        _getExplorerWindows().Any(other => other != handle && ExplorerWindowDiscovery.IsShownExplorerWindow(other));
+        _getExplorerWindows().Any(other => other != handle && _isShownExplorerWindow(other) && !IsControlPanelWindow(other));
 
     /// <summary>
     /// Only the first registration/show of a genuinely new, sole window may restore. This is separate from
@@ -585,13 +594,14 @@ public partial class ExplorerWatcher
     /// </summary>
     private async Task<bool> TryRestoreNewExplorerWindowAsync(InternetExplorer window, WindowInfo info, bool wasPreloaded = false)
     {
-        if (!_restoreTabs || _disposed || !IsCurrentWindow(window, info))
+        if (!_restoreTabs || _disposed || !IsCurrentWindow(window, info) ||
+            ExplorerLocationPolicy.IsControlPanel(info.Location))
             return false;
         var identity = info.Identity;
         var handle = identity.Handle;
         if (_sessionRestoreExclusions.TryGetValue(handle, out var excluded) && excluded == identity)
             return false;
-        if (!ExplorerWindowDiscovery.IsShownExplorerWindow(handle))
+        if (!_isShownExplorerWindow(handle))
         {
             _preloadedSessionCandidates.TryAdd(identity, (window, info));
             return false;
@@ -639,7 +649,8 @@ public partial class ExplorerWatcher
                 IsSessionStartLocation, token, isBusy: () => !IsSessionWindowIdle(window));
             var startLocation = !string.IsNullOrWhiteSpace(initialLocation) && IsSessionStartLocation(initialLocation);
             ExplorerDebugLog.Write($"Session restore launch location={initialLocation} start={startLocation} anyFolder={_restoreOnAnyFolder} resolved at {Elapsed()}");
-            if (string.IsNullOrWhiteSpace(initialLocation) || !_restoreOnAnyFolder && !startLocation)
+            if (string.IsNullOrWhiteSpace(initialLocation) || ExplorerLocationPolicy.IsControlPanel(initialLocation) ||
+                !_restoreOnAnyFolder && !startLocation)
                 return true;
             attempt.ArmNavigation();
             token.ThrowIfCancellationRequested();

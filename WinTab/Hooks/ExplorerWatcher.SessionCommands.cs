@@ -132,7 +132,7 @@ public partial class ExplorerWatcher
         try
         {
             // The one foreground activation, before anything is created in the window.
-            Helper.RestoreWindowToForeground(handle);
+            _restoreWindowToForeground(handle);
             var foreground = await Helper.DoUntilConditionAsync(ExplorerNavigationAccess.ForegroundFrame,
                 current => current == handle, 1_000, 20, attempt.Token);
             if (foreground != handle)
@@ -235,7 +235,7 @@ public partial class ExplorerWatcher
         {
             if (await OpenRequestedWindowAsync(closed.Location, token) is not { } opened)
                 return false;
-            Helper.RestoreWindowToForeground(opened.Info.Identity.Handle);
+            _restoreWindowToForeground(opened.Info.Identity.Handle);
             return true;
         }
 
@@ -266,8 +266,9 @@ public partial class ExplorerWatcher
     }
 
     private bool IsReopenTarget(nint handle) =>
-        handle != 0 && ExplorerWindowDiscovery.IsShownExplorerWindow(handle) && !IsMergeSourceWindow(handle) &&
-        HasHookedShellWindowForTopLevel(handle) && !_restoringSessionWindows.Keys.Any(identity => identity.Handle == handle);
+        handle != 0 && _isShownExplorerWindow(handle) && !IsMergeSourceWindow(handle) &&
+        HasKnownExplorerLocation(handle) && HasHookedShellWindowForTopLevel(handle) &&
+        !_restoringSessionWindows.Keys.Any(identity => identity.Handle == handle);
 
     /// <summary>
     /// Asks Explorer for a new window at the location and returns its tab once WinTab tracks it there. Until
@@ -279,7 +280,7 @@ public partial class ExplorerWatcher
         Interlocked.Increment(ref _independentOpens);
         try
         {
-            Helper.BypassWinForegroundRestrictions();
+            _bypassForegroundRestrictions();
             await RunInStaThread(() =>
             {
                 Shell? shell = null;

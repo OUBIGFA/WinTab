@@ -77,6 +77,7 @@ internal static class UnitTestRunner
             .Concat(NotepadTabAutomationTests.All())
             .Concat(ExplorerTabWheelSwitchTests.All())
             .Concat(ExplorerTabRegistrationTests.All())
+            .Concat(ExplorerControlPanelTests.All())
             .Concat(ExplorerTabLifetimeTests.All())
             .Concat(ExplorerTabReuseTests.All())
             .Concat(ExplorerReuseSelectionTests.All())

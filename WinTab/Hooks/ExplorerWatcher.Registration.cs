@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using WinTab.Helpers;
 using WinTab.Models;
@@ -51,6 +52,43 @@ public partial class ExplorerWatcher
         FindTrackedWindowByTopLevel(hWnd, (window, _) => !ReferenceEquals(window, currentWindow)) != null;
     private bool HasNonStartupShellWindowForTopLevel(nint hWnd) =>
         FindTrackedWindowByTopLevel(hWnd, (window, info) => !IsStartupExplorerLocation(info.Location ?? string.Empty)) != null;
+
+    /// <summary>
+    /// Publish only the owners, not COM objects. WinEvent concealment checks cannot take the catalog lock:
+    /// its STA owner may hold it while waiting for Explorer. Navigation updates these same metadata objects.
+    /// </summary>
+    private void PublishTrackedWindowInfos()
+    {
+        lock (_windowEntryDictLock)
+            Volatile.Write(ref _trackedWindowInfos, ((IEnumerable<WindowEntry>)_windowEntryDict).Select(entry => entry.Value).ToArray());
+    }
+
+    private bool IsControlPanelWindow(nint hWnd)
+    {
+        foreach (var info in Volatile.Read(ref _trackedWindowInfos))
+            if (info.Identity.Handle == hWnd && !info.Closed && info.Identity.IsCurrent &&
+                ExplorerLocationPolicy.IsControlPanel(info.Location))
+                return true;
+        return false;
+    }
+
+    /// <summary>
+    /// A frame is a tab target only after its location is known. An unregistered CabinetWClass frame may
+    /// be Control Panel, and the fallback must not undo the namespace exclusion in the preferred path.
+    /// </summary>
+    private bool HasKnownExplorerLocation(nint hWnd)
+    {
+        var known = false;
+        foreach (var info in Volatile.Read(ref _trackedWindowInfos))
+        {
+            if (info.Identity.Handle != hWnd || info.Closed || !info.Identity.IsCurrent)
+                continue;
+            if (ExplorerLocationPolicy.IsControlPanel(info.Location))
+                return false;
+            known |= !string.IsNullOrWhiteSpace(info.Location);
+        }
+        return known;
+    }
 
     private void ReleaseTopLevelTrackingIfUnused(nint hWnd)
     {
@@ -118,6 +156,7 @@ public partial class ExplorerWatcher
                         continue;
 
                     if (!wasTrackedTopLevel &&
+                        !ExplorerLocationPolicy.IsControlPanel(windowInfo.Location) &&
                         !IsWindowProtected(hWnd) &&
                         _isForcingTabs &&
                         !IsIndependentOpenRequested() &&
@@ -128,7 +167,8 @@ public partial class ExplorerWatcher
                     }
 
                     _windowEntryDict.Add(window, windowInfo);
-                    if (_windowEntryDict.Count == 1)
+                    PublishTrackedWindowInfos();
+                    if (_windowEntryDict.Count == 1 && !ExplorerLocationPolicy.IsControlPanel(windowInfo.Location))
                         MainWindowHandle = hWnd;
                 }
 
@@ -211,6 +251,18 @@ public partial class ExplorerWatcher
     }
     private async Task ProcessRegisteredShellWindowAsync(InternetExplorer window, WindowInfo windowInfo)
     {
+        if (!IsCurrentWindow(window, windowInfo))
+            return;
+        if (string.IsNullOrWhiteSpace(windowInfo.Location))
+            windowInfo.Location = TryGetLocation(window);
+        // Restore is an earlier entry point than merging. Exclude Control Panel before either can adopt it,
+        // but keep read-only navigation/close tracking so a later user navigation updates its eligibility.
+        if (ExplorerLocationPolicy.IsControlPanel(windowInfo.Location))
+        {
+            await RestoreMergeSourceWindowAsync(windowInfo.Identity.Handle);
+            await RegisterIndependentWindowAsync(window, windowInfo, windowInfo.Identity.Handle);
+            return;
+        }
         if (await TryRestoreNewExplorerWindowAsync(window, windowInfo))
             return;
         var showAgain = true;
@@ -289,8 +341,7 @@ public partial class ExplorerWatcher
             if (!string.IsNullOrWhiteSpace(location))
                 windowInfo.Location = location;
             ExplorerDebugLog.Write($"Registered resolved hwnd={hWnd} target={targetWindow} location={location}");
-            if (string.IsNullOrWhiteSpace(location) ||
-                location.StartsWith("shell:::{26EE0668-A00A-44D7-9371-BEB064C98683}", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrWhiteSpace(location) || ExplorerLocationPolicy.IsControlPanel(location))
             {
                 ExplorerDebugLog.Write($"Registered release unsupported-location hwnd={hWnd} location={location}");
                 await RestoreMergeSourceWindowAsync(hWnd);
@@ -456,7 +507,8 @@ public partial class ExplorerWatcher
             // Use the selection captured while the view was alive, never read Document during OnQuit.
             // Home, This PC, etc. carry nothing worth restoring.
             var location = windowInfo.Location;
-            if (!string.IsNullOrWhiteSpace(location) && location != _defaultLocation)
+            if (!string.IsNullOrWhiteSpace(location) && location != _defaultLocation &&
+                !ExplorerLocationPolicy.IsControlPanel(location))
                 RememberClosedWindow(new WindowRecord(location, windowInfo.Identity.Handle, windowInfo.SelectedItems));
 
             // The coalesced registration worker removes closed records on the owning STA after we
@@ -475,7 +527,15 @@ public partial class ExplorerWatcher
             {
                 windowInfo.Location = Helper.NormalizeLocation(location);
                 if (_captureSessions)
-                    _sessionTracker.UpdateLocation(windowInfo.Identity, windowInfo.TabIdentity, windowInfo.Location);
+                {
+                    if (ExplorerLocationPolicy.IsControlPanel(windowInfo.Location))
+                    {
+                        _sessionTracker.Forget(windowInfo.Identity);
+                        _sessionWindows.TryRemove(new KeyValuePair<nint, WindowIdentity>(windowInfo.Identity.Handle, windowInfo.Identity));
+                    }
+                    else
+                        _sessionTracker.UpdateLocation(windowInfo.Identity, windowInfo.TabIdentity, windowInfo.Location);
+                }
             }
             windowInfo.SelectedItems = null;
             _selectionWork.Request();
@@ -492,7 +552,7 @@ public partial class ExplorerWatcher
 
             // Make sure the window is still alive (User might have closed it immediately after opening it)
             var hWnd = new IntPtr(window.HWND);
-            if (ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd))
+            if (ExplorerWindowDiscovery.IsFileExplorerWindow(hWnd) && !ExplorerLocationPolicy.IsControlPanel(windowInfo.Location))
                 TabStrip.ScheduleRefresh(hWnd);
         }
         catch (Exception exception)
@@ -557,6 +617,7 @@ public partial class ExplorerWatcher
         }
         else
             _windowEntryDict.Remove(window);
+        PublishTrackedWindowInfos();
 
         UnhookWindowEvents(window, windowInfo);
 

@@ -31,6 +31,8 @@ public partial class ExplorerWatcher
         nint targetPidl = 0;
         tabHandle = 0;
         foundWindow = null;
+        if (ExplorerLocationPolicy.IsControlPanel(targetPath))
+            return false;
         try
         {
             var normalizedTargetPath = Helper.NormalizeLocation(targetPath);
@@ -48,6 +50,8 @@ public partial class ExplorerWatcher
                         continue;
 
                     var topLevelWindow = windowInfo.Identity.Handle;
+                    if (IsControlPanelWindow(topLevelWindow))
+                        continue;
                     if (excludedTopLevelWindow != 0 && topLevelWindow == excludedTopLevelWindow)
                         continue;
                     // Another merge's concealed or closing source is on its way out; a tab there would be lost
@@ -67,6 +71,9 @@ public partial class ExplorerWatcher
 
             bool AreEquivalent(string left, string right)
             {
+                // A live fallback can discover a Control Panel navigation before its event updated the cache.
+                if (ExplorerLocationPolicy.IsControlPanel(right))
+                    return false;
                 if (StringComparer.OrdinalIgnoreCase.Equals(left, right))
                     return true;
 
@@ -93,7 +100,7 @@ public partial class ExplorerWatcher
                     return false;
                 if (!_windowEntryDict.TryGetValue(foundWindow, out WindowInfo? info) ||
                     !IsCurrentWindow(foundWindow, info) || !IsCurrentTab(info, matchedTabHandle) ||
-                    IsMergeSourceWindow(info.Identity.Handle))
+                    IsMergeSourceWindow(info.Identity.Handle) || IsControlPanelWindow(info.Identity.Handle))
                     return false;
                 var owner = candidateOwners[matchedTabHandle];
                 if (!ReferenceEquals(foundWindow, owner.Window) || !ReferenceEquals(info, owner.Info) || !owner.TabIdentity.IsCurrent)
@@ -133,7 +140,7 @@ public partial class ExplorerWatcher
             if (bringToFront)
             {
                 var wasMinimized = WinApi.IsIconic(windowHandle);
-                Helper.RestoreWindowToForeground(windowHandle);
+                _restoreWindowToForeground(windowHandle);
                 if (wasMinimized)
                 {
                     // Restoring a minimized frame is asynchronous. Do not race its old-view focus

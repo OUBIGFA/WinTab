@@ -56,7 +56,9 @@ public partial class ExplorerWatcher
     private WindowInfo CreateWindowInfo(InternetExplorer window) => new()
     {
         Identity = WindowIdentity.Capture(new IntPtr(window.HWND)),
-        Generation = _shellGeneration
+        Generation = _shellGeneration,
+        // Class names do not distinguish Control Panel, so classify it before adoption can hide or reuse it.
+        Location = TryGetLocation(window)
     };
 
     private bool IsRegisteredWindow(InternetExplorer window, WindowInfo info)

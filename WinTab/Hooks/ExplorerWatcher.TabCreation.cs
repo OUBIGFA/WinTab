@@ -49,6 +49,8 @@ public partial class ExplorerWatcher
             return;
         }
 
+        if (!HasKnownExplorerLocation(windowHandle))
+            throw new OperationCanceledException("The window is not a confirmed Explorer tab target.");
         var tabHandle = WinApi.FindWindowEx(windowHandle, 0, "ShellTabWindowClass", null);
         if (tabHandle == 0) return;
 
@@ -58,7 +60,7 @@ public partial class ExplorerWatcher
             throw new InvalidOperationException("Explorer did not accept the new-tab command.");
 
         if (bringToFront)
-            Helper.RestoreWindowToForeground(windowHandle);
+            _restoreWindowToForeground(windowHandle);
     }
 
     private void RememberClosedWindow(WindowRecord record)
@@ -88,7 +90,7 @@ public partial class ExplorerWatcher
             if (hasSelection)
                 currentWindows = ExplorerWindowDiscovery.GetAllExplorerWindows().ToArray();
 
-            Helper.BypassWinForegroundRestrictions();
+            _bypassForegroundRestrictions();
 
             var location = string.IsNullOrWhiteSpace(windowToOpen.Location) ? _defaultLocation : windowToOpen.Location;
             await RunInStaThread(() =>
@@ -127,6 +129,8 @@ public partial class ExplorerWatcher
     }
     private async Task<bool> OpenTabNavigateWithSelection(WindowRecord windowToOpen, nint windowHandle = 0)
     {
+        if (ExplorerLocationPolicy.IsControlPanel(windowToOpen.Location))
+            return false;
         ExplorerDebugLog.Write($"OpenTab begin target={windowToOpen.Location}");
         nint mainWindowHWnd = 0;
         nint newTabHandle = 0;
@@ -169,7 +173,7 @@ public partial class ExplorerWatcher
                 }
 
                 // Get the main window
-                mainWindowHWnd = ExplorerWindowDiscovery.IsFileExplorerWindow(windowHandle)
+                mainWindowHWnd = IsFallbackMergeTargetWindow(windowHandle, windowToOpen.Handle)
                     ? windowHandle
                     : GetMainWindowHWnd(windowToOpen.Handle);
 
@@ -280,7 +284,7 @@ public partial class ExplorerWatcher
                     return false;
                 }
                 if (!createdAtLocation)
-                    Helper.RestoreWindowToForeground(mainWindowHWnd);
+                    _restoreWindowToForeground(mainWindowHWnd);
                 if (!SelectItems(window, windowToOpen.SelectedItems))
                 {
                     await CloseFailedNewTabAsync(mainWindowIdentity, newTabIdentity);
@@ -319,7 +323,9 @@ public partial class ExplorerWatcher
     private async Task<bool> PrepareWindowForTabCreationAsync(WindowIdentity identity)
     {
         EnsureWindowIdentity(identity);
-        Helper.RestoreWindowToForeground(identity.Handle);
+        if (!HasKnownExplorerLocation(identity.Handle))
+            return false;
+        _restoreWindowToForeground(identity.Handle);
         var foreground = await Helper.DoUntilConditionAsync(ExplorerNavigationAccess.ForegroundFrame,
             handle => handle == identity.Handle, 500, 10, CurrentCancellation);
         EnsureWindowIdentity(identity);
@@ -339,6 +345,8 @@ public partial class ExplorerWatcher
     private async Task<nint> CreateTabAtLocationAsync(nint mainWindowHWnd, WindowIdentity mainWindowIdentity,
         nint[] currentTabs, string location)
     {
+        if (ExplorerLocationPolicy.IsControlPanel(location) || IsControlPanelWindow(mainWindowHWnd))
+            throw new OperationCanceledException("Control Panel is not an Explorer tab target.");
         if (_directTabUnsupported || string.IsNullOrWhiteSpace(location))
             return 0;
         // The active tab's browser is the one least likely to be closed while the request is under way.
@@ -348,6 +356,15 @@ public partial class ExplorerWatcher
         {
             ExplorerDebugLog.Write($"OpenTab direct skipped; no tracked tab main={mainWindowHWnd}");
             return 0;
+        }
+        // A navigation event may still be queued. Reject a live Control Panel before BrowseObject, and
+        // cancel instead of returning zero so the caller cannot fall through to the classic new-tab command.
+        var browserLocation = TryGetLocation(browser);
+        if (ExplorerLocationPolicy.IsControlPanel(browserLocation))
+        {
+            if (TryGetTrackedEntry(browser, out var entry))
+                entry.Value.Location = browserLocation;
+            throw new OperationCanceledException("The Explorer tab navigated to Control Panel.");
         }
 
         var knownWindows = new HashSet<nint>(_getExplorerWindows());
@@ -503,7 +520,7 @@ public partial class ExplorerWatcher
         nint tabHandle, WindowIdentity tabIdentity)
     {
         ExplorerDebugLog.Write($"Appended tab foreground hwnd={windowHandle} tab={tabHandle} foreground={WinApi.GetForegroundWindow()}");
-        Helper.RestoreWindowToForeground(windowHandle);
+        _restoreWindowToForeground(windowHandle);
         var active = await Helper.DoUntilConditionAsync(() => GetActiveTabHandle(windowHandle),
             handle => handle != tabHandle, ForegroundSettleWaitMs, 20, CurrentCancellation);
         EnsureWindowIdentity(windowIdentity);

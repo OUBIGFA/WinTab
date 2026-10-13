@@ -33,7 +33,7 @@ public partial class ExplorerWatcher
     private bool TryHideIncomingExplorerWindow(nint hWnd)
     {
         hWnd = GetExplorerTopLevelWindow(hWnd);
-        if (!_isForcingTabs || hWnd == 0) return false;
+        if (!_isForcingTabs || hWnd == 0 || IsControlPanelWindow(hWnd)) return false;
         if (_closingMergeSourceHWnds.ContainsKey(hWnd))
         {
             HideMergeSourceWindow(hWnd);
@@ -139,7 +139,7 @@ public partial class ExplorerWatcher
     }
     private void TryHideRegisteredMergeSourceWindow(nint hWnd)
     {
-        if (!_isForcingTabs || hWnd == 0) return;
+        if (!_isForcingTabs || hWnd == 0 || IsControlPanelWindow(hWnd)) return;
         if (IsWindowProtected(hWnd)) return;
         if (IsIndependentOpenRequested()) return;
         if (hWnd == MainWindowHandle) return;
@@ -170,6 +170,7 @@ public partial class ExplorerWatcher
     private void HideMergeSourceWindow(nint handle)
     {
         if (!_isForcingTabs || !_preExistingExplorerWindowsProtected || _disposed || handle == 0 ||
+            IsControlPanelWindow(handle) ||
             (_currentMerge.Value is { } operation && !operation.IsCurrent))
             return;
 
@@ -342,21 +343,21 @@ public partial class ExplorerWatcher
     {
         if (hWnd == 0 || hWnd == otherThan)
             return false;
-        if (!ExplorerWindowDiscovery.IsShownExplorerWindow(hWnd))
+        if (!_isShownExplorerWindow(hWnd))
             return false;
-        if (!HasHookedShellWindowForTopLevel(hWnd))
+        if (!HasKnownExplorerLocation(hWnd) || !HasHookedShellWindowForTopLevel(hWnd))
             return false;
 
         return GetActiveTabHandle(hWnd) != 0;
     }
-    private static bool IsFallbackMergeTargetWindow(nint hWnd, nint otherThan)
+    private bool IsFallbackMergeTargetWindow(nint hWnd, nint otherThan)
     {
         if (hWnd == 0 || hWnd == otherThan)
             return false;
-        if (!ExplorerWindowDiscovery.IsShownExplorerWindow(hWnd))
+        if (!_isShownExplorerWindow(hWnd))
             return false;
 
-        return GetActiveTabHandle(hWnd) != 0;
+        return HasKnownExplorerLocation(hWnd) && GetActiveTabHandle(hWnd) != 0;
     }
 
     private async Task<bool> CloseMergedSourceWindowAsync(InternetExplorer window, nint handle)

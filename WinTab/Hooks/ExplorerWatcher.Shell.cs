@@ -133,6 +133,7 @@ public partial class ExplorerWatcher
                     !WinAPI.WinApi.IsWindowVisible(windowInfo.Identity.Handle))
                     continue;
                 _windowEntryDict.Add(window, windowInfo);
+                PublishTrackedWindowInfos();
 
             }
 
@@ -140,7 +141,7 @@ public partial class ExplorerWatcher
                 _preloadedSessionCandidates.TryAdd(windowInfo.Identity, (window, windowInfo));
             PreventWindowHiding(new IntPtr(window.HWND));
 
-            if (MainWindowHandle == 0)
+            if (MainWindowHandle == 0 && !ExplorerLocationPolicy.IsControlPanel(windowInfo.Location))
                 MainWindowHandle = new IntPtr(window.HWND);
 
             registrations.Add(RegisterIndependentWindowAsync(window, windowInfo, windowInfo.Identity.Handle));
@@ -189,6 +190,7 @@ public partial class ExplorerWatcher
         {
             windowEntries = ((IEnumerable<WindowEntry>)_windowEntryDict).ToList();
             _windowEntryDict.Clear();
+            PublishTrackedWindowInfos();
         }
         foreach (var (window, info) in windowEntries)
         {

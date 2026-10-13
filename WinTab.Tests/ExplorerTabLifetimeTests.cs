@@ -647,6 +647,7 @@ internal static class ExplorerTabLifetimeTests
             _dictionaryType = typeof(ExplorerWatcher).GetField("_windowEntryDict", BindingFlags.Instance | BindingFlags.NonPublic)!.FieldType;
             _dictionary = Activator.CreateInstance(_dictionaryType)!;
             SetField("_windowEntryDict", _dictionary);
+            SetField("_trackedWindowInfos", Array.Empty<WindowInfo>());
             SetField("_windowEntryDictLock", new object());
             SetField("_staTaskScheduler", scheduler);
             SetField("_registrationWork", new CoalescingAsyncWork(() => (Task)Invoke("RunShellWorkAsync",
@@ -656,6 +657,7 @@ internal static class ExplorerTabLifetimeTests
             SetField("_mergeSafetyTimer", _mergeTimer);
             SetField("_locationResolver", new ExplorerLaunchLocationResolver());
             SetField("_getExplorerWindows", (Func<IEnumerable<nint>>)(() => []));
+            SetField("_isShownExplorerWindow", (Func<nint, bool>)ExplorerWindowDiscovery.IsShownExplorerWindow);
             SetField("_windowOpacity", TestWindowOpacity.Instance);
             SetField("_defaultLocation", "shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}");
             SetField("_startupLocationCache", new ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
@@ -685,7 +687,7 @@ internal static class ExplorerTabLifetimeTests
         public object AddBrowser(out WindowInfo info, nint? tab = null, bool unavailableLocation = false,
             bool failDetach = false, bool unreadableHandle = false, bool track = true, Action? readLocation = null,
             Exception? documentFailure = null, nint? handle = null, Action<string>? onCall = null,
-            Func<bool>? isBusy = null, Func<int>? readyState = null)
+            Func<bool>? isBusy = null, Func<int>? readyState = null, Func<string>? locationUrl = null)
         {
             var parentHandle = handle ?? Window.Handle;
             var browser = ShellDispatchStub.Create(_dictionaryType.GetGenericArguments()[0], (method, arguments) =>
@@ -702,7 +704,7 @@ internal static class ExplorerTabLifetimeTests
                         : (long)parentHandle,
                     "get_LocationURL" => unavailableLocation
                         ? throw new COMException("Explorer is temporarily unavailable.")
-                        : "file:///C:/WinTab-lifetime",
+                        : locationUrl?.Invoke() ?? "file:///C:/WinTab-lifetime",
                     "get_Document" => documentFailure != null ? throw documentFailure : null,
                     "get_LocationName" => Location,
                     "get_Busy" => isBusy?.Invoke() ?? false,
@@ -722,6 +724,7 @@ internal static class ExplorerTabLifetimeTests
             {
                 _dictionaryType.GetMethods().Single(method => method.Name == "Add" && method.GetParameters().Length == 3)
                     .Invoke(_dictionary, [browser, info, null]);
+                Invoke("PublishTrackedWindowInfos");
                 if (tab.HasValue)
                     Check.That(Publish(browser, tab.Value), "The fixture's live tab must be registered before testing reuse.");
             }
@@ -782,6 +785,13 @@ internal static class ExplorerTabLifetimeTests
 
         public void SetExplorerWindows(params nint[] handles) =>
             SetField("_getExplorerWindows", (Func<IEnumerable<nint>>)(() => handles));
+
+        /// <summary>Logical visibility for message-only routing tests; no native window is shown or activated.</summary>
+        public void SetShownExplorerWindows(params nint[] handles)
+        {
+            var shown = handles.ToHashSet();
+            SetField("_isShownExplorerWindow", (Func<nint, bool>)(handle => shown.Contains(handle)));
+        }
 
         /// <summary>The Explorer windows on screen, read again on every scan so a test can add one mid-way.</summary>
         public void SetExplorerWindowSource(Func<nint[]> source) =>

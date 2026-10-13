@@ -22,7 +22,8 @@ internal sealed record ExplorerSessionRestorePlan(SessionRestoreTab[] Tabs, bool
     public static ExplorerSessionRestorePlan? Create(ExplorerSession session, string initialLocation,
         bool startupLocation, bool onAnyFolder, bool restoreSingleTab, IReadOnlySet<int> availableIndices)
     {
-        if (string.IsNullOrWhiteSpace(initialLocation) || !onAnyFolder && !startupLocation ||
+        if (string.IsNullOrWhiteSpace(initialLocation) || ExplorerLocationPolicy.IsControlPanel(initialLocation) ||
+            !onAnyFolder && !startupLocation ||
             !restoreSingleTab && session.Locations.Length < 2)
             return null;
 

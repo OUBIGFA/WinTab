@@ -80,6 +80,8 @@ internal static class ExplorerReuseSelectionTests
             dictionaryField.FieldType.GetMethods().Single(method => method.Name == "Add" && method.GetParameters().Length == 3)
                 .Invoke(dictionary, [browser, info, (nint?)fixture.FirstTab]);
             dictionaryField.SetValue(watcher, dictionary);
+            typeof(ExplorerWatcher).GetMethod("PublishTrackedWindowInfos", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(watcher, null);
             var searchMethod = typeof(ExplorerWatcher).GetMethod("TrySearchForTab", BindingFlags.Instance | BindingFlags.NonPublic)!;
             object?[] searchArguments = [location, (nint)0, (nint)0, null];
             var found = (bool)searchMethod.Invoke(watcher, searchArguments)!;

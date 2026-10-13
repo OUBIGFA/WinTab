@@ -21,6 +21,13 @@ internal static class ExplorerTabActivationTests
             .SetValue(watcher, lifetime);
         typeof(ExplorerWatcher).GetField("_currentMerge", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(watcher, new AsyncLocal<MergeOperation?>());
+        // Message-only HWNDs cannot be foregrounded. Calling the native fallback would nevertheless inject
+        // F23 on the user's desktop; test the routing/selection without crossing that OS input boundary.
+        typeof(ExplorerWatcher).GetField("_restoreWindowToForeground", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(watcher, (Action<nint>)(handle => Check.That(!WinApi.IsWindowVisible(handle),
+                "Test activation must only target non-displayable message endpoints.")));
+        typeof(ExplorerWatcher).GetField("_bypassForegroundRestrictions", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(watcher, (Action)(() => throw new InvalidOperationException("A background test must not launch a real shell window.")));
         return watcher;
     }
 

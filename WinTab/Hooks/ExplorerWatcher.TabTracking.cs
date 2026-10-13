@@ -213,6 +213,7 @@ public partial class ExplorerWatcher
                     {
                         windowInfo = CreateWindowInfo(window);
                         _windowEntryDict.Add(window, windowInfo);
+                        PublishTrackedWindowInfos();
                     }
                     if (!TryPublishTabHandle(window, tabHandle))
                         continue;

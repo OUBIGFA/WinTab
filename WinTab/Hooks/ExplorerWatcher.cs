@@ -42,6 +42,7 @@ public partial class ExplorerWatcher : IHook
     private readonly ConcurrentDictionary<WindowIdentity, int> _hookedTopLevelUseCounts = new();
     private readonly ConcurrentDictionary<string, bool> _startupLocationCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly DualKeyDictionary<InternetExplorer, nint?, WindowInfo> _windowEntryDict = [];
+    private WindowInfo[] _trackedWindowInfos = [];
     private readonly List<WindowRecord> _closedWindows = new();
     private readonly object _windowEntryDictLock = new(), _closedWindowsLock = new();
     private readonly SemaphoreSlim _toOpenWindowsLock = new(1);
@@ -51,6 +52,10 @@ public partial class ExplorerWatcher : IHook
     /// <summary>Windows' "Restore previous folder windows at logon" option, read when a restore needs it.</summary>
     private readonly Func<bool> _restoresFolderWindowsAtSignIn;
     private readonly Func<IEnumerable<nint>> _getExplorerWindows = ExplorerWindowDiscovery.GetAllExplorerWindows;
+    // Keep desktop discovery replaceable so routing tests can describe shown frames without displaying them.
+    private readonly Func<nint, bool> _isShownExplorerWindow = ExplorerWindowDiscovery.IsShownExplorerWindow;
+    private readonly Action<nint> _restoreWindowToForeground = Helper.RestoreWindowToForeground;
+    private readonly Action _bypassForegroundRestrictions = Helper.BypassWinForegroundRestrictions;
     private readonly IWindowOpacity _windowOpacity = NativeWindowOpacity.Instance;
     private readonly ExplorerLaunchLocationResolver _locationResolver = new();
     private readonly ProcessWatcher _processWatcher;
