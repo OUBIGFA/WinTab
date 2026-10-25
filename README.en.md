@@ -30,31 +30,20 @@ WinTab folds your File Explorer windows into one: newly opened windows become ta
 - Hold `Ctrl + Shift` while opening folders to keep a separate window; drag a tab off the tab row to split it into a new window
 - Runs from the system tray, starts with Windows, and switches between light / dark themes and Chinese / English
 
-The last two days of logs are recorded in the background at `%LOCALAPPDATA%\WinTab\logs\`; the settings page has an "Open logs" button.
+## Tab recovery
 
-## Restore last tab group
-
-WinTab records tab groups while running and restores only the last-used window: normal closure saves the last closed window, while shutdown or a crash restores the latest record of the last-used window. **Include single-tab windows** is off by default: only windows with two or more tabs are recorded, and closing a single-tab window does not replace the saved group. This option does not affect reopening recently closed tabs.
-
-The tray's recovery section and the settings page provide:
+WinTab records tab groups while running, so they survive a shutdown or an Explorer crash; by default only windows with two or more tabs are recorded. The tray menu and the settings page provide:
 
 - **Restore last tab group**: restore the group in a new window, keeping tab order and the saved active tab. Default shortcut `Alt + E`, works globally
-- **Reopen last closed tab**: reopen the most recently closed tab, preferring the current window. Enabled by default; default shortcut `Alt + W`, works only while Explorer is in the foreground. Up to 25 closures are kept until WinTab exits. When the most recently closed location can no longer be opened (a network location or an unplugged drive, for example), the newest tab that can be opened is reopened instead and the skip is reported
+- **Reopen last closed tab**: reopen the most recently closed tab. Enabled by default; default shortcut `Alt + W`, works only while Explorer is in the foreground. When a location can no longer be opened, it is skipped and the newest openable tab is restored instead
 
-Each shortcut can be enabled or re-bound independently, without enabling automatic restoration. Turning **Auto-restore last tab group** off only stops automatic reopening; background recording, shortcuts and recovery buttons keep working.
+Each shortcut can be enabled or re-bound independently, without automatic restoration; turning automatic restoration off does not affect background recording or manual recovery.
 
-Enabling the closed-tab shortcut automatically keeps recently closed tabs, without requiring the separate recording toggle. After disabling the shortcut, you can keep history for button or tray recovery; recording stops and history is cleared only when both the shortcut and **Remember recently closed tabs** are off.
+**Auto-restore last tab group** is off by default. When enabled, it is triggered only by a newly opened window when no other File Explorer windows are open: by default it restores only on launch to Home, This PC or the configured start folder, or on opening any folder it can keep the current tabs and append the saved ones. Torn-off windows and `Ctrl + Shift` windows do not trigger it. With Windows' **Restore previous folder windows at logon** turned on, Windows restores the windows itself and WinTab does not add the same group again; manual recovery still works.
 
-Shortcuts use `Ctrl` / `Alt` with a letter, top-row digit or `F1`–`F24`, and `Shift` is optional. Folder records live in `%APPDATA%\WinTab\session.json` and its backups; treat them as personal folder information.
+## Double-click empty space
 
-### Automatic restoration (optional)
-
-**Auto-restore last tab group** is off by default. When enabled, only a newly opened window can trigger it, and only when no other File Explorer windows are open:
-
-- **Normal launch only (default)**: restore on launch to Home, This PC or the configured start folder
-- **Any folder**: keep the initial tab and append the saved tabs after it
-
-Torn-off windows, `Ctrl + Shift` windows and windows already open when the feature is enabled do not trigger restoration; missing or unsupported locations are skipped. With Windows' **Restore previous folder windows at logon** turned on in Folder Options, Windows itself reopens the windows, tabs included, that were still open at shutdown or when Explorer crashed; WinTab then does not add the same group again, and it can still be restored from the tray or with the shortcut.
+Off by default. When enabled, double-clicking the empty space of the file list navigates within the current tab: choose "Up one level" (default) or "Back".
 
 ## Download
 
@@ -64,7 +53,7 @@ Pick the installer that matches your CPU architecture ([Releases](https://github
 - `WinTab_<version>_arm64_Setup.exe` — ARM64 Windows (Surface Pro X, Snapdragon laptops)
 - `WinTab_<version>_x86_Setup.exe` — 32-bit Windows
 
-In-app updates check the downloaded installer against the SHA-256 GitHub publishes for it and do not run an installer that does not match.
+In-app updates check the installer's SHA-256 hash and do not run an installer that does not match.
 
 ## Requirements
 
