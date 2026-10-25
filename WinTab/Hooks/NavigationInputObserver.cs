@@ -10,7 +10,7 @@ using WinTab.WinAPI;
 
 namespace WinTab.Hooks;
 
-internal enum NavigationPointerKind { MiddleDown, MiddleUp, OtherDown }
+internal enum NavigationPointerKind { LeftDown, LeftUp, MiddleDown, MiddleUp, OtherDown, Move, Wheel }
 /// <param name="FromWinTab">The input was synthesized by WinTab itself (a double-click close), not by the user or another tool.</param>
 /// <param name="DelayMs">How long after the input happened it reached WinTab. The tabs a click starts from are read
 /// when it arrives, so a long delay would let Explorer's new tab slip into them.</param>
@@ -234,13 +234,15 @@ internal sealed class NavigationInputObserver : IDisposable
         {
             var mouse = MemoryMarshal.Read<RawMouse>(body);
             var kinds = Classify(mouse.ButtonFlags);
-            if (kinds.Count == 0)
+            var moved = mouse.LastX != 0 || mouse.LastY != 0;
+            if (kinds.Count == 0 && !moved)
                 return;
             var delay = unchecked(Environment.TickCount - GetMessageTime());
             var position = GetMessagePos();
             var point = new Point((short)(position & 0xFFFF), (short)((position >> 16) & 0xFFFF));
             // SendInput reports no device. Only input carrying WinTab's own signature is WinTab's.
             var fromWinTab = header.Device == 0 && mouse.ExtraInformation == (uint)MouseSimulator.InjectionSignature;
+            if (moved) _pointer(new NavigationPointerInput(NavigationPointerKind.Move, point, fromWinTab, delay));
             foreach (var kind in kinds)
                 _pointer(new NavigationPointerInput(kind, point, fromWinTab, delay));
         }
@@ -253,21 +255,26 @@ internal sealed class NavigationInputObserver : IDisposable
     }
 
     /// <summary>
-    /// The button transitions of one mouse report that make up a middle click, in the order they are handled:
-    /// the middle button's down and up, and another button's down, which starts a different action. Pointer
-    /// movement and the wheel are not part of it: Explorer opens the folder's tab even when the pointer or the
-    /// wheel moves while the wheel button is pressed.
+    /// Reports button transitions and wheel activity to both features. Movement is delivered separately
+    /// without an allocation; the middle-click subscriber deliberately ignores movement and wheel events.
     /// </summary>
     internal static IReadOnlyList<NavigationPointerKind> Classify(ushort buttonFlags)
     {
         // Most reports are pointer movement; they must not cost an allocation each.
-        if ((buttonFlags & (MiddleDown | MiddleUp | OtherButtonsDown)) == 0)
+        if ((buttonFlags & (LeftDown | LeftUp | MiddleDown | MiddleUp | OtherButtonsDown | Wheel | HorizontalWheel)) == 0)
             return [];
         var kinds = new List<NavigationPointerKind>(2);
+        // Cancellation precedes a possible left-up in the same raw report.
+        if ((buttonFlags & (Wheel | HorizontalWheel)) != 0)
+            kinds.Add(NavigationPointerKind.Wheel);
+        if ((buttonFlags & LeftDown) != 0)
+            kinds.Add(NavigationPointerKind.LeftDown);
         if ((buttonFlags & MiddleDown) != 0)
             kinds.Add(NavigationPointerKind.MiddleDown);
         if ((buttonFlags & OtherButtonsDown) != 0)
             kinds.Add(NavigationPointerKind.OtherDown);
+        if ((buttonFlags & LeftUp) != 0)
+            kinds.Add(NavigationPointerKind.LeftUp);
         if ((buttonFlags & MiddleUp) != 0)
             kinds.Add(NavigationPointerKind.MiddleUp);
         return kinds;
@@ -285,9 +292,9 @@ internal sealed class NavigationInputObserver : IDisposable
             ExplorerDebugLog.Write("Navigation input observer is still stopping.");
     }
 
-    internal const ushort LeftDown = 0x0001, RightDown = 0x0004, MiddleDown = 0x0010, MiddleUp = 0x0020,
+    internal const ushort LeftDown = 0x0001, LeftUp = 0x0002, RightDown = 0x0004, MiddleDown = 0x0010, MiddleUp = 0x0020,
         Button4Down = 0x0040, Button5Down = 0x0100, Wheel = 0x0400, HorizontalWheel = 0x0800;
-    private const ushort OtherButtonsDown = LeftDown | RightDown | Button4Down | Button5Down;
+    private const ushort OtherButtonsDown = RightDown | Button4Down | Button5Down;
     private const ushort MouseUsage = 0x02, KeyboardUsage = 0x06;
     private const uint InputSink = 0x00000100, Remove = 0x00000001;
     private const uint WmInput = 0x00FF, WmTimer = 0x0113, RidInput = 0x10000003, TypeMouse = 0, TypeKeyboard = 1;

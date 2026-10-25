@@ -28,6 +28,9 @@ internal static class SettingsStoreTests
         yield return ("settings persist disabling navigation middle-click independently", MiddleClickPersists);
         yield return ("settings include Notepad in double-click close for existing configurations", DoubleClickScopeDefaults);
         yield return ("settings persist excluding Notepad from double-click close", DoubleClickScopePersists);
+        yield return ("settings keep empty-space navigation off for new and upgraded configurations", EmptyAreaDefaults);
+        yield return ("settings persist both empty-space navigation modes independently", EmptyAreaPersists);
+        yield return ("settings normalize an invalid empty-space action without changing other preferences", EmptyAreaInvalidAction);
         yield return ("settings reads and changes do not wait for a blocked disk write", BlockedWriteDoesNotBlockSettings);
         yield return ("settings writes coalesce changes without concurrent file access", WritesLatestSnapshot);
         yield return ("settings save failure is reported without losing in-memory state", ReportsWriteFailure);
@@ -154,6 +157,63 @@ internal static class SettingsStoreTests
                 "Saving restoration preferences must not enable merging or reuse.");
         }
         finally { RecycleDirectory(path); }
+    }
+
+    private static Task EmptyAreaDefaults()
+    {
+        Check.That(!new AppSettings().DoubleClickEmptyArea, "New installations must keep navigation off");
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, """{"WindowHook":false,"DoubleClickCloseTab":false,"MiddleClickForegroundTab":false}""");
+            using var store = new SettingsStore(path);
+            Check.That(!store.Snapshot.DoubleClickEmptyArea, "Upgrading must not opt into blank-space navigation");
+            Check.Equal("Parent", store.Snapshot.DoubleClickEmptyAreaAction, "The initial choice is Up one level");
+            Check.That(!store.Snapshot.WindowHook && !store.Snapshot.DoubleClickCloseTab && !store.Snapshot.MiddleClickForegroundTab,
+                "The new defaults must not enable unrelated features");
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
+    }
+
+    private static async Task EmptyAreaPersists()
+    {
+        var path = NewPath();
+        try
+        {
+            foreach (var action in new[] { "Back", "Parent" })
+            foreach (var enabled in new[] { true, false })
+            {
+                using (var store = new SettingsStore(path))
+                {
+                    store.Update(settings => settings with { DoubleClickEmptyArea = enabled, DoubleClickEmptyAreaAction = action,
+                        WindowHook = false, DoubleClickCloseTab = false, MiddleClickForegroundTab = false });
+                    Check.That(await store.FlushAsync(), "The chosen action and enabled flag must save");
+                }
+                using var reloaded = new SettingsStore(path);
+                Check.Equal(enabled, reloaded.Snapshot.DoubleClickEmptyArea, "The enabled flag must survive restart");
+                Check.Equal(action, reloaded.Snapshot.DoubleClickEmptyAreaAction, "The action must persist even while disabled");
+                Check.That(!reloaded.Snapshot.WindowHook && !reloaded.Snapshot.DoubleClickCloseTab && !reloaded.Snapshot.MiddleClickForegroundTab,
+                    "Navigation must remain independent of merging, double-click close and middle-click");
+            }
+        }
+        finally { RecycleDirectory(path); }
+    }
+
+    private static Task EmptyAreaInvalidAction()
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, """{"DoubleClickEmptyArea":true,"DoubleClickEmptyAreaAction":"unknown","Theme":"Dark"}""");
+            using var store = new SettingsStore(path);
+            Check.Equal("Parent", store.Snapshot.DoubleClickEmptyAreaAction, "Malformed actions use the explicit default");
+            Check.That(store.Snapshot.DoubleClickEmptyArea && store.Snapshot.Theme == "Dark", "Valid preferences stay intact");
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
     }
 
     private static Task MiddleClickDefaults()

@@ -46,10 +46,11 @@ internal sealed record DesktopCommand(long Id, string Method)
                 {
                     "windowHook" or "reuseTabs" or "restoreTabs" or "restoreSingleTab" or
                     "restoreOnAnyFolder" or "reopenClosedTab" or "doubleClickCloseTab" or
-                    "doubleClickCloseIncludeNotepad" or "middleClickForegroundTab" or "wheelSwitchTab" or
+                    "doubleClickCloseIncludeNotepad" or "doubleClickEmptyArea" or "middleClickForegroundTab" or "wheelSwitchTab" or
                     "showTrayIcon" or "autoUpdate" or "startup" => command with { Enabled = Bool(args, "value") },
                     "language" => command with { Text = Choice(args, "value", "zh-CN", "en-US") },
                     "theme" => command with { Text = Choice(args, "value", "Light", "Dark") },
+                    "doubleClickEmptyAreaAction" => command with { Text = Choice(args, "value", "Parent", "Back") },
                     "wheelSwitchSensitivity" => command with { Text = Choice(args, "value", "Low", "Medium", "High") },
                     _ => throw new FormatException("Unknown setting")
                 };

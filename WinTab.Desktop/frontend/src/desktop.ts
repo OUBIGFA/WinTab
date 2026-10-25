@@ -13,6 +13,8 @@ export interface Settings {
   restoreSingleTab: boolean
   doubleClickCloseTab: boolean
   doubleClickCloseIncludeNotepad: boolean
+  doubleClickEmptyArea: boolean
+  doubleClickEmptyAreaAction: 'Parent' | 'Back'
   middleClickForegroundTab: boolean
   wheelSwitchTab: boolean
   wheelSwitchSensitivity: 'Low' | 'Medium' | 'High'
@@ -44,7 +46,7 @@ export interface WindowInfo { width: number; maxWidth: number; maxHeight: number
 export interface Bootstrap { state: State; window: WindowInfo }
 export type BooleanSetting = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings]
 export type SettableKey = Exclude<BooleanSetting, 'restoreGroupShortcutEnabled' | 'reopenTabShortcutEnabled'>
-  | 'startup' | 'language' | 'theme' | 'wheelSwitchSensitivity'
+  | 'startup' | 'language' | 'theme' | 'wheelSwitchSensitivity' | 'doubleClickEmptyAreaAction'
 
 // The official runtime is the only transport. Browser tests inject its documented API;
 // a packaged page never substitutes mock settings or a localStorage-only success path.

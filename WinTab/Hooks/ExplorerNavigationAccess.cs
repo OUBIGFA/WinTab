@@ -31,6 +31,13 @@ internal static class ExplorerNavigationAccess
 
     public static nint ActiveTab(nint window) => WinApi.FindWindowEx(window, 0, "ShellTabWindowClass", null);
 
+    public static bool HasModifiers() =>
+        (WinApi.GetAsyncKeyState(WinApi.VK_SHIFT) & 0x8000) != 0 ||
+        (WinApi.GetAsyncKeyState(WinApi.VK_CONTROL) & 0x8000) != 0 ||
+        (WinApi.GetAsyncKeyState(WinApi.VK_MENU) & 0x8000) != 0 ||
+        (WinApi.GetAsyncKeyState(WinApi.VK_LWIN) & 0x8000) != 0 ||
+        (WinApi.GetAsyncKeyState(WinApi.VK_RWIN) & 0x8000) != 0;
+
     public static nint ForegroundFrame()
     {
         var foreground = WinApi.GetForegroundWindow();

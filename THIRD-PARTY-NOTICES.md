@@ -6,6 +6,38 @@ This file lists third-party open-source code included in WinTab distributions an
 
 ---
 
+## hbiui/WinTab — file-list background navigation
+
+文件列表空白处双击导航的输入共享、双击识别、UI Automation 命中检测及 Shell 导航实现参考并改编自 [hbiui/WinTab](https://github.com/hbiui/WinTab)，提交 `4121b089d27e3e536702f3fea50a57f7144f148f`
+
+The shared input source, double-click recognition, UI Automation hit testing and Shell navigation are adapted from hbiui/WinTab at the commit above, with additional cancellation, bounded asynchronous work and history-back support
+
+The source repository distributes this contribution under the following license and copyright notice
+
+### MIT License
+
+Copyright (c) 2026 OUBIGFA
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
 ## ExplorerTabUtility
 
 WinTab 的部分源代码派生自 **ExplorerTabUtility**。派生范围主要为早期版本带入的通用数据结构、主题样式资源，以及 Windows Shell / Win32 互操作声明。这些部分保留其原始实现，并依下述 MIT 许可条款分发。

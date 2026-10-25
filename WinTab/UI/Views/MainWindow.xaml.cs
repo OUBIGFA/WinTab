@@ -73,6 +73,9 @@ public partial class MainWindow : Window, WinTab.UI.Desktop.IApplicationUi
         DoubleClickCloseToggle.Click += (_, _) => _hookManager.SetDoubleClickClose(DoubleClickCloseToggle.IsChecked == true);
         DoubleClickScopeExplorerOnly.Click += (_, _) => _hookManager.SetDoubleClickCloseIncludeNotepad(false);
         DoubleClickScopeIncludeNotepad.Click += (_, _) => _hookManager.SetDoubleClickCloseIncludeNotepad(true);
+        DoubleClickEmptyAreaToggle.Click += (_, _) => _hookManager.SetDoubleClickEmptyArea(DoubleClickEmptyAreaToggle.IsChecked == true);
+        DoubleClickEmptyAreaParent.Click += (_, _) => _hookManager.SetDoubleClickEmptyAreaAction(FileListDoubleClickAction.Parent);
+        DoubleClickEmptyAreaBack.Click += (_, _) => _hookManager.SetDoubleClickEmptyAreaAction(FileListDoubleClickAction.Back);
         MiddleClickForegroundToggle.Click += (_, _) => _hookManager.SetMiddleClickForeground(MiddleClickForegroundToggle.IsChecked == true);
         WheelSwitchToggle.Click += (_, _) => _hookManager.SetWheelSwitch(WheelSwitchToggle.IsChecked == true);
         WheelSensitivityLow.Click += (_, _) => _hookManager.SetWheelSwitchSensitivity(WheelSwitchSensitivity.Low);
@@ -152,6 +155,10 @@ public partial class MainWindow : Window, WinTab.UI.Desktop.IApplicationUi
         DoubleClickScopeExplorerOnly.IsChecked = !SettingsManager.DoubleClickCloseIncludeNotepad;
         DoubleClickScopeIncludeNotepad.IsChecked = SettingsManager.DoubleClickCloseIncludeNotepad;
         DoubleClickScopePanel.IsEnabled = SettingsManager.DoubleClickCloseTab;
+        DoubleClickEmptyAreaToggle.IsChecked = SettingsManager.DoubleClickEmptyArea;
+        DoubleClickEmptyAreaParent.IsChecked = SettingsManager.DoubleClickEmptyAreaAction == FileListDoubleClickAction.Parent;
+        DoubleClickEmptyAreaBack.IsChecked = SettingsManager.DoubleClickEmptyAreaAction == FileListDoubleClickAction.Back;
+        DoubleClickEmptyAreaOptions.IsEnabled = SettingsManager.DoubleClickEmptyArea;
         MiddleClickForegroundToggle.IsChecked = SettingsManager.MiddleClickForegroundTab;
         WheelSwitchToggle.IsChecked = SettingsManager.WheelSwitchTab;
         var sensitivity = SettingsManager.WheelSwitchSensitivity;
@@ -237,6 +244,11 @@ public partial class MainWindow : Window, WinTab.UI.Desktop.IApplicationUi
         DoubleClickScopeExplorerOnly.Content = UiStrings.DoubleClickScopeExplorerOnly;
         DoubleClickScopeIncludeNotepad.Content = UiStrings.DoubleClickScopeIncludeNotepad;
         DoubleClickScopeHintText.Text = UiStrings.DoubleClickScopeHint;
+        DoubleClickEmptyAreaTitleText.Text = UiStrings.DoubleClickEmptyAreaTitle;
+        DoubleClickEmptyAreaDescText.Text = UiStrings.DoubleClickEmptyAreaDescription;
+        DoubleClickEmptyAreaParent.Content = UiStrings.DoubleClickEmptyAreaParent;
+        DoubleClickEmptyAreaBack.Content = UiStrings.DoubleClickEmptyAreaBack;
+        System.Windows.Automation.AutomationProperties.SetName(DoubleClickEmptyAreaOptions, UiStrings.DoubleClickEmptyAreaActionLabel);
         MiddleClickTitleText.Text = UiStrings.MiddleClickTitle;
         MiddleClickDescText.Text = UiStrings.MiddleClickDescription;
         WheelSwitchTitleText.Text = UiStrings.WheelSwitchTitle;

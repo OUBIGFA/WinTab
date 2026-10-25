@@ -49,7 +49,7 @@ async function open(page: Page, overrides: Partial<State['settings']> = {}, maxH
     }
   }, { initial: fixture as State, overrides, maxHeight })
   await page.goto('/')
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(page.getByRole('switch', { name: copies[overrides.language ?? 'zh-CN'].merge, exact: true })).toBeVisible()
   await page.waitForFunction(() => !!(window as any).__ready)
 }
 
@@ -59,17 +59,20 @@ async function fitNativeViewport(page: Page) {
 }
 
 for (const language of ['zh-CN', 'en-US'] as const) {
-  test(`whole page fits first launch in ${language}`, async ({ page }) => {
-    await open(page, { language })
-    await fitNativeViewport(page)
-    const t = copies[language]
-    await expect(page.getByRole('heading', { name: t.explorer, exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { name: t.system, exact: true })).toBeVisible()
-    await expect(page.getByRole('heading', { name: t.recovery, exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: t.updates, exact: true })).toBeInViewport()
-    expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  })
+  for (const theme of ['Light', 'Dark'] as const) {
+    test(`whole page fits first launch in ${language} ${theme}`, async ({ page }, testInfo) => {
+      await open(page, { language, theme })
+      await fitNativeViewport(page)
+      const t = copies[language]
+      await expect(page.getByRole('heading', { name: t.explorer, exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: t.system, exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: t.recovery, exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: t.updates, exact: true })).toBeInViewport()
+      expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await page.screenshot({ path: testInfo.outputPath('settings.png'), fullPage: true })
+    })
+  }
 }
 
 test('short screen fits without initial scrollbars', async ({ page }) => {
@@ -185,10 +188,40 @@ test('Radix options support keyboard navigation and bilingual theme changes', as
   await page.keyboard.press('ArrowRight')
   await expect(page.getByRole('radio', { name: '高', exact: true })).toBeChecked()
   await page.getByRole('button', { name: 'Switch to English' }).click()
-  await expect(page.getByRole('heading', { name: 'Preferences', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'File Explorer', exact: true })).toBeVisible()
+  await expect(page.getByText('Preferences', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Switch to dark theme' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'Dark')
   await expect(page.getByRole('radio', { name: 'High', exact: true })).toBeChecked()
+})
+
+test('empty-space navigation is opt-in with independent persistent action tabs', async ({ page }) => {
+  await open(page)
+  const toggle = page.getByRole('switch', { name: '双击空白处导航', exact: true })
+  const parent = page.getByRole('radio', { name: '返回上一层', exact: true })
+  const back = page.getByRole('radio', { name: '后退', exact: true })
+  await expect(toggle).not.toBeChecked()
+  await expect(parent).toBeChecked()
+  await expect(back).toBeDisabled()
+  await expect(page.getByText('偏好设置', { exact: true })).toHaveCount(0)
+  await toggle.click()
+  await back.click()
+  await expect(back).toBeChecked()
+  await toggle.click()
+  await expect(back).toBeChecked()
+  await expect(back).toBeDisabled()
+  await toggle.click()
+  await expect(back).toBeEnabled()
+  await back.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(parent).toBeChecked()
+  await expect(page.getByRole('switch', { name: '双击关闭标签', exact: true })).toBeChecked()
+  await expect(page.getByRole('switch', { name: '中键打开并切换', exact: true })).toBeChecked()
+  const calls = await page.evaluate(() => (window as any).__calls)
+  expect(calls.some((call: any) => call.method === 'Desktop.Set' && call.args[0] === 'doubleClickEmptyAreaAction' && call.args[1] === 'Back')).toBe(true)
+  await page.getByRole('button', { name: 'Switch to English' }).click()
+  await expect(page.getByRole('radio', { name: 'Up one level', exact: true })).toBeChecked()
+  await expect(page.getByRole('radio', { name: 'Back', exact: true })).toBeEnabled()
 })
 
 test('both languages have consistent punctuation-free UI copy', () => {

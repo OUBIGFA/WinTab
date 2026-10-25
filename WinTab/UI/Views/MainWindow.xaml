@@ -268,6 +268,23 @@
                                 </Border>
                                 <Border Style="{StaticResource SettingRowStyle}">
                                     <DockPanel>
+                                        <CheckBox x:Name="DoubleClickEmptyAreaToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
+                                                  AutomationProperties.LabeledBy="{Binding ElementName=DoubleClickEmptyAreaTitleText}" />
+                                        <StackPanel>
+                                            <TextBlock x:Name="DoubleClickEmptyAreaTitleText" Text="Double-click empty space" Style="{StaticResource SettingTitleStyle}" />
+                                            <TextBlock x:Name="DoubleClickEmptyAreaDescText" Text="Navigate within the current tab from the file list background" Style="{StaticResource SettingDescriptionStyle}" />
+                                            <Border x:Name="DoubleClickEmptyAreaOptions" HorizontalAlignment="Left" Margin="0,10,0,0"
+                                                    Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="10" Padding="2">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <RadioButton x:Name="DoubleClickEmptyAreaParent" GroupName="EmptyAreaAction" Content="Up one level" Style="{StaticResource SegmentStyle}" />
+                                                    <RadioButton x:Name="DoubleClickEmptyAreaBack" GroupName="EmptyAreaAction" Content="Back" Style="{StaticResource SegmentStyle}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <Border Style="{StaticResource SettingRowStyle}">
+                                    <DockPanel>
                                         <CheckBox x:Name="MiddleClickForegroundToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}" />
                                         <StackPanel>
                                             <TextBlock x:Name="MiddleClickTitleText" Text="Open middle-clicked tabs in foreground" Style="{StaticResource SettingTitleStyle}" />

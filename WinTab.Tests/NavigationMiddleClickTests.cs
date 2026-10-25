@@ -33,7 +33,7 @@ internal static class NavigationMiddleClickTests
         yield return ("explorer tab snapshot rereads a walk that listed a tab twice", () => SnapshotRereadsTornWalk([1, 2, 3, 2]));
         yield return ("explorer tab snapshot rereads a walk that missed a tab", () => SnapshotRereadsTornWalk([1, 2]));
         yield return ("explorer tab snapshot reports a frame that keeps changing", SnapshotReportsChangingFrame);
-        yield return ("navigation input observer ignores pointer movement and the wheel", IgnoresMovementAndWheel);
+        yield return ("navigation middle-click ignores movement wheel and left-up but cancels on left-down", IgnoresMovementAndWheel);
         yield return ("navigation click gate pairs down/up without consuming the native click", PairsClick);
         yield return ("navigation click gate waits for a slow tab from the button release", WaitsForSlowTabAfterRelease);
         yield return ("navigation click gate lets a new click replace an unresolved one", NewClickReplacesUnresolved);
@@ -209,20 +209,27 @@ internal static class NavigationMiddleClickTests
 
     private static Task IgnoresMovementAndWheel()
     {
-        // Explorer opens the folder's tab even when the pointer or the wheel moves while the wheel button is
-        // pressed, so neither may end the click. They are not observed at all.
-        Check.That(NavigationInputObserver.Classify(0).Count == 0, "Pointer movement is not part of a middle click.");
-        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.Wheel).Count == 0, "The wheel is not part of a middle click.");
-        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.HorizontalWheel).Count == 0, "A tilted wheel is not part of a middle click.");
-        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.MiddleDown).SequenceEqual([NavigationPointerKind.MiddleDown]), "The middle button's down.");
-        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.MiddleUp).SequenceEqual([NavigationPointerKind.MiddleUp]), "The middle button's up.");
-        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.RightDown).SequenceEqual([NavigationPointerKind.OtherDown]),
-            "Another button starts a different action, such as a context menu that opens a tab.");
-        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.MiddleDown | NavigationInputObserver.MiddleUp)
-                .SequenceEqual([NavigationPointerKind.MiddleDown, NavigationPointerKind.MiddleUp]),
-            "A click reported in one input packet is still a down followed by its up.");
+        // Both features receive raw reports, but only blank-space double-clicks treat movement and
+        // scrolling as cancellation. Seed the real middle-click gate without a native window or click.
+        using var hook = new ExplorerNavigationMiddleClickHook(_ => new NoInput());
+        hook.StartHook();
+        var gate = (NavigationClickGate)typeof(ExplorerNavigationMiddleClickHook)
+            .GetField("_clicks", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(hook)!;
+        var now = Environment.TickCount64;
+        var lease = gate.Begin(123, now, out _)!;
+        foreach (var kind in new[] { NavigationPointerKind.Move, NavigationPointerKind.Wheel, NavigationPointerKind.LeftUp })
+        {
+            hook.ProcessPointer(new NavigationPointerInput(kind, new System.Drawing.Point(100, 100), false));
+            Check.That(gate.IsCurrent(lease, now), $"{kind} must not cancel or replace a middle-click request");
+            Check.That(!lease.Released.Task.IsCompleted, $"{kind} must not release the middle button");
+        }
+        hook.ProcessPointer(new NavigationPointerInput(NavigationPointerKind.LeftDown, new System.Drawing.Point(100, 100), false));
+        Check.That(!gate.IsCurrent(lease, now), "Left-down must keep cancelling the old middle-click request");
+        gate.Complete(lease);
         return Task.CompletedTask;
     }
+
+    private sealed class NoInput : IDisposable { public void Dispose() { } }
 
     private static Task PairsClick()
     {

@@ -140,7 +140,7 @@ export function App() {
 
   return <>
     <div className="titlebar">
-      <div className="titlebar-brand"><img src={logo} alt="" /><span>WinTab</span><span className="titlebar-divider" /><span className="titlebar-section">{t.preferences}</span></div>
+      <div className="titlebar-brand"><img src={logo} alt="" /><span>WinTab</span></div>
       <div className="titlebar-actions">
         <button className="icon-button" aria-label={s.theme === 'Dark' ? t.light : t.dark} title={s.theme === 'Dark' ? t.light : t.dark}
           disabled={pending.has('theme')} onClick={() => set('theme', s.theme === 'Dark' ? 'Light' : 'Dark')}>
@@ -153,7 +153,6 @@ export function App() {
 
     <div className="page" ref={pageRef}>
       <header className="page-header">
-        <h1>{t.preferences}</h1>
         <p className="background-note" role="status">{pending.size ? t.saving : state.shellReady ? t.running : t.connecting}</p>
       </header>
 
@@ -171,6 +170,13 @@ export function App() {
                     disabled={!s.doubleClickCloseTab || pending.has('doubleClickCloseIncludeNotepad')}
                     onChange={value => set('doubleClickCloseIncludeNotepad', value === 'include')} />
                 </div>
+              </Setting>
+              <Setting id="doubleClickEmptyArea" title={t.emptyDoubleClick} description={t.emptyDoubleClickDesc}
+                control={toggle('doubleClickEmptyArea', t.emptyDoubleClick, s.doubleClickEmptyArea)}>
+                <Segments label={t.emptyAction} value={s.doubleClickEmptyAreaAction}
+                  options={[{ value: 'Parent', label: t.parent }, { value: 'Back', label: t.back }]}
+                  disabled={!s.doubleClickEmptyArea || pending.has('doubleClickEmptyAreaAction')}
+                  onChange={value => set('doubleClickEmptyAreaAction', value)} />
               </Setting>
               <Setting id="middleClickForegroundTab" title={t.middleClick} description={t.middleClickDesc} control={toggle('middleClickForegroundTab', t.middleClick, s.middleClickForegroundTab)} />
               <Setting id="wheelSwitchTab" title={t.wheel} description={t.wheelDesc} control={toggle('wheelSwitchTab', t.wheel, s.wheelSwitchTab)}>

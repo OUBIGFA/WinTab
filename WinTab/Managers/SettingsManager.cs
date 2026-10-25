@@ -89,6 +89,23 @@ public static class SettingsManager
         set => SetProperty(settings => settings with { DoubleClickCloseIncludeNotepad = value });
     }
 
+    public static bool DoubleClickEmptyArea
+    {
+        get => Store.Snapshot.DoubleClickEmptyArea;
+        set => SetProperty(settings => settings with { DoubleClickEmptyArea = value });
+    }
+
+    public static FileListDoubleClickAction DoubleClickEmptyAreaAction
+    {
+        get => Enum.TryParse<FileListDoubleClickAction>(Store.Snapshot.DoubleClickEmptyAreaAction, out var action) &&
+            Enum.IsDefined(action) ? action : FileListDoubleClickAction.Parent;
+        set
+        {
+            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            SetProperty(settings => settings with { DoubleClickEmptyAreaAction = value.ToString() });
+        }
+    }
+
     public static bool MiddleClickForegroundTab
     {
         get => Store.Snapshot.MiddleClickForegroundTab;

@@ -9,7 +9,7 @@ using WinTab.UI.Localization;
 namespace WinTab.Managers;
 
 /// <summary>A setting that is carried out by an input or window hook, which can fail to start or stop.</summary>
-public enum HookFeature { MergeWindows, DoubleClickClose, MiddleClickForeground, WheelSwitch }
+public enum HookFeature { MergeWindows, DoubleClickClose, DoubleClickEmptyArea, MiddleClickForeground, WheelSwitch }
 
 /// <summary>
 /// Single owner of the hook on/off state: every UI surface calls the Set* methods here, which
@@ -20,6 +20,8 @@ public sealed class HookManager : IDisposable
     private readonly SynchronizationContext _syncContext;
     private readonly ExplorerWatcher _explorerWatcher;
     private readonly ExplorerTabDoubleClickHook _doubleClickHook;
+    private readonly NavigationInputSource _navigationInput = new();
+    private readonly ExplorerFileListDoubleClickHook _fileListDoubleClickHook;
     private readonly ExplorerNavigationMiddleClickHook _middleClickHook;
     private readonly ExplorerTabWheelSwitchHook _wheelSwitchHook;
     private readonly IExplorerSessionShortcutHook _sessionShortcuts;
@@ -43,7 +45,9 @@ public sealed class HookManager : IDisposable
         _explorerWatcher = new ExplorerWatcher(RegistryManager.GetDefaultExplorerLaunchId, RegistryManager.RestoresFolderWindowsAtSignIn);
         _doubleClickHook = new ExplorerTabDoubleClickHook(_explorerWatcher, () => SettingsManager.DoubleClickCloseTab,
             () => SettingsManager.DoubleClickCloseIncludeNotepad);
-        _middleClickHook = new ExplorerNavigationMiddleClickHook();
+        _middleClickHook = new ExplorerNavigationMiddleClickHook(_navigationInput);
+        _fileListDoubleClickHook = new ExplorerFileListDoubleClickHook(_navigationInput, _explorerWatcher,
+            () => SettingsManager.DoubleClickEmptyAreaAction);
         _wheelSwitchHook = new ExplorerTabWheelSwitchHook(_explorerWatcher, () => SettingsManager.WheelSwitchSensitivity);
         _sessionShortcuts = new ExplorerSessionShortcutHook(action => _ = ExecuteSessionCommandAsync(action == SessionAction.RestoreGroup));
         _sessionShortcuts.Failed += message =>
@@ -75,6 +79,7 @@ public sealed class HookManager : IDisposable
     [
         (HookFeature.MergeWindows, SettingsManager.IsWindowHookActive, _explorerWatcher),
         (HookFeature.DoubleClickClose, SettingsManager.DoubleClickCloseTab, _doubleClickHook),
+        (HookFeature.DoubleClickEmptyArea, SettingsManager.DoubleClickEmptyArea, _fileListDoubleClickHook),
         (HookFeature.MiddleClickForeground, SettingsManager.MiddleClickForegroundTab, _middleClickHook),
         (HookFeature.WheelSwitch, SettingsManager.WheelSwitchTab, _wheelSwitchHook)
     ]);
@@ -92,6 +97,7 @@ public sealed class HookManager : IDisposable
         _explorerWatcher.EnableSessionCapture();
         SetReopenClosedTab(SettingsManager.ReopenClosedTab);
         SetDoubleClickClose(SettingsManager.DoubleClickCloseTab);
+        SetDoubleClickEmptyArea(SettingsManager.DoubleClickEmptyArea);
         SetMiddleClickForeground(SettingsManager.MiddleClickForegroundTab);
         SetWheelSwitch(SettingsManager.WheelSwitchTab);
     }
@@ -249,6 +255,21 @@ public sealed class HookManager : IDisposable
         RaiseStateChanged();
     }
 
+    public void SetDoubleClickEmptyArea(bool enabled)
+    {
+        SettingsManager.DoubleClickEmptyArea = enabled;
+        TryChangeHookStatus(_fileListDoubleClickHook, enabled);
+        RaiseStateChanged();
+    }
+
+    /// <summary>Changing mode retires an unfinished gesture; it must not acquire the newly chosen action.</summary>
+    public void SetDoubleClickEmptyAreaAction(FileListDoubleClickAction action)
+    {
+        _fileListDoubleClickHook.CancelPending();
+        SettingsManager.DoubleClickEmptyAreaAction = action;
+        RaiseStateChanged();
+    }
+
     public void SetMiddleClickForeground(bool enabled)
     {
         SettingsManager.MiddleClickForegroundTab = enabled;
@@ -317,7 +338,9 @@ public sealed class HookManager : IDisposable
         try { _sessionShortcuts.Dispose(); }
         catch (Exception exception) { ReportHookStatus("Session shortcuts", exception.Message); }
         _wheelSwitchHook.Dispose();
+        _fileListDoubleClickHook.Dispose();
         _middleClickHook.Dispose();
+        _navigationInput.Dispose();
         _doubleClickHook.Dispose();
         _explorerWatcher.Dispose();
         GC.SuppressFinalize(this);

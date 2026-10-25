@@ -41,14 +41,11 @@ img { object-fit: contain }
 }
 .titlebar-brand { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 500 }
 .titlebar-brand img { width: 19px; height: 19px }
-.titlebar-divider { height: 13px; width: 1px; background: var(--line); margin: 0 3px }
-.titlebar-section { color: var(--muted); font-weight: 400 }
 .titlebar-actions { display: flex; align-items: center; gap: 2px; --app-region: no-drag }
 .icon-button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted) }
 .icon-button:hover { background: var(--control); color: var(--foreground) }
 .page { padding: 20px 30px 24px; max-width: 1380px; margin: 0 auto; container-type: inline-size; }
-.page-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 24px }
-h1 { font-size: 26px; letter-spacing: -.5px; font-weight: 500; line-height: 1.35 }
+.page-header { display: flex; justify-content: flex-end; margin: 0 0 18px }
 .background-note { color: var(--muted); font-size: 14px; text-align: right }
 .settings-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 26px }
 .settings-column { display: flex; flex-direction: column; gap: 22px }

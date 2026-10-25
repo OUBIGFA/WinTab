@@ -1,8 +1,10 @@
 const zh = {
-  preferences: '偏好设置', connecting: '正在连接资源管理器',
+  connecting: '正在连接资源管理器',
   explorer: '资源管理器',
   merge: '合并新窗口', mergeDesc: '将新打开的文件夹合并为当前窗口的标签',
   reuse: '复用已有标签', reuseDesc: '打开同一文件夹时，切换到已有标签',
+  emptyDoubleClick: '双击空白处导航', emptyDoubleClickDesc: '在当前标签的文件列表空白处双击',
+  emptyAction: '双击操作', parent: '返回上一层', back: '后退',
   doubleClick: '双击关闭标签',
   explorerOnly: '仅资源管理器', includeNotepad: '包含记事本', scope: '作用范围',
   middleClick: '中键打开并切换', middleClickDesc: '中键点按文件夹后，切换到新标签',
@@ -40,10 +42,12 @@ const zh = {
 
 type Copy = { [Key in keyof typeof zh]: string }
 const en: Copy = {
-  preferences: 'Preferences', connecting: 'Connecting to File Explorer',
+  connecting: 'Connecting to File Explorer',
   explorer: 'File Explorer',
   merge: 'Merge new windows', mergeDesc: 'Open folders as tabs in the current window',
   reuse: 'Reuse existing tabs', reuseDesc: 'Switch to the existing tab when you open the same folder',
+  emptyDoubleClick: 'Double-click empty space', emptyDoubleClickDesc: 'Navigate within the current tab from the file list background',
+  emptyAction: 'Double-click action', parent: 'Up one level', back: 'Back',
   doubleClick: 'Double-click to close tabs',
   explorerOnly: 'Explorer only', includeNotepad: 'Include Notepad', scope: 'Applies to',
   middleClick: 'Switch to middle-clicked folders', middleClickDesc: 'Middle-click a folder to open and select its new tab',

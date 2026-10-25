@@ -15,6 +15,8 @@ type Settings struct {
 	RestoreSingleTab               bool   `json:"restoreSingleTab"`
 	DoubleClickCloseTab            bool   `json:"doubleClickCloseTab"`
 	DoubleClickCloseIncludeNotepad bool   `json:"doubleClickCloseIncludeNotepad"`
+	DoubleClickEmptyArea           bool   `json:"doubleClickEmptyArea"`
+	DoubleClickEmptyAreaAction     string `json:"doubleClickEmptyAreaAction"`
 	MiddleClickForegroundTab       bool   `json:"middleClickForegroundTab"`
 	WheelSwitchTab                 bool   `json:"wheelSwitchTab"`
 	WheelSwitchSensitivity         string `json:"wheelSwitchSensitivity"`

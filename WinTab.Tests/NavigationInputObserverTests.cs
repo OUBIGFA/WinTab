@@ -12,9 +12,31 @@ internal static class NavigationInputObserverTests
 {
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("navigation input observer orders cancellation before click release", InputClassification);
         yield return ("navigation input observer registers both devices and releases its own registrations", RegistrationLifetime);
         yield return ("navigation input observer repairs a missing device registration", RepairsRegistration);
         yield return ("retiring a navigation input observer cannot unregister its replacement", ReplacementKeepsRegistration);
+    }
+
+    private static Task InputClassification()
+    {
+        Check.That(NavigationInputObserver.Classify(0).Count == 0, "Movement is delivered separately without a list allocation");
+        foreach (var (flags, kind) in new[] {
+            (NavigationInputObserver.LeftDown, NavigationPointerKind.LeftDown),
+            (NavigationInputObserver.LeftUp, NavigationPointerKind.LeftUp),
+            (NavigationInputObserver.MiddleDown, NavigationPointerKind.MiddleDown),
+            (NavigationInputObserver.MiddleUp, NavigationPointerKind.MiddleUp),
+            (NavigationInputObserver.RightDown, NavigationPointerKind.OtherDown),
+            (NavigationInputObserver.Button4Down, NavigationPointerKind.OtherDown),
+            (NavigationInputObserver.Button5Down, NavigationPointerKind.OtherDown),
+            (NavigationInputObserver.Wheel, NavigationPointerKind.Wheel),
+            (NavigationInputObserver.HorizontalWheel, NavigationPointerKind.Wheel) })
+            Check.That(NavigationInputObserver.Classify(flags).SequenceEqual([kind]), $"Raw flags {flags} map to {kind}");
+        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.Wheel | NavigationInputObserver.LeftUp)
+            .SequenceEqual([NavigationPointerKind.Wheel, NavigationPointerKind.LeftUp]), "Wheel cancellation must precede release in one report");
+        Check.That(NavigationInputObserver.Classify(NavigationInputObserver.MiddleDown | NavigationInputObserver.MiddleUp)
+            .SequenceEqual([NavigationPointerKind.MiddleDown, NavigationPointerKind.MiddleUp]), "A batched click remains a down followed by up");
+        return Task.CompletedTask;
     }
 
     private static NavigationInputObserver Observe() => new(_ => { }, () => { }, _ => { });

@@ -175,6 +175,10 @@ internal sealed class SettingsStore : IDisposable
             throw new JsonException("The settings file contains an invalid value.", exception);
         }
 
+        // Keep the wire state and runtime interpretation identical even for a manually edited preference.
+        if (settings.DoubleClickEmptyAreaAction is not ("Parent" or "Back"))
+            settings = settings with { DoubleClickEmptyAreaAction = "Parent" };
+
         if (settings.FormSize is not { } size)
             return settings;
         if (!double.IsFinite(size.Width) || !double.IsFinite(size.Height) || size.Width <= 0 || size.Height <= 0)

@@ -21,7 +21,8 @@ func TestWireState(t *testing.T) {
 	if err := json.Unmarshal(data, &state); err != nil {
 		t.Fatal(err)
 	}
-	if state.ProtocolVersion != 1 || state.Settings.RestoreGroupShortcut != "Alt+E" || !state.RecordClosedTabs || state.Settings.RestoreTabs {
+	if state.ProtocolVersion != 1 || state.Settings.RestoreGroupShortcut != "Alt+E" || !state.RecordClosedTabs || state.Settings.RestoreTabs ||
+		state.Settings.DoubleClickEmptyArea || state.Settings.DoubleClickEmptyAreaAction != "Parent" {
 		t.Fatalf("wire defaults lost: %#v", state)
 	}
 }

@@ -37,6 +37,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         ReuseTabsMenu.Click += (_, _) => _hookManager.SetReuseTabs(ReuseTabsMenu.IsChecked);
         DoubleClickCloseMenu.Click += (_, _) => _hookManager.SetDoubleClickClose(DoubleClickCloseMenu.IsChecked);
         MiddleClickForegroundMenu.Click += (_, _) => _hookManager.SetMiddleClickForeground(MiddleClickForegroundMenu.IsChecked);
+        DoubleClickEmptyAreaMenu.Click += (_, _) => _hookManager.SetDoubleClickEmptyArea(DoubleClickEmptyAreaMenu.IsChecked);
         WheelSwitchMenu.Click += (_, _) => _hookManager.SetWheelSwitch(WheelSwitchMenu.IsChecked);
         RestoreGroupMenu.Click += async (_, _) => await _hookManager.ExecuteSessionCommandAsync(true);
         ReopenTabMenu.Click += async (_, _) => await _hookManager.ExecuteSessionCommandAsync(false);
@@ -61,6 +62,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         ReuseTabsMenu.Header = UiStrings.TrayReuseTabs;
         DoubleClickCloseMenu.Header = UiStrings.TrayDoubleClickClose;
         MiddleClickForegroundMenu.Header = UiStrings.TrayMiddleClickForeground;
+        DoubleClickEmptyAreaMenu.Header = UiStrings.DoubleClickEmptyAreaTitle;
         WheelSwitchMenu.Header = UiStrings.TrayWheelSwitch;
         RestoreGroupMenu.Header = UiStrings.RestoreGroupCommand;
         ReopenTabMenu.Header = UiStrings.ReopenTabCommand;
@@ -79,6 +81,7 @@ public partial class SystemTrayIcon : UserControl, IDisposable
         ReuseTabsMenu.IsChecked = SettingsManager.ReuseTabs;
         DoubleClickCloseMenu.IsChecked = SettingsManager.DoubleClickCloseTab;
         MiddleClickForegroundMenu.IsChecked = SettingsManager.MiddleClickForegroundTab;
+        DoubleClickEmptyAreaMenu.IsChecked = SettingsManager.DoubleClickEmptyArea;
         WheelSwitchMenu.IsChecked = SettingsManager.WheelSwitchTab;
         RestoreGroupMenu.IsEnabled = _hookManager.IsShellReady;
         ReopenTabMenu.IsEnabled = _hookManager.IsShellReady && SettingsManager.ShouldRecordClosedTabs;

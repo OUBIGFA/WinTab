@@ -57,6 +57,11 @@ internal static class UiStrings
     public static string DoubleClickScopeIncludeNotepad => Pick("包含记事本", "Include Notepad");
     public static string DoubleClickScopeHint => Pick("选择双击关闭标签页生效的应用；包含记事本时，记事本标签页标题同样支持双击关闭",
         "Choose which apps double-click close works in; with Notepad included, Notepad tab titles close the same way");
+    public static string DoubleClickEmptyAreaTitle => Pick("双击空白处导航", "Double-click empty space");
+    public static string DoubleClickEmptyAreaDescription => Pick("在当前标签的文件列表空白处双击", "Navigate within the current tab from the file list background");
+    public static string DoubleClickEmptyAreaActionLabel => Pick("双击操作", "Double-click action");
+    public static string DoubleClickEmptyAreaParent => Pick("返回上一层", "Up one level");
+    public static string DoubleClickEmptyAreaBack => Pick("后退", "Back");
     public static string MiddleClickTitle => Pick("中键前台打开标签页", "Open middle-clicked tabs in foreground");
     public static string MiddleClickDescription => Pick("中键点击侧边栏、文件列表或主页中的文件夹时，新标签一律在前台打开", "Open folders middle-clicked in the navigation pane, file list or Home in the foreground instead of the background");
     public static string WheelSwitchTitle => Pick("滚轮切换标签页", "Scroll to switch tabs");
@@ -83,6 +88,7 @@ internal static class UiStrings
     {
         HookFeature.MergeWindows => WindowHookTitle,
         HookFeature.DoubleClickClose => DoubleClickTitle,
+        HookFeature.DoubleClickEmptyArea => DoubleClickEmptyAreaTitle,
         HookFeature.MiddleClickForeground => MiddleClickTitle,
         HookFeature.WheelSwitch => WheelSwitchTitle,
         _ => throw new ArgumentOutOfRangeException(nameof(feature), feature, null)

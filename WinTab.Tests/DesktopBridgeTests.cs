@@ -23,7 +23,7 @@ internal static class DesktopBridgeTests
     {
         foreach (var key in new[] { "windowHook", "reuseTabs", "restoreTabs", "restoreSingleTab",
             "restoreOnAnyFolder", "reopenClosedTab", "doubleClickCloseTab",
-            "doubleClickCloseIncludeNotepad", "middleClickForegroundTab", "wheelSwitchTab",
+            "doubleClickCloseIncludeNotepad", "doubleClickEmptyArea", "middleClickForegroundTab", "wheelSwitchTab",
             "showTrayIcon", "autoUpdate", "startup" })
         {
             foreach (var enabled in new[] { false, true })
@@ -35,7 +35,8 @@ internal static class DesktopBridgeTests
         }
         foreach (var (key, value) in new[] { ("language", "zh-CN"), ("language", "en-US"),
             ("theme", "Light"), ("theme", "Dark"), ("wheelSwitchSensitivity", "Low"),
-            ("wheelSwitchSensitivity", "Medium"), ("wheelSwitchSensitivity", "High") })
+            ("wheelSwitchSensitivity", "Medium"), ("wheelSwitchSensitivity", "High"),
+            ("doubleClickEmptyAreaAction", "Parent"), ("doubleClickEmptyAreaAction", "Back") })
             Check.Equal(value, Parse("set", new { key, value }).Text);
 
         // Chord normalization remains owned by the existing shared shortcut validator.
@@ -68,6 +69,9 @@ internal static class DesktopBridgeTests
             Request("set", new { key = "windowHook" }),
             Request("set", new { key = "language", value = "fr-FR" }),
             Request("set", new { key = "theme", value = "System" }),
+            Request("set", new { key = "doubleClickEmptyAreaAction", value = "Up" }),
+            Request("set", new { key = "doubleClickEmptyAreaAction", value = "1" }),
+            Request("set", new { key = "doubleClickEmptyAreaAction", value = true }),
             Request("set", new { key = "wheelSwitchSensitivity", value = "2" }),
             Request("shortcuts", new { groupEnabled = true, group = "", tabEnabled = false, tab = "Alt+W" }),
             Request("restore", new { group = "true" }),

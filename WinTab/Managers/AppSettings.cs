@@ -25,6 +25,9 @@ internal sealed record AppSettings
     public bool DoubleClickCloseTab { get; init; } = true;
     /// <summary>Whether double-click close also acts in Notepad windows, not only in Explorer.</summary>
     public bool DoubleClickCloseIncludeNotepad { get; init; } = true;
+    /// <summary>Opt-in navigation on the file-list background, independent of tab merging and closing.</summary>
+    public bool DoubleClickEmptyArea { get; init; } = false;
+    public string DoubleClickEmptyAreaAction { get; init; } = "Parent";
     public bool MiddleClickForegroundTab { get; init; } = true;
     public bool WheelSwitchTab { get; init; } = true;
     public string WheelSwitchSensitivity { get; init; } = "Medium";

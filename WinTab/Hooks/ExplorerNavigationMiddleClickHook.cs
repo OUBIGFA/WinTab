@@ -26,6 +26,9 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
     {
     }
 
+    internal ExplorerNavigationMiddleClickHook(NavigationInputSource input)
+        : this(hook => input.Subscribe(hook.ProcessPointer, hook.CancelForKeyboard, hook.OnForeground)) { }
+
     /// <param name="observeInput">Starts delivering the user's input to the hook; tests deliver it themselves.</param>
     internal ExplorerNavigationMiddleClickHook(Func<ExplorerNavigationMiddleClickHook, IDisposable> observeInput) =>
         _observeInput = observeInput;
@@ -109,11 +112,13 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
             else _clicks.Release(Environment.TickCount64);
             return;
         }
-        if (input.Kind == NavigationPointerKind.OtherDown)
+        if (input.Kind is NavigationPointerKind.OtherDown or NavigationPointerKind.LeftDown)
         {
             CancelPending($"pointer={input.Kind}");
             return;
         }
+
+        if (input.Kind != NavigationPointerKind.MiddleDown) return;
 
         // Every middle click leaves a line in the log, including the ones that are not followed: a click whose
         // tab stays in the background must always be explainable afterwards.
@@ -226,12 +231,7 @@ public sealed class ExplorerNavigationMiddleClickHook : IHook
         return result;
     }
 
-    private static bool HasModifiers() =>
-        (WinApi.GetAsyncKeyState(WinApi.VK_SHIFT) & 0x8000) != 0 ||
-        (WinApi.GetAsyncKeyState(WinApi.VK_CONTROL) & 0x8000) != 0 ||
-        (WinApi.GetAsyncKeyState(WinApi.VK_MENU) & 0x8000) != 0 ||
-        (WinApi.GetAsyncKeyState(WinApi.VK_LWIN) & 0x8000) != 0 ||
-        (WinApi.GetAsyncKeyState(WinApi.VK_RWIN) & 0x8000) != 0;
+    private static bool HasModifiers() => ExplorerNavigationAccess.HasModifiers();
 
     public void Dispose()
     {
