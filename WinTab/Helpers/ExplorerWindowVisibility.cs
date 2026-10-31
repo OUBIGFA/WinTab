@@ -193,6 +193,16 @@ public static class ExplorerWindowVisibility
             var wasToolWindow = (state.Opacity.ReadStyle(identity.Handle) & 0x80) != 0;
             if (!SetTaskbarStyle(identity.Handle, snapshot.TaskbarStyle, state.Opacity))
                 return false;
+            // WS_EX_TOOLWINDOW makes a maximized preload cover the monitor instead of its work area.
+            // Clearing the bit alone leaves USER32's cached frame/layout unchanged (issue #9).
+            // Refresh before revealing it, without activation or a restore/maximize toggle; USER32
+            // chooses the monitor/DPI/taskbar bounds and preserves the restore-down placement.
+            // Repeat on retries too: an earlier recovery may already have cleared the style bit.
+            // https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowpos#remarks
+            if ((snapshot.TaskbarStyle & 0x80) == 0 &&
+                !WinApi.SetWindowPos(identity.Handle, 0, 0, 0, 0, 0,
+                    WinApi.SWP_NOMOVE | WinApi.SWP_NOSIZE | WinApi.SWP_NOZORDER | WinApi.SWP_NOACTIVATE | WinApi.SWP_FRAMECHANGED))
+                return false;
             if (wasToolWindow && (snapshot.TaskbarStyle & 0x80) == 0 && WinApi.IsWindowVisible(identity.Handle))
             {
                 // A frame first shown as a tool window may never have entered the taskbar's catalog.
