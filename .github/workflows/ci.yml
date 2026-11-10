@@ -30,3 +30,49 @@ jobs:
         run: |
           & "WinTab.Tests\bin\Release\net9.0-windows\WinTab.Tests.exe"
           if ($LASTEXITCODE -ne 0) { throw "Unit tests failed (exit $LASTEXITCODE)" }
+
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: WinTab.Desktop/frontend/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: WinTab.Desktop/go.mod
+          cache-dependency-path: WinTab.Desktop/go.sum
+      - name: Verify matched MyGo versions
+        shell: pwsh
+        run: |
+          $module = Get-Content WinTab.Desktop/go.mod -Raw
+          $package = Get-Content WinTab.Desktop/frontend/package.json -Raw | ConvertFrom-Json
+          if ($module -notmatch '(?m)^require github\.com/egoist/mygo v([^\s]+)$' -or $Matches[1] -ne $package.dependencies.'mygo-runtime') {
+            throw 'MyGo and mygo-runtime must use the same exact version'
+          }
+      - name: Build and test frontend
+        working-directory: WinTab.Desktop/frontend
+        shell: pwsh
+        run: |
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test and build desktop bridge
+        working-directory: WinTab.Desktop
+        shell: pwsh
+        run: |
+          go test ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($architecture in @('amd64', 'arm64')) {
+            $env:GOARCH = $architecture
+            $env:CGO_ENABLED = '0'
+            go build -o "../_temp/ci-$architecture/WinTab.UI.exe" .
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }

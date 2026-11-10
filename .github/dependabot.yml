@@ -1,0 +1,17 @@
+version: 2
+
+# Keep both sides of MyGo's bridge in one review; CI refuses mismatched versions.
+multi-ecosystem-groups:
+  mygo:
+    schedule:
+      interval: daily
+
+updates:
+  - package-ecosystem: gomod
+    directory: /WinTab.Desktop
+    patterns: ['github.com/egoist/mygo']
+    multi-ecosystem-group: mygo
+  - package-ecosystem: npm
+    directory: /WinTab.Desktop/frontend
+    patterns: ['mygo-runtime']
+    multi-ecosystem-group: mygo

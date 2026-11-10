@@ -30,6 +30,8 @@ WinTab folds your File Explorer windows into one: newly opened windows become ta
 - Hold `Ctrl + Shift` while opening folders to keep a separate window; drag a tab off the tab row to split it into a new window
 - Runs from the system tray, starts with Windows, and switches between light / dark themes and Chinese / English
 
+The x64 and ARM64 settings interface uses MyGo, with sections for File Explorer, Session recovery, Appearance & system, and About. The x86 installer keeps the WPF settings interface.
+
 ## Tab recovery
 
 WinTab records tab groups while running, so they survive a shutdown or an Explorer crash; by default only windows with two or more tabs are recorded. The tray menu and the settings page provide:

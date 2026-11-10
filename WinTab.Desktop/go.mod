@@ -1,8 +1,8 @@
 module github.com/OUBIGFA/WinTab/desktop
 
-go 1.27.1
+go 1.27.3
 
-require github.com/egoist/mygo v0.3.5
+require github.com/egoist/mygo v0.8.3
 
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
@@ -14,6 +14,8 @@ require (
 	github.com/urfave/cli/v2 v2.25.7 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	golang.org/x/image v0.46.0 // indirect
+	golang.org/x/net v0.59.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 )
 
 tool github.com/tc-hib/go-winres

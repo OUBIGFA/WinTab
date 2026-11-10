@@ -16,6 +16,14 @@ $npm = (Get-Command npm.cmd -ErrorAction Stop).Source
 $go = (Get-Command go.exe -ErrorAction Stop).Source
 $numericVersion = $Version.TrimStart('v').Split('-')[0]
 
+# The Go bridge and browser runtime share a protocol and must be upgraded together.
+$goModule = Get-Content -LiteralPath (Join-Path $desktopRoot 'go.mod') -Raw -Encoding UTF8
+$package = Get-Content -LiteralPath (Join-Path $desktopRoot 'frontend/package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+if ($goModule -notmatch '(?m)^require github\.com/egoist/mygo v([^\s]+)$' -or
+    $Matches[1] -ne $package.dependencies.'mygo-runtime') {
+    throw 'MyGo and mygo-runtime must use the same exact version'
+}
+
 Push-Location (Join-Path $desktopRoot 'frontend')
 try {
     Write-Host '==> Building settings frontend' -ForegroundColor Cyan

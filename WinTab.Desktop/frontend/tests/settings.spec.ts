@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
 import fixture from './fixtures/state.json' with { type: 'json' }
 import { copies } from '../src/i18n'
 import type { State } from '../src/desktop'
 
-async function open(page: Page, overrides: Partial<State['settings']> = {}, maxHeight = 1100) {
+async function installBridge(page: Page, overrides: Partial<State['settings']> = {}, maxHeight = 1100) {
   await page.addInitScript(({ initial, overrides, maxHeight }) => {
     const state = structuredClone(initial)
     Object.assign(state.settings, overrides)
@@ -48,9 +49,18 @@ async function open(page: Page, overrides: Partial<State['settings']> = {}, maxH
       },
     }
   }, { initial: fixture as State, overrides, maxHeight })
+}
+
+async function open(page: Page, overrides: Partial<State['settings']> = {}, maxHeight = 1100) {
+  await installBridge(page, overrides, maxHeight)
   await page.goto('/')
   await expect(page.getByRole('switch', { name: copies[overrides.language ?? 'zh-CN'].merge, exact: true })).toBeVisible()
   await page.waitForFunction(() => !!(window as any).__ready)
+}
+
+async function navigate(page: Page, name: string) {
+  await page.getByRole('navigation').getByRole('button', { name, exact: true }).click()
+  await expect(page.getByRole('navigation').getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'page')
 }
 
 async function fitNativeViewport(page: Page) {
@@ -58,24 +68,46 @@ async function fitNativeViewport(page: Page) {
   await page.setViewportSize(size)
 }
 
+test('section navigation keeps readable controls and preserves shortcut drafts', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 650 })
+  await open(page, { formSize: { width: 900, height: 650 } })
+  const navigation = page.getByRole('navigation', { name: '设置分区' })
+  await expect(navigation).toBeVisible()
+  await navigation.getByRole('button', { name: '会话恢复', exact: true }).click()
+  const shortcut = page.getByRole('textbox', { name: '标签组恢复快捷键', exact: true })
+  await shortcut.fill('Ctrl+Shift+K')
+  await navigation.getByRole('button', { name: '外观与系统', exact: true }).click()
+  await expect(shortcut).not.toBeVisible()
+  await navigation.getByRole('button', { name: '会话恢复', exact: true }).click()
+  await expect(shortcut).toHaveValue('Ctrl+Shift+K')
+  await expect(page.getByText('有未应用的快捷键', { exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 640, height: 480 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(await shortcut.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14)
+})
+
 for (const language of ['zh-CN', 'en-US'] as const) {
   for (const theme of ['Light', 'Dark'] as const) {
-    test(`whole page fits first launch in ${language} ${theme}`, async ({ page }, testInfo) => {
+    test(`all sections stay usable in ${language} ${theme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 1064, height: 780 })
       await open(page, { language, theme })
       await fitNativeViewport(page)
       const t = copies[language]
-      await expect(page.getByRole('heading', { name: t.explorer, exact: true })).toBeVisible()
-      await expect(page.getByRole('heading', { name: t.system, exact: true })).toBeVisible()
-      await expect(page.getByRole('heading', { name: t.recovery, exact: true })).toBeVisible()
+      for (const [id, label] of [['explorer', t.explorer], ['recovery', t.recoveryNav], ['preferences', t.preferences], ['about', t.about]]) {
+        await navigate(page, label)
+        await expect(page.getByRole('heading', { name: label, exact: true, level: 1 })).toBeVisible()
+        expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+        const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze()
+        expect(accessibility.violations, `${language} ${theme} ${id}`).toEqual([])
+        await page.screenshot({ path: testInfo.outputPath(`${id}.png`), animations: 'disabled' })
+      }
       await expect(page.getByRole('button', { name: t.updates, exact: true })).toBeInViewport()
-      expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1)).toBe(true)
-      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-      await page.screenshot({ path: testInfo.outputPath('settings.png'), fullPage: true })
     })
   }
 }
 
-test('short screen fits without initial scrollbars', async ({ page }) => {
+test('short screen scrolls content without shrinking text or navigation', async ({ page }) => {
   await open(page, {}, 740)
   await fitNativeViewport(page)
   const dimensions = await page.evaluate(() => ({
@@ -84,15 +116,19 @@ test('short screen fits without initial scrollbars', async ({ page }) => {
     zoom: getComputedStyle(document.querySelector('.page')!).zoom,
   }))
   expect(dimensions.height, JSON.stringify(dimensions)).toBeLessThanOrEqual(dimensions.viewport + 1)
-  await expect(page.getByRole('button', { name: '检查更新', exact: true })).toBeInViewport()
+  expect(dimensions.zoom).toBe('1')
+  await page.getByRole('radio', { name: '高', exact: true }).scrollIntoViewIfNeeded()
+  await expect(page.getByRole('navigation')).toBeInViewport()
+  await navigate(page, '关于')
+  await expect(page.getByRole('button', { name: '检查更新', exact: true })).toBeVisible()
 })
 
 test('saved small size stays manual with all content reachable by scrolling', async ({ page }) => {
   await page.setViewportSize({ width: 760, height: 620 })
   await open(page, { formSize: { width: 760, height: 620 } })
   expect(await page.locator('.page').evaluate(element => getComputedStyle(element).zoom)).toBe('1')
-  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true)
-  await page.getByRole('button', { name: '检查更新', exact: true }).scrollIntoViewIfNeeded()
+  expect(await page.locator('.workspace').evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
+  await navigate(page, '关于')
   await expect(page.getByRole('button', { name: '检查更新', exact: true })).toBeInViewport()
 })
 
@@ -111,13 +147,16 @@ test('settings reflect dependent backend state, not optimistic local toggles', a
 
 test('physical capture, manual text and drafts survive unrelated updates', async ({ page }) => {
   await open(page)
+  await navigate(page, '会话恢复')
   const group = page.getByRole('textbox', { name: '标签组恢复快捷键', exact: true })
   await group.focus()
   await page.keyboard.press('Control+Shift+K')
   await expect(group).toHaveValue('Ctrl+Shift+K')
   await page.getByRole('button', { name: '切换为深色主题' }).click()
   await expect(group).toHaveValue('Ctrl+Shift+K')
+  await navigate(page, '外观与系统')
   await page.getByRole('switch', { name: '显示托盘图标', exact: true }).click()
+  await navigate(page, '会话恢复')
   await expect(group).toHaveValue('Ctrl+Shift+K')
   await group.fill('Alt+F12')
   await page.getByRole('button', { name: '应用快捷键', exact: true }).click()
@@ -129,6 +168,7 @@ test('physical capture, manual text and drafts survive unrelated updates', async
 
 test('repeat ownership, top-row digits, function keys and normal Tab navigation', async ({ page }) => {
   await open(page)
+  await navigate(page, '会话恢复')
   const field = page.getByRole('textbox', { name: '标签组恢复快捷键', exact: true })
   await field.focus()
   await page.keyboard.down('Control'); await page.keyboard.down('k'); await page.keyboard.up('Control')
@@ -144,6 +184,7 @@ test('repeat ownership, top-row digits, function keys and normal Tab navigation'
 
 test('deferred shortcut selection preserves focus after Tab navigation', async ({ page }) => {
   await open(page)
+  await navigate(page, '会话恢复')
   const field = page.getByRole('textbox', { name: '标签组恢复快捷键', exact: true })
   await field.focus()
   // Replay a slow frame after keyboard navigation, keeping the input and browser focus behavior real
@@ -169,6 +210,7 @@ test('deferred shortcut selection preserves focus after Tab navigation', async (
 
 test('manual recovery, shortcut prerequisites and optional automatic restore stay independent', async ({ page }) => {
   await open(page)
+  await navigate(page, '会话恢复')
   await expect(page.getByRole('switch', { name: '自动恢复上次标签组', exact: true })).not.toBeChecked()
   await expect(page.getByRole('radio', { name: '仅普通启动', exact: true })).toBeDisabled()
   await expect(page.getByRole('button', { name: '立即恢复', exact: true }).first()).toBeEnabled()
@@ -232,6 +274,7 @@ test('both languages have consistent punctuation-free UI copy', () => {
 
 test('duplicate shortcuts show validation while retaining the draft', async ({ page }) => {
   await open(page)
+  await navigate(page, '会话恢复')
   const field = page.getByRole('textbox', { name: '标签组恢复快捷键', exact: true })
   await field.fill('Alt+W')
   await page.getByRole('button', { name: '应用快捷键', exact: true }).click()
@@ -239,3 +282,68 @@ test('duplicate shortcuts show validation while retaining the draft', async ({ p
   await expect(field).toHaveValue('Alt+W')
   await expect(field).toHaveAttribute('aria-invalid', 'true')
 })
+
+test('save guidance does not contradict a draft or failed request', async ({ page }) => {
+  await open(page)
+  await navigate(page, '会话恢复')
+  await page.getByRole('textbox', { name: '标签组恢复快捷键', exact: true }).fill('Alt+K')
+  await expect(page.locator('.page-footer')).not.toContainText(copies['zh-CN'].saved)
+  await page.getByRole('button', { name: '应用快捷键', exact: true }).click()
+  await expect(page.locator('.page-footer')).toContainText(copies['zh-CN'].saved)
+  await page.evaluate(() => { (window as any).__reject = 'Desktop.Set' })
+  await navigate(page, '资源管理器')
+  await page.getByRole('switch', { name: '合并新窗口', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText(copies['zh-CN'].requestError)
+  await expect(page.locator('.page-footer')).not.toContainText(copies['zh-CN'].saved)
+  await expect(page.getByRole('switch', { name: '合并新窗口', exact: true })).toBeChecked()
+})
+
+test('failed bootstrap reveals a retry surface and reconnects to real state', async ({ page }) => {
+  await installBridge(page)
+  await page.addInitScript(() => { (window as any).__reject = 'Desktop.Load' })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Connection unavailable', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Reconnect', exact: true })).toBeVisible()
+  await page.waitForFunction(() => !!(window as any).__ready)
+  await page.evaluate(() => { (window as any).__reject = null })
+  await page.getByRole('button', { name: 'Reconnect', exact: true }).click()
+  await expect(page.getByRole('switch', { name: '合并新窗口', exact: true })).toBeChecked()
+  await expect(page.getByRole('heading', { name: '资源管理器', exact: true })).toBeVisible()
+})
+
+test('appearance, support and navigation work by keyboard without changing unrelated settings', async ({ page }) => {
+  await open(page)
+  const nav = page.getByRole('navigation')
+  await nav.getByRole('button', { name: '外观与系统', exact: true }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused()
+  await page.getByRole('radio', { name: '深色', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'Dark')
+  await page.getByRole('radio', { name: 'English', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en-US')
+  await expect(nav.getByRole('button', { name: 'Appearance & system', exact: true })).toHaveAttribute('aria-current', 'page')
+  await navigate(page, 'About')
+  await page.getByRole('button', { name: 'Check for updates', exact: true }).click()
+  await expect(page.getByText('已是最新版本', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Open logs', exact: true }).click()
+  await page.getByRole('link', { name: 'View source code', exact: true }).click()
+  const calls = await page.evaluate(() => (window as any).__calls)
+  expect(calls.filter((call: any) => call.method === 'Desktop.Set').map((call: any) => call.args[0])).toEqual(['theme', 'language'])
+  expect(calls.map((call: any) => call.method)).toEqual(expect.arrayContaining(['Desktop.Update', 'Desktop.Logs', 'Desktop.OpenProject']))
+})
+
+for (const width of [390, 640, 900]) {
+  test(`all sections remain reachable at ${width}px without horizontal overflow`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 620 })
+    await open(page, { language: 'en-US', theme: 'Dark', formSize: { width, height: 620 } })
+    for (const label of ['File Explorer', 'Session recovery', 'Appearance & system', 'About']) {
+      await navigate(page, label)
+      const overflow = await page.locator('.workspace').evaluate(element => element.scrollWidth > element.clientWidth)
+      expect(overflow, label).toBe(false)
+      await expect(page.getByRole('heading', { level: 1 })).toBeInViewport()
+      await page.locator('.page-footer').scrollIntoViewIfNeeded()
+      await expect(page.locator('.page-footer')).toBeInViewport()
+    }
+    await page.screenshot({ path: testInfo.outputPath('narrow.png'), animations: 'disabled' })
+  })
+}

@@ -13,11 +13,12 @@
     "@radix-ui/react-radio-group": "1.4.8",
     "@radix-ui/react-switch": "1.3.8",
     "lucide-react": "1.53.0",
-    "mygo-runtime": "0.3.5",
+    "mygo-runtime": "0.8.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.64.0",
     "@types/node": "26.6.4",
     "@types/react": "19.3.0",

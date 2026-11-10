@@ -1,4 +1,16 @@
 const zh = {
+  navigation: '设置分区', settings: '设置', recoveryNav: '会话恢复', preferences: '外观与系统',
+  explorerIntro: '让文件夹各归其位，让标签操作更顺手',
+  recoveryIntro: '找回刚刚关闭的标签，继续上次的工作',
+  preferencesIntro: '调整界面和后台运行方式', aboutIntro: '一个专注于资源管理器标签的小工具',
+  windowsAndTabs: '窗口与标签', mouseActions: '鼠标操作', appearance: '外观',
+  themeLabel: '主题', lightChoice: '浅色', darkChoice: '深色', languageLabel: '界面语言',
+  background: '后台运行', automatic: '自动恢复', recoveryDetails: '恢复范围与例外',
+  saved: '设置自动保存', connected: '正在后台运行', closeHint: '关闭窗口后仍继续运行',
+  shortcutsNote: '快捷键修改后需要应用，其余设置自动保存', retry: '重新连接',
+  loadTitle: '连接 WinTab', loadErrorTitle: '暂时无法连接',
+  aboutDescription: '合并文件夹窗口，切换标签，找回上次的工作',
+  support: '更新与支持', project: '查看源代码', version: '当前版本', logsDesc: '查看运行记录，协助排查问题',
   connecting: '正在连接资源管理器',
   explorer: '资源管理器',
   merge: '合并新窗口', mergeDesc: '将新打开的文件夹合并为当前窗口的标签',
@@ -36,12 +48,24 @@ const zh = {
   about: '关于', openSource: '在浏览器中打开 GitHub 项目', license: 'MIT 许可', logs: '打开日志', updates: '检查更新', checking: '正在检查',
   saving: '正在应用设置', running: '关闭设置后，WinTab 继续在后台运行',
   light: '切换为浅色主题', dark: '切换为深色主题', language: 'Switch to English',
-  loadError: '无法连接 WinTab，请关闭此窗口后重新打开设置',
+  loadError: '无法读取设置，请重新连接，或关闭此窗口后再打开',
   requestError: '操作未完成，请重试或查看日志',
 } as const
 
 type Copy = { [Key in keyof typeof zh]: string }
 const en: Copy = {
+  navigation: 'Settings sections', settings: 'Settings', recoveryNav: 'Session recovery', preferences: 'Appearance & system',
+  explorerIntro: 'Keep folders together and move between tabs with ease',
+  recoveryIntro: 'Reopen closed tabs and pick up where you left off',
+  preferencesIntro: 'Make WinTab feel at home on your desktop', aboutIntro: 'A focused companion for File Explorer tabs',
+  windowsAndTabs: 'Windows & tabs', mouseActions: 'Mouse actions', appearance: 'Appearance',
+  themeLabel: 'Theme', lightChoice: 'Light', darkChoice: 'Dark', languageLabel: 'Language',
+  background: 'Background behavior', automatic: 'Automatic recovery', recoveryDetails: 'Recovery scope & exceptions',
+  saved: 'Settings save automatically', connected: 'Running in the background', closeHint: 'Keeps running when this window closes',
+  shortcutsNote: 'Apply shortcut changes when ready, other settings save automatically', retry: 'Reconnect',
+  loadTitle: 'Connecting to WinTab', loadErrorTitle: 'Connection unavailable',
+  aboutDescription: 'Bring folders together, move between tabs and return to your work',
+  support: 'Updates & support', project: 'View source code', version: 'Current version', logsDesc: 'View activity logs to help troubleshoot a problem',
   connecting: 'Connecting to File Explorer',
   explorer: 'File Explorer',
   merge: 'Merge new windows', mergeDesc: 'Open folders as tabs in the current window',
@@ -79,7 +103,7 @@ const en: Copy = {
   about: 'About', openSource: 'Open the GitHub project in your browser', license: 'MIT License', logs: 'Open logs', updates: 'Check for updates', checking: 'Checking',
   saving: 'Applying settings', running: 'WinTab keeps running when you close settings',
   light: 'Switch to light theme', dark: 'Switch to dark theme', language: '切换到中文',
-  loadError: 'Could not connect to WinTab, close this window and reopen settings',
+  loadError: 'Could not load settings, reconnect or close this window and open it again',
   requestError: 'The action did not complete, try again or check the logs',
 }
 

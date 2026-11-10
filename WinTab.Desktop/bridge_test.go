@@ -143,7 +143,7 @@ func TestInitialSizeRespectsSavedDimensionsAndScreen(t *testing.T) {
 		saved                       *Size
 		width, height, wantW, wantH int
 	}{
-		{nil, 1920, 1080, 1224, 880}, {nil, 800, 600, 800, 600},
+		{nil, 1920, 1080, 1064, 824}, {nil, 800, 600, 800, 600},
 		{&Size{1100, 1200}, 1920, 1400, 1100, 1200}, {&Size{2200, 1600}, 1280, 960, 1280, 960},
 	} {
 		width, height := initialSize(test.saved, test.width, test.height)

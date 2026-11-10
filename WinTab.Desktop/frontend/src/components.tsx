@@ -2,7 +2,7 @@ import { useRef, type ReactNode, type KeyboardEvent } from 'react'
 import * as SwitchPrimitive from '@radix-ui/react-switch'
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
 import * as RadioGroup from '@radix-ui/react-radio-group'
-import { Check, Keyboard, type LucideIcon } from 'lucide-react'
+import { Check, Keyboard } from 'lucide-react'
 
 export function Toggle({ id, label, description, checked, disabled, onChange }: {
   id: string; label: string; description?: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void
@@ -48,17 +48,10 @@ export function Segments<T extends string>({ label, value, options, onChange, di
   </RadioGroup.Root>
 }
 
-export function SectionHeading({ icon: Icon, title, id }: { icon: LucideIcon; title: string; id: string }) {
-  return <div className="section-heading">
-    <Icon className="section-icon" size={19} strokeWidth={1.7} aria-hidden="true" />
-    <h2 id={id}>{title}</h2>
-  </div>
-}
-
-export function Setting({ id, title, description, control, children, compact = false }: {
-  id: string; title: string; description?: string; control: ReactNode; children?: ReactNode; compact?: boolean
+export function Setting({ id, title, description, control, children }: {
+  id: string; title: string; description?: string; control: ReactNode; children?: ReactNode
 }) {
-  return <div className={`setting${compact ? ' setting-compact' : ''}`}>
+  return <div className="setting">
     <div className="setting-main">
       <div className="setting-copy">
         <label htmlFor={id} className="setting-title">{title}</label>

@@ -147,8 +147,8 @@ func (d *Desktop) open(state State) {
 		Title: "WinTab", URL: "/", Width: width, Height: height,
 		X: area.X + (area.Width-width)/2, Y: area.Y + (area.Height-height)/2,
 		MinWidth: min(640, area.Width), MinHeight: min(480, area.Height), Hidden: true,
-		TitleBarStyle: mygo.TitleBarHidden, TitleBarHeight: 40,
-		BackgroundColor: "light-dark(#fafafa, #141414)",
+		TitleBarStyle: mygo.TitleBarHidden, TitleBarHeight: 44,
+		BackgroundColor: "light-dark(#f0efea, #1e1e1c)",
 		Page:            mygo.PageOptions{DevTools: mygo.DevToolsDisabled},
 	})
 	web, _ := fs.Sub(assets, "frontend/dist")
@@ -189,7 +189,7 @@ func initialSize(saved *Size, width, height int) (int, int) {
 	if saved != nil {
 		return min(max(int(saved.Width), 400), width), min(max(int(saved.Height), 300), height)
 	}
-	return min(1224, width), min(880, height)
+	return min(1064, width), min(824, height)
 }
 
 func main() {
