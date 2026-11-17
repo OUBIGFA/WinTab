@@ -2,7 +2,7 @@ module github.com/OUBIGFA/WinTab/desktop
 
 go 1.27.3
 
-require github.com/egoist/mygo v0.8.3
+require github.com/egoist/mygo v0.9.2
 
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
