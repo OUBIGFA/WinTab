@@ -19,7 +19,7 @@ $numericVersion = $Version.TrimStart('v').Split('-')[0]
 # The Go bridge and browser runtime share a protocol and must be upgraded together.
 $goModule = Get-Content -LiteralPath (Join-Path $desktopRoot 'go.mod') -Raw -Encoding UTF8
 $package = Get-Content -LiteralPath (Join-Path $desktopRoot 'frontend/package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if ($goModule -notmatch '(?m)^require github\.com/egoist/mygo v([^\s]+)$' -or
+if ($goModule -notmatch '(?m)^require github\.com/egoist/mygo v([^\s]+)\r?$' -or
     $Matches[1] -ne $package.dependencies.'mygo-runtime') {
     throw 'MyGo and mygo-runtime must use the same exact version'
 }

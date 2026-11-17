@@ -49,7 +49,7 @@ jobs:
         run: |
           $module = Get-Content WinTab.Desktop/go.mod -Raw
           $package = Get-Content WinTab.Desktop/frontend/package.json -Raw | ConvertFrom-Json
-          if ($module -notmatch '(?m)^require github\.com/egoist/mygo v([^\s]+)$' -or $Matches[1] -ne $package.dependencies.'mygo-runtime') {
+          if ($module -notmatch '(?m)^require github\.com/egoist/mygo v([^\s]+)\r?$' -or $Matches[1] -ne $package.dependencies.'mygo-runtime') {
             throw 'MyGo and mygo-runtime must use the same exact version'
           }
       - name: Build and test frontend
