@@ -162,7 +162,7 @@ public partial class ExplorerWatcher
                         if (!await SelectTabByHandle(windowHandle, existingTab))
                             return false;
                         EnsureCurrentMerge();
-                        if (existingWindow == null || !SelectItems(existingWindow, windowToOpen.SelectedItems))
+                        if (existingWindow == null || !await SelectItemsInReusedTabAsync(existingWindow, windowToOpen.SelectedItems))
                         {
                             ExplorerDebugLog.Write($"OpenTab reuse-selection-failed target={windowToOpen.Location}");
                             return false;

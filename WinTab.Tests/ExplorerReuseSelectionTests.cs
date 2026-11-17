@@ -18,6 +18,10 @@ internal static class ExplorerReuseSelectionTests
         yield return ("reusing a tab without a selection request preserves the current selection", () => ReuseSelectionAsync(null, ["previous.txt"]));
         yield return ("reuse does not report success when the selection view is unavailable", () => ReuseSelectionAsync(["target.txt"], ["previous.txt"], expectedReused: false, viewAvailable: false));
         yield return ("reuse does not report success when all requested files are missing", () => ReuseSelectionAsync(["missing.txt"], ["previous.txt"], expectedReused: false));
+        yield return ("reusing a tab refreshes a view that does not list the requested file yet", () => ReuseSelectionAsync(["target.txt"], ["target.txt"],
+            unlisted: ["target.txt"], expectedRefreshes: 1));
+        yield return ("reuse does not report success when a refreshed view still does not list the file", () => ReuseSelectionAsync(["target.txt"], ["previous.txt"],
+            expectedReused: false, unlisted: ["target.txt"], refreshLists: false, expectedRefreshes: 1));
         yield return ("file-location reuse preserves a Start menu shortcut selection", () => ReuseSelectionAsync(null, ["测试应用.lnk"],
             capturedItems: [("测试应用", @"C:\WinTab-reuse\测试应用.lnk", true)]));
         yield return ("file-location reuse preserves hidden extensions in a mixed selection", () => ReuseSelectionAsync(null, ["report.txt", "target.txt"],
@@ -29,7 +33,8 @@ internal static class ExplorerReuseSelectionTests
     }
 
     private static async Task ReuseSelectionAsync(string[]? requested, string[] expected, bool expectedReused = true, bool viewAvailable = true,
-        (string Name, string Path, bool IsFileSystem)[]? capturedItems = null)
+        (string Name, string Path, bool IsFileSystem)[]? capturedItems = null, string[]? unlisted = null, bool refreshLists = true,
+        int expectedRefreshes = 0)
     {
         using var scheduler = new StaTaskScheduler();
         await Task.Factory.StartNew(async () =>
@@ -52,7 +57,9 @@ internal static class ExplorerReuseSelectionTests
             SetField(watcher, "_closingMergeSourceHWnds", new System.Collections.Concurrent.ConcurrentDictionary<nint, MergeOperation>());
 
             var selected = new List<string> { "previous.txt" };
-            var view = viewAvailable ? CreateFolderView(selected, capturedItems) : null;
+            var refreshes = 0;
+            Action refreshView = () => { };
+            var view = viewAvailable ? CreateFolderView(selected, capturedItems, unlisted, refreshLists, out refreshView) : null;
             var dictionaryField = typeof(ExplorerWatcher).GetField("_windowEntryDict", BindingFlags.Instance | BindingFlags.NonPublic)!;
             var dictionary = Activator.CreateInstance(dictionaryField.FieldType)!;
             var browserType = dictionaryField.FieldType.GetGenericArguments()[0];
@@ -61,8 +68,16 @@ internal static class ExplorerReuseSelectionTests
                 "get_HWND" => (long)fixture.Handle,
                 "get_LocationURL" => "file:///C:/WinTab-reuse",
                 "get_Document" => view,
+                // What F5 does. Any other test fails here, so a view that took the selection is never refreshed.
+                "Refresh" => Refresh(),
                 _ => throw new InvalidOperationException("Unexpected browser call: " + method)
             });
+            object? Refresh()
+            {
+                refreshes++;
+                refreshView();
+                return null;
+            }
             // Exercise the handoff from the source selection to the reused tab. Display names may
             // omit extensions, but Explorer's folder parser still needs the complete file name.
             if (capturedItems != null)
@@ -93,11 +108,13 @@ internal static class ExplorerReuseSelectionTests
 
             Check.Equal(expectedReused, reused, "Reuse must not claim success when the requested file selection cannot be applied.");
             Check.That(selected.SequenceEqual(expected), "The reused tab must contain the requested selection, without unrelated old files.");
+            Check.Equal(expectedRefreshes, refreshes, "The reused view is refreshed once when it did not take the selection, and never otherwise.");
             Check.Equal(2, ExplorerWindowDiscovery.GetAllExplorerTabs(fixture.Handle).Count(), "Reuse must not create another tab.");
         }, CancellationToken.None, TaskCreationOptions.None, scheduler).Unwrap();
     }
 
-    private static object CreateFolderView(List<string> selected, (string Name, string Path, bool IsFileSystem)[]? capturedItems)
+    private static object CreateFolderView(List<string> selected, (string Name, string Path, bool IsFileSystem)[]? capturedItems,
+        string[]? unlisted, bool refreshLists, out Action refresh)
     {
         var viewType = typeof(ExplorerWatcher).Assembly.GetType("Shell32.ShellFolderView", throwOnError: true)!;
         var folderType = viewType.GetInterfaces().Append(viewType).SelectMany(type => type.GetProperties())
@@ -106,22 +123,61 @@ internal static class ExplorerReuseSelectionTests
             .First(method => method.Name == "ParseName").ReturnType;
         var selectionType = viewType.GetInterfaces().Append(viewType).SelectMany(type => type.GetMethods())
             .First(method => method.Name == "SelectedItems").ReturnType;
-        var sourceItems = (capturedItems ?? []).Select(source => ShellDispatchStub.Create(itemType, (method, arguments) => method switch
+        var captured = capturedItems ?? [];
+        object CreateItem((string Name, string Path, bool IsFileSystem) source) => ShellDispatchStub.Create(itemType, (method, arguments) => method switch
         {
             "get_Name" => source.Name,
             "get_Path" => source.Path,
             "get_IsFileSystem" => source.IsFileSystem,
             _ => throw new InvalidOperationException("Unexpected source item call: " + method)
-        })).ToArray();
+        });
+        var sourceItems = captured.Select(CreateItem).ToArray();
+        // The view first plays the source window whose selection is captured, then the reused tab:
+        // once a selection has been requested, it reports what is selected in the tab.
+        var selectionRequested = false;
+        (string Name, string Path, bool IsFileSystem) Describe(string name)
+        {
+            foreach (var source in captured)
+            {
+                if (source.Name == name || source.Path.EndsWith(@"\" + name, StringComparison.OrdinalIgnoreCase))
+                    return source;
+            }
+            return (name, @"C:\WinTab-reuse\" + name, true);
+        }
+        object[] CurrentSelection() => !selectionRequested && capturedItems != null
+            ? sourceItems
+            : selected.Select(name => CreateItem(Describe(name))).ToArray();
         var selection = ShellDispatchStub.Create(selectionType, (method, arguments) => method switch
         {
-            "get_Count" => sourceItems.Length,
-            "Item" => sourceItems[Convert.ToInt32(arguments[0])],
+            "get_Count" => CurrentSelection().Length,
+            "Item" => CurrentSelection()[Convert.ToInt32(arguments[0])],
             _ => throw new InvalidOperationException("Unexpected selection call: " + method)
         });
         // Model real ParseName behavior: a display label is not an alias for a file with an extension.
         var availableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { "previous.txt", "target.txt", "first.txt", "second.txt", "测试应用.lnk", "report.txt", "Control Panel", "Local Disk (C:)" };
+        // ParseName asks the folder, so it resolves a file the view does not list yet. Explorer's view
+        // accepts a selection request for such a file without an error, leaves its selection as it was
+        // and applies the request once the file is listed (measured on a real folder view for issue #12).
+        var listedNames = new HashSet<string>(availableNames.Except(unlisted ?? []), StringComparer.OrdinalIgnoreCase);
+        (string Name, int Flags)? pending = null;
+        void Apply(string name, int flags)
+        {
+            if ((flags & 4) != 0)
+                selected.Clear();
+            if ((flags & 1) != 0)
+                selected.Add(name);
+        }
+        refresh = () =>
+        {
+            if (!refreshLists)
+                return;
+            listedNames.UnionWith(unlisted ?? []);
+            if (pending is not { } request)
+                return;
+            pending = null;
+            Apply(request.Name, request.Flags);
+        };
         var parsedNames = new Dictionary<object, string>();
         var folder = ShellDispatchStub.Create(folderType, (method, arguments) =>
         {
@@ -143,11 +199,13 @@ internal static class ExplorerReuseSelectionTests
                 return folder;
             if (method != "SelectItem")
                 throw new InvalidOperationException("Unexpected view call: " + method);
+            selectionRequested = true;
+            var name = parsedNames[arguments[0]!];
             var flags = Convert.ToInt32(arguments[1]);
-            if ((flags & 4) != 0)
-                selected.Clear();
-            if ((flags & 1) != 0)
-                selected.Add(parsedNames[arguments[0]!]);
+            if (listedNames.Contains(name))
+                Apply(name, flags);
+            else
+                pending = (name, flags);
             return null;
         });
     }

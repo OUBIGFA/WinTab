@@ -1,6 +1,7 @@
 using Shell32;
 using SHDocVw;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -17,6 +18,8 @@ public partial class ExplorerWatcher
 {
     private const int NavigationCompleteWaitMs = 600;
     private const int NavigationVerificationWaitMs = 1_200;
+    /// <summary>How long a refreshed tab gets to list a requested file and take the selection.</summary>
+    private const int ReuseSelectionWaitMs = 1_500;
     private const int StartupLocationCacheLimit = 512;
 
     private Task<string> ResolveInitialLocation(InternetExplorer window)
@@ -273,8 +276,12 @@ public partial class ExplorerWatcher
             return null;
         }
     }
-    private bool SelectItems(InternetExplorer window, string[]? names)
+    private bool SelectItems(InternetExplorer window, string[]? names) => SelectItems(window, names, out _);
+
+    /// <param name="requested">The names that have an item in the folder, so their selection was requested.</param>
+    private bool SelectItems(InternetExplorer window, string[]? names, out List<string> requested)
     {
+        requested = [];
         if (names == null || names.Length == 0) return true;
         var identity = WindowIdentity.Capture(SafeGetWindowHandle(window));
         EnsureWindowIdentity(identity);
@@ -283,16 +290,55 @@ public partial class ExplorerWatcher
 
         const int selectItem = 1;
         const int deselectOthers = 4;
-        var selectedAny = false;
         foreach (var name in names)
         {
             EnsureWindowIdentity(identity);
             object item = document.Folder.ParseName(name);
             if (item == null) continue;
-            document.SelectItem(ref item, selectedAny ? selectItem : selectItem | deselectOthers);
-            selectedAny = true;
+            document.SelectItem(ref item, requested.Count > 0 ? selectItem : selectItem | deselectOthers);
+            requested.Add(name);
         }
-        return selectedAny;
+        return requested.Count > 0;
+    }
+
+    /// <summary>
+    /// Selects files in a tab that already shows the folder. Unlike a tab that has just navigated there,
+    /// such a view may not list a file yet: one created a moment ago, or one whose change notification
+    /// never reached the view. Explorer then accepts SelectItem without an error, keeps the old selection
+    /// and applies the request only once the file is listed (issue #12). The selection is therefore read
+    /// back, and the view is refreshed when a requested file is not selected.
+    /// </summary>
+    private async Task<bool> SelectItemsInReusedTabAsync(InternetExplorer window, string[]? names)
+    {
+        if (!SelectItems(window, names, out var requested))
+            return false;
+        if (requested.Count == 0 || IsSelected(window, requested) != false)
+            return true;
+
+        ExplorerDebugLog.Write($"OpenTab reuse-selection not applied; refreshing the view items={requested.Count}");
+        window.Refresh();
+        var applied = await Helper.DoUntilConditionAsync(() =>
+            {
+                // Explorer applies the pending request itself once the refreshed view lists the file.
+                // Asking again makes the outcome independent of how many requests the view keeps pending.
+                SelectItems(window, names);
+                return IsSelected(window, requested);
+            },
+            selected => selected != false, ReuseSelectionWaitMs, 50, CurrentCancellation);
+        EnsureCurrentMerge();
+        return applied != false;
+    }
+
+    /// <summary>
+    /// Whether the view has every requested name selected. Null when the selection cannot be read; the
+    /// request was accepted and nothing contradicts it, so the caller treats that as before: applied.
+    /// </summary>
+    private static bool? IsSelected(InternetExplorer window, List<string> requested)
+    {
+        var selected = TryGetSelectedItems(window);
+        if (selected == null)
+            return null;
+        return requested.All(name => selected.Contains(name, StringComparer.OrdinalIgnoreCase));
     }
     private static string GetLocation(InternetExplorer window)
     {
