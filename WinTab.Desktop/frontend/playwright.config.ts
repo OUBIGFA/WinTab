@@ -8,7 +8,7 @@ export default defineConfig({
   reporter: 'list',
   use: { baseURL: 'http://127.0.0.1:4173', viewport: { width: 1224, height: 1100 } },
   webServer: {
-    command: 'npm exec vite -- preview --host 127.0.0.1 --port 4173 --strictPort',
+    command: 'node ./node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 4173 --strictPort',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
   },

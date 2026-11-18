@@ -7,7 +7,7 @@
         <Setter Property="Control.Template">
             <Setter.Value>
                 <ControlTemplate>
-                    <Border Margin="-3" CornerRadius="12" BorderThickness="2"
+                    <Border Margin="-3" CornerRadius="10" BorderThickness="2"
                             BorderBrush="{DynamicResource FocusRingBrush}" Opacity="0.65" />
                 </ControlTemplate>
             </Setter.Value>
@@ -65,7 +65,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ButtonBase">
                     <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" CornerRadius="10">
+                            BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" CornerRadius="8">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                             <controls:LineIcon x:Name="ActionIcon" Data="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
                                                Foreground="{TemplateBinding Foreground}" Margin="0,0,6,0" />

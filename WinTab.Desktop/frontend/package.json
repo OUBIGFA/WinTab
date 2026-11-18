@@ -13,7 +13,7 @@
     "@radix-ui/react-radio-group": "1.4.8",
     "@radix-ui/react-switch": "1.3.8",
     "lucide-react": "1.53.0",
-    "mygo-runtime": "0.9.2",
+    "mygo-runtime": "0.10.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

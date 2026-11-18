@@ -148,7 +148,7 @@ func (d *Desktop) open(state State) {
 		X: area.X + (area.Width-width)/2, Y: area.Y + (area.Height-height)/2,
 		MinWidth: min(640, area.Width), MinHeight: min(480, area.Height), Hidden: true,
 		TitleBarStyle: mygo.TitleBarHidden, TitleBarHeight: 44,
-		BackgroundColor: "light-dark(#f0efea, #1e1e1c)",
+		BackgroundColor: "light-dark(#fafafa, #161616)",
 		Page:            mygo.PageOptions{DevTools: mygo.DevToolsDisabled},
 	})
 	web, _ := fs.Sub(assets, "frontend/dist")

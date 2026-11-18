@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowUpRight, Check, CircleAlert, FolderOpen, Info, Languages, LoaderCircle, Moon, PanelLeft, RefreshCw, RotateCcw, Settings2, Sun } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronRight, CircleAlert, FolderOpen, Info, Languages, LoaderCircle, Moon, RefreshCw, RotateCcw, Settings2, Sun } from 'lucide-react'
 import logo from '../../../WinTab/wintab-logo.png'
 import { desktop, type SettableKey, type State } from './desktop'
 import { copies } from './i18n'
@@ -20,6 +20,7 @@ export function App() {
   const [shortcutApplied, setShortcutApplied] = useState(false)
   const contentRef = useRef<HTMLElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const navRef = useRef<HTMLElement>(null)
   const accept = useCallback((next: State) => {
     setState(previous => !previous || next.revision > previous.revision ? next : previous)
   }, [])
@@ -60,6 +61,12 @@ export function App() {
   // Drafts live above the pages, so navigation and unrelated backend updates cannot discard input.
   useEffect(() => { setGroupDraft(state?.settings.restoreGroupShortcut ?? '') }, [state?.settings.restoreGroupShortcut])
   useEffect(() => { setTabDraft(state?.settings.reopenTabShortcut ?? '') }, [state?.settings.reopenTabShortcut])
+
+  // Keep the active pill visible when the navigation wraps into a horizontal strip at narrow widths.
+  useEffect(() => {
+    const active = navRef.current?.querySelector<HTMLElement>('[aria-current="page"]')
+    active?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [section, language])
 
   const run = async (key: string, action: () => Promise<State>): Promise<State | null> => {
     if (pendingRef.current.has(key)) return null
@@ -105,10 +112,11 @@ export function App() {
     const next = await run('shortcuts', () => desktop.shortcuts(groupEnabled, groupDraft, tabEnabled, tabDraft))
     if (next && !next.shortcutError) setShortcutApplied(true)
   }
-  const restoreButton = (group: boolean) => <button className="button button-outline"
+  const restoreButton = (group: boolean) => <button type="button" className="button button-outline"
     disabled={restoring || !state?.shellReady || (!group && !state.recordClosedTabs)}
     onClick={() => { void run('restore', () => desktop.restore(group)) }}>
-    {restoring ? <LoaderCircle className="spinning" /> : <RotateCcw />}{restoring ? t.restoring : t.restore}
+    {restoring ? <LoaderCircle className="spinning" aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
+    <span>{restoring ? t.restoring : t.restore}</span>
   </button>
   const shortcutLine = (group: boolean) => <div className="shortcut-line">
     <Checkbox id={group ? 'enable-group' : 'enable-tab'} label={group ? t.enableGroup : t.enableTab}
@@ -120,150 +128,259 @@ export function App() {
   </div>
 
   return <div className="app-shell">
+    <div className="sidebar-brand">
+      <img src={logo} alt="" />
+      <span>WinTab</span>
+    </div>
     <header className="titlebar">
-      <div className="titlebar-brand"><img src={logo} alt="" /><span>WinTab</span></div>
-      <span className="titlebar-context">{t.settings}</span>
+      <div className="titlebar-brand">
+        <img src={logo} alt="" />
+        <span>WinTab</span>
+      </div>
+      <div className="titlebar-breadcrumb" aria-hidden="true">
+        <span>{t.settings}</span>
+        <ChevronRight />
+        <span>{current.label}</span>
+      </div>
       <div className="titlebar-actions">
-        <button className="icon-button" aria-label={s?.theme === 'Dark' ? t.light : t.dark} title={s?.theme === 'Dark' ? t.light : t.dark}
+        <button type="button" className="icon-button" aria-label={s?.theme === 'Dark' ? t.light : t.dark} title={s?.theme === 'Dark' ? t.light : t.dark}
           disabled={!s || pending.has('theme')} onClick={() => set('theme', s?.theme === 'Dark' ? 'Light' : 'Dark')}>
           {s?.theme === 'Dark' ? <Sun /> : <Moon />}
         </button>
-        <button className="icon-button" aria-label={t.language} title={t.language} disabled={!s || pending.has('language')}
+        <button type="button" className="icon-button" aria-label={t.language} title={t.language} disabled={!s || pending.has('language')}
           onClick={() => set('language', language === 'zh-CN' ? 'en-US' : 'zh-CN')}><Languages /></button>
+        <span className="titlebar-divider" aria-hidden="true" />
       </div>
     </header>
     <aside className="sidebar">
-      <div className="sidebar-heading"><PanelLeft aria-hidden="true" /><span>{t.settings}</span></div>
-      <nav aria-label={t.navigation}>
-        {sections.map(({ id, label, icon: Icon }) => <button key={id} className="nav-item" aria-current={section === id ? 'page' : undefined}
+      <nav ref={navRef} aria-label={t.navigation}>
+        {sections.map(({ id, label, icon: Icon }) => <button type="button" key={id} className="nav-item" aria-current={section === id ? 'page' : undefined}
           onClick={() => navigate(id)}><Icon aria-hidden="true" /><span>{label}</span></button>)}
       </nav>
       <div className="sidebar-footer">
-        <p className="connection-status" role="status">{loadError ? t.loadErrorTitle : pending.size ? t.saving : state?.shellReady ? t.connected : t.connecting}</p>
-        <p className="sidebar-hint">{t.closeHint}</p>
-        {state && <span className="sidebar-version">WinTab {state.version}</span>}
+        <p className="connection-status" role="status">
+          {loadError ? <CircleAlert aria-hidden="true" />
+            : pending.size || !state?.shellReady ? <LoaderCircle className="spinning" aria-hidden="true" />
+            : <Check aria-hidden="true" />}
+          <span>{loadError ? t.loadErrorTitle : pending.size ? t.saving : state?.shellReady ? t.connected : t.connecting}</span>
+        </p>
+        {state && <span className="sidebar-version">WinTab v{state.version}</span>}
       </div>
     </aside>
     <main className="workspace" ref={contentRef} id="main-content">
       {!state || loadError ? <div className="connection-view" role={loadError ? 'alert' : 'status'}>
-        {loadError ? <CircleAlert /> : <LoaderCircle className="spinning" />}
+        {loadError ? <CircleAlert aria-hidden="true" /> : <LoaderCircle className="spinning" aria-hidden="true" />}
         <h1>{loadError ? t.loadErrorTitle : t.loadTitle}</h1>
         <p>{loadError ? t.loadError : t.connecting}</p>
-        {loadError && <button className="button button-primary" onClick={() => setLoadAttempt(value => value + 1)}><RefreshCw />{t.retry}</button>}
+        {loadError && <button type="button" className="button button-primary" onClick={() => setLoadAttempt(value => value + 1)}><RefreshCw aria-hidden="true" /><span>{t.retry}</span></button>}
       </div> : <div className="page">
         <header className="page-header">
           <h1 ref={headingRef} tabIndex={-1}>{current.label}</h1>
           <p>{current.description}</p>
         </header>
-        {(error || state.hookError || state.storageError) && <div className="notice" role="alert"><CircleAlert /><div>
+        {(error || state.hookError || state.storageError) && <div className="notice" role="alert"><CircleAlert aria-hidden="true" /><div>
           {error && <p>{t.requestError}</p>}{state.hookError && <p>{state.hookError}</p>}{state.storageError && <p>{state.storageError}</p>}
         </div></div>}
 
         <section hidden={section !== 'explorer'} aria-label={t.explorer}>
           <div className="settings-group">
             <h2>{t.windowsAndTabs}</h2>
-            <Setting id="windowHook" title={t.merge} description={t.mergeDesc} control={toggle('windowHook', t.merge, s!.windowHook)} />
-            <Setting id="reuseTabs" title={t.reuse} description={t.reuseDesc} control={toggle('reuseTabs', t.reuse, s!.reuseTabs)} />
+            <div className="settings-card">
+              <Setting id="windowHook" title={t.merge} description={t.mergeDesc} control={toggle('windowHook', t.merge, s!.windowHook)} />
+              <Setting id="reuseTabs" title={t.reuse} description={t.reuseDesc} control={toggle('reuseTabs', t.reuse, s!.reuseTabs)} />
+            </div>
           </div>
           <div className="settings-group">
             <h2>{t.mouseActions}</h2>
-            <Setting id="doubleClickCloseTab" title={t.doubleClick} control={toggle('doubleClickCloseTab', t.doubleClick, s!.doubleClickCloseTab, false, false)}>
-              <div className="option-line"><span className="option-label">{t.scope}</span>
-                <Segments label={t.scope} value={s!.doubleClickCloseIncludeNotepad ? 'include' : 'explorer'}
-                  options={[{ value: 'explorer', label: t.explorerOnly }, { value: 'include', label: t.includeNotepad }]}
-                  disabled={!s!.doubleClickCloseTab || pending.has('doubleClickCloseIncludeNotepad')}
-                  onChange={value => set('doubleClickCloseIncludeNotepad', value === 'include')} />
-              </div>
-            </Setting>
-            <Setting id="doubleClickEmptyArea" title={t.emptyDoubleClick} description={t.emptyDoubleClickDesc}
-              control={toggle('doubleClickEmptyArea', t.emptyDoubleClick, s!.doubleClickEmptyArea)}>
-              <Segments label={t.emptyAction} value={s!.doubleClickEmptyAreaAction}
-                options={[{ value: 'Parent', label: t.parent }, { value: 'Back', label: t.back }]}
-                disabled={!s!.doubleClickEmptyArea || pending.has('doubleClickEmptyAreaAction')}
-                onChange={value => set('doubleClickEmptyAreaAction', value)} />
-            </Setting>
-            <Setting id="middleClickForegroundTab" title={t.middleClick} description={t.middleClickDesc} control={toggle('middleClickForegroundTab', t.middleClick, s!.middleClickForegroundTab)} />
-            <Setting id="wheelSwitchTab" title={t.wheel} description={t.wheelDesc} control={toggle('wheelSwitchTab', t.wheel, s!.wheelSwitchTab)}>
-              <div className="option-line"><span className="option-label">{t.sensitivity}</span>
-                <Segments label={t.sensitivity} value={s!.wheelSwitchSensitivity}
-                  options={[{ value: 'Low', label: t.low }, { value: 'Medium', label: t.medium }, { value: 'High', label: t.high }]}
-                  disabled={!s!.wheelSwitchTab || pending.has('wheelSwitchSensitivity')}
-                  onChange={value => set('wheelSwitchSensitivity', value)} />
-              </div>
-              <p className="fine-print">{s!.wheelSwitchSensitivity === 'Low' ? t.lowHint : s!.wheelSwitchSensitivity === 'High' ? t.highHint : t.mediumHint}</p>
-            </Setting>
+            <div className="settings-card">
+              <Setting id="doubleClickCloseTab" title={t.doubleClick} description={t.doubleClickDesc}
+                control={toggle('doubleClickCloseTab', t.doubleClick, s!.doubleClickCloseTab)}>
+                <div className="option-line">
+                  <span className="option-label">{t.scope}</span>
+                  <Segments label={t.scope} value={s!.doubleClickCloseIncludeNotepad ? 'include' : 'explorer'}
+                    options={[{ value: 'explorer', label: t.explorerOnly }, { value: 'include', label: t.includeNotepad }]}
+                    disabled={!s!.doubleClickCloseTab || pending.has('doubleClickCloseIncludeNotepad')}
+                    onChange={value => set('doubleClickCloseIncludeNotepad', value === 'include')} />
+                </div>
+              </Setting>
+              <Setting id="doubleClickEmptyArea" title={t.emptyDoubleClick} description={t.emptyDoubleClickDesc}
+                control={toggle('doubleClickEmptyArea', t.emptyDoubleClick, s!.doubleClickEmptyArea)}>
+                <div className="option-line">
+                  <span className="option-label">{t.emptyAction}</span>
+                  <Segments label={t.emptyAction} value={s!.doubleClickEmptyAreaAction}
+                    options={[{ value: 'Parent', label: t.parent }, { value: 'Back', label: t.back }]}
+                    disabled={!s!.doubleClickEmptyArea || pending.has('doubleClickEmptyAreaAction')}
+                    onChange={value => set('doubleClickEmptyAreaAction', value)} />
+                </div>
+              </Setting>
+              <Setting id="middleClickForegroundTab" title={t.middleClick} description={t.middleClickDesc} control={toggle('middleClickForegroundTab', t.middleClick, s!.middleClickForegroundTab)} />
+              <Setting id="wheelSwitchTab" title={t.wheel} description={t.wheelDesc} control={toggle('wheelSwitchTab', t.wheel, s!.wheelSwitchTab)}>
+                <div className="option-line">
+                  <div className="option-copy">
+                    <span className="option-label">{t.sensitivity}</span>
+                    <p className="fine-print">{s!.wheelSwitchSensitivity === 'Low' ? t.lowHint : s!.wheelSwitchSensitivity === 'High' ? t.highHint : t.mediumHint}</p>
+                  </div>
+                  <Segments label={t.sensitivity} value={s!.wheelSwitchSensitivity}
+                    options={[{ value: 'Low', label: t.low }, { value: 'Medium', label: t.medium }, { value: 'High', label: t.high }]}
+                    disabled={!s!.wheelSwitchTab || pending.has('wheelSwitchSensitivity')}
+                    onChange={value => set('wheelSwitchSensitivity', value)} />
+                </div>
+              </Setting>
+            </div>
           </div>
-          <p className="context-note"><Info /><span>{t.bypass} <kbd>Ctrl</kbd> + <kbd>Shift</kbd> {t.bypassEnd}</span></p>
+          <p className="context-note"><Info aria-hidden="true" /><span>{t.bypass} <kbd>Ctrl</kbd> + <kbd>Shift</kbd> {t.bypassEnd}</span></p>
         </section>
 
         <section hidden={section !== 'recovery'} aria-label={t.recovery}>
-          <div className="recovery-group">
-            <div className="recovery-heading"><div><h2>{t.group}</h2><p className="description">{t.global}</p></div>{restoreButton(true)}</div>
-            {shortcutLine(true)}
-            <Setting id="restoreSingleTab" title={t.single} control={toggle('restoreSingleTab', t.single, s!.restoreSingleTab, false, false)} />
+          <div className="settings-group">
+            <h2>{t.manualRecovery}</h2>
+            <div className="settings-card">
+              <div className="setting recovery-command">
+                <div className="setting-main">
+                  <div className="setting-copy">
+                    <h3 className="setting-title">{t.group}</h3>
+                    <p className="description">{t.global}</p>
+                  </div>
+                  {restoreButton(true)}
+                </div>
+                <div className="recovery-shortcut">
+                  {shortcutLine(true)}
+                </div>
+                <div className="setting-subrow">
+                  <div className="setting-copy">
+                    <label htmlFor="restoreSingleTab" className="setting-subtitle">{t.single}</label>
+                    <p id="restoreSingleTab-description" className="description">{t.singleDesc}</p>
+                  </div>
+                  {toggle('restoreSingleTab', t.single, s!.restoreSingleTab)}
+                </div>
+              </div>
+              <div className="setting recovery-command">
+                <div className="setting-main">
+                  <div className="setting-copy">
+                    <h3 className="setting-title">{t.tab}</h3>
+                    <p className="description">{t.inExplorer}</p>
+                  </div>
+                  {restoreButton(false)}
+                </div>
+                <div className="recovery-shortcut">
+                  {shortcutLine(false)}
+                </div>
+                <div className="setting-subrow">
+                  <div className="setting-copy">
+                    <label htmlFor="reopenClosedTab" className="setting-subtitle">{t.record}</label>
+                    <p id="reopenClosedTab-description" className="description">{s!.reopenTabShortcutEnabled ? t.recordRequired : t.recordHint}</p>
+                  </div>
+                  {toggle('reopenClosedTab', t.record, state.recordClosedTabs, s!.reopenTabShortcutEnabled)}
+                </div>
+              </div>
+              <div className="shortcut-save">
+                <div className="shortcut-save-copy">
+                  <p className="shortcut-save-title">{t.captureHint}</p>
+                  <p className="shortcut-save-note">{t.shortcutsNote}</p>
+                  <p className="sr-only" id="shortcut-help">{t.captureHelp}</p>
+                  {(dirty || shortcutApplied || state.shortcutError) && <p className="inline-feedback" role={state.shortcutError ? 'alert' : 'status'}>
+                    {state.shortcutError ? <CircleAlert aria-hidden="true" /> : <Check aria-hidden="true" />}
+                    <span>{state.shortcutError || (dirty ? t.draft : t.applied)}</span>
+                  </p>}
+                </div>
+                <button type="button" className={`button ${dirty ? 'button-primary' : 'button-outline'}`} disabled={pending.has('shortcuts') || !dirty}
+                  onClick={() => { void saveShortcuts() }}><Check aria-hidden="true" /><span>{t.apply}</span></button>
+              </div>
+            </div>
           </div>
-          <div className="recovery-group">
-            <div className="recovery-heading"><div><h2>{t.tab}</h2><p className="description">{t.inExplorer}</p></div>{restoreButton(false)}</div>
-            {shortcutLine(false)}
-            <Setting id="reopenClosedTab" title={t.record} description={s!.reopenTabShortcutEnabled ? t.recordRequired : t.recordHint}
-              control={toggle('reopenClosedTab', t.record, state.recordClosedTabs, s!.reopenTabShortcutEnabled)} />
+          {state.sessionFeedback && <p className="section-feedback" role="status"><Info aria-hidden="true" /><span>{state.sessionFeedback}</span></p>}
+          <div className="settings-group">
+            <h2>{t.automatic}</h2>
+            <div className="settings-card">
+              <Setting id="restoreTabs" title={t.autoRestore} description={t.autoRestoreDesc} control={toggle('restoreTabs', t.autoRestore, s!.restoreTabs)}>
+                <div className="option-line">
+                  <div className="option-copy">
+                    <span className="option-label">{t.restoreMode}</span>
+                    <p className="fine-print">{s!.restoreTabs ? (s!.restoreOnAnyFolder ? t.anyHint : t.normalHint) : t.autoIndependent}</p>
+                  </div>
+                  <Segments label={t.restoreMode} value={s!.restoreOnAnyFolder ? 'any' : 'normal'}
+                    options={[{ value: 'normal', label: t.normalLaunch }, { value: 'any', label: t.anyFolder }]}
+                    disabled={!s!.restoreTabs || pending.has('restoreOnAnyFolder')} onChange={value => set('restoreOnAnyFolder', value === 'any')} />
+                </div>
+              </Setting>
+            </div>
           </div>
-          <div className="shortcut-save">
-            <div><p>{t.captureHint}</p><p className="description">{t.shortcutsNote}</p><p className="sr-only" id="shortcut-help">{t.captureHelp}</p></div>
-            <button className={`button ${dirty ? 'button-primary' : 'button-outline'}`} disabled={pending.has('shortcuts') || !dirty}
-              onClick={() => { void saveShortcuts() }}><Check />{t.apply}</button>
-          </div>
-          {(dirty || shortcutApplied || state.shortcutError) && <p className="inline-feedback" role={state.shortcutError ? 'alert' : 'status'}>
-            {state.shortcutError ? <CircleAlert /> : <Check />}{state.shortcutError || (dirty ? t.draft : t.applied)}
-          </p>}
-          {state.sessionFeedback && <p className="section-feedback" role="status"><Info />{state.sessionFeedback}</p>}
-          <div className="settings-group automatic-recovery"><h2>{t.automatic}</h2>
-            <Setting id="restoreTabs" title={t.autoRestore} description={t.autoRestoreDesc} control={toggle('restoreTabs', t.autoRestore, s!.restoreTabs)}>
-              <Segments label={t.restoreMode} value={s!.restoreOnAnyFolder ? 'any' : 'normal'}
-                options={[{ value: 'normal', label: t.normalLaunch }, { value: 'any', label: t.anyFolder }]}
-                disabled={!s!.restoreTabs || pending.has('restoreOnAnyFolder')} onChange={value => set('restoreOnAnyFolder', value === 'any')} />
-              <p className="fine-print">{s!.restoreTabs ? (s!.restoreOnAnyFolder ? t.anyHint : t.normalHint) : t.autoIndependent}</p>
-            </Setting>
-          </div>
-          <details className="help-details"><summary>{t.recoveryDetails}</summary><p>{t.recoveryNotes}</p></details>
+          <details className="help-details"><summary><span>{t.recoveryDetails}</span><ChevronRight aria-hidden="true" /></summary><p>{t.recoveryNotes}</p></details>
         </section>
 
         <section hidden={section !== 'preferences'} aria-label={t.preferences}>
-          <div className="settings-group"><h2>{t.appearance}</h2>
-            <div className="setting appearance-row"><span className="setting-title">{t.themeLabel}</span>
-              <Segments label={t.themeLabel} value={s!.theme} options={[{value: 'Light', label: t.lightChoice}, {value: 'Dark', label: t.darkChoice}]}
-                disabled={pending.has('theme')} onChange={value => set('theme', value)} />
-            </div>
-            <div className="setting appearance-row"><span className="setting-title">{t.languageLabel}</span>
-              <Segments label={t.languageLabel} value={language} options={[{value: 'zh-CN', label: '简体中文'}, {value: 'en-US', label: 'English'}]}
-                disabled={pending.has('language')} onChange={value => set('language', value)} />
+          <div className="settings-group">
+            <h2>{t.appearance}</h2>
+            <div className="settings-card">
+              <div className="setting appearance-row">
+                <span className="setting-title">{t.themeLabel}</span>
+                <Segments label={t.themeLabel} value={s!.theme} options={[{value: 'Light', label: t.lightChoice}, {value: 'Dark', label: t.darkChoice}]}
+                  disabled={pending.has('theme')} onChange={value => set('theme', value)} />
+              </div>
+              <div className="setting appearance-row">
+                <span className="setting-title">{t.languageLabel}</span>
+                <Segments label={t.languageLabel} value={language} options={[{value: 'zh-CN', label: '简体中文'}, {value: 'en-US', label: 'English'}]}
+                  disabled={pending.has('language')} onChange={value => set('language', value)} />
+              </div>
             </div>
           </div>
-          <div className="settings-group"><h2>{t.background}</h2>
-            <Setting id="startup" title={t.startup} description={t.startupDesc} control={toggle('startup', t.startup, state.startup)} />
-            <Setting id="showTrayIcon" title={t.tray} description={s!.showTrayIcon ? t.trayDesc : t.trayHidden} control={toggle('showTrayIcon', t.tray, s!.showTrayIcon)} />
-            <Setting id="autoUpdate" title={t.autoUpdate} description={t.autoUpdateDesc} control={toggle('autoUpdate', t.autoUpdate, s!.autoUpdate)} />
+          <div className="settings-group">
+            <h2>{t.background}</h2>
+            <div className="settings-card">
+              <Setting id="startup" title={t.startup} description={t.startupDesc} control={toggle('startup', t.startup, state.startup)} />
+              <Setting id="showTrayIcon" title={t.tray} description={s!.showTrayIcon ? t.trayDesc : t.trayHidden} control={toggle('showTrayIcon', t.tray, s!.showTrayIcon)} />
+              <Setting id="autoUpdate" title={t.autoUpdate} description={t.autoUpdateDesc} control={toggle('autoUpdate', t.autoUpdate, s!.autoUpdate)} />
+            </div>
           </div>
-          <p className="context-note"><Info /><span>{t.running}</span></p>
+          <p className="context-note"><Info aria-hidden="true" /><span>{t.running}</span></p>
         </section>
 
         <section hidden={section !== 'about'} aria-label={t.about}>
-          <div className="product-identity"><img src={logo} alt="" /><div><h2>WinTab</h2><p>{t.aboutDescription}</p></div></div>
-          <dl className="product-facts"><div><dt>{t.version}</dt><dd>v{state.version}</dd></div><div><dt>{t.license}</dt><dd><a href="https://github.com/OUBIGFA/WinTab" title={t.openSource} onClick={event => {
-            event.preventDefault(); void desktop.openProject().catch(() => setError(true))
-          }}>{t.project}<ArrowUpRight /></a></dd></div></dl>
-          <div className="settings-group about-support"><h2>{t.support}</h2>
-            <div className="setting support-row"><div><h3>{t.updates}</h3><p className="description">{t.autoUpdateDesc}</p></div>
-              <button className="button button-outline" disabled={updating} onClick={() => { void run('update', desktop.update) }}>
-                {updating ? <LoaderCircle className="spinning" /> : <RefreshCw />}{updating ? t.checking : t.updates}
-              </button>
+          <div className="settings-card product-identity">
+            <img src={logo} alt="" />
+            <div className="product-identity-copy">
+              <div className="product-title-row">
+                <h2>WinTab</h2>
+                <span className="version-badge">v{state.version}</span>
+              </div>
+              <p>{t.aboutDescription}</p>
             </div>
-            {state.updateFeedback && <p className="inline-feedback" role="status"><Check />{state.updateFeedback}</p>}
-            <div className="setting support-row"><div><h3>{t.logs}</h3><p className="description">{t.logsDesc}</p></div>
-              <button className="button button-outline" disabled={pending.has('logs')} onClick={() => { void run('logs', desktop.logs) }}><FolderOpen />{t.logs}</button>
+          </div>
+          <div className="settings-group">
+            <dl className="settings-card product-facts">
+              <div><dt>{t.version}</dt><dd>v{state.version}</dd></div>
+              <div><dt>{t.licenseLabel}</dt><dd>{t.license}</dd></div>
+              <div><dt>{t.repository}</dt><dd><a href="https://github.com/OUBIGFA/WinTab" title={t.openSource} onClick={event => {
+                event.preventDefault(); void desktop.openProject().catch(() => setError(true))
+              }}><span>{t.project}</span><ArrowUpRight aria-hidden="true" /></a></dd></div>
+            </dl>
+          </div>
+          <div className="settings-group">
+            <h2>{t.support}</h2>
+            <div className="settings-card">
+              <div className="setting support-row">
+                <div className="setting-copy">
+                  <h3 className="setting-title">{t.updates}</h3>
+                  <p className="description">{t.updatesDesc}</p>
+                  {state.updateFeedback && <p className="inline-feedback" role="status"><Check aria-hidden="true" /><span>{state.updateFeedback}</span></p>}
+                </div>
+                <button type="button" className="button button-outline" disabled={updating} onClick={() => { void run('update', desktop.update) }}>
+                  {updating ? <LoaderCircle className="spinning" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}<span>{updating ? t.checking : t.updates}</span>
+                </button>
+              </div>
+              <div className="setting support-row">
+                <div className="setting-copy">
+                  <h3 className="setting-title">{t.logs}</h3>
+                  <p className="description">{t.logsDesc}</p>
+                </div>
+                <button type="button" className="button button-outline" disabled={pending.has('logs')} onClick={() => { void run('logs', desktop.logs) }}>
+                  <FolderOpen aria-hidden="true" /><span>{t.logs}</span>
+                </button>
+              </div>
             </div>
           </div>
         </section>
+
         <footer className="page-footer">{section !== 'about' && !dirty && !error && !state.shortcutError && !state.storageError && <>
           {pending.size ? <LoaderCircle className="spinning" aria-hidden="true" /> : <Check aria-hidden="true" />}
           <span>{pending.size ? t.saving : t.saved}</span>

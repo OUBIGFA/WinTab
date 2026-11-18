@@ -347,3 +347,62 @@ for (const width of [390, 640, 900]) {
     await page.screenshot({ path: testInfo.outputPath('narrow.png'), animations: 'disabled' })
   })
 }
+
+for (const theme of ['Light', 'Dark'] as const) {
+  test(`monochrome palette, concentric radii and rail alignment hold in ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1064, height: 780 })
+    await open(page, { language: 'zh-CN', theme })
+
+    const assertAchromatic = (color: string, label: string) => {
+      const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+      if (!match) return
+      const [, r, g, b] = match.map(Number)
+      expect(Math.max(r, g, b) - Math.min(r, g, b), `${label}: ${color}`).toBeLessThanOrEqual(2)
+    }
+
+    const themeColors = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement)
+      const body = getComputedStyle(document.body)
+      const card = getComputedStyle(document.querySelector('.settings-card')!)
+      const activeNav = getComputedStyle(document.querySelector('.nav-item[aria-current="page"]')!)
+      const link = getComputedStyle(document.querySelector('.product-facts a')!)
+      return {
+        rootBg: root.backgroundColor,
+        bodyColor: body.color,
+        cardBg: card.backgroundColor,
+        cardBorder: card.borderColor,
+        activeNavBg: activeNav.backgroundColor,
+        linkColor: link.color,
+      }
+    })
+    for (const [name, value] of Object.entries(themeColors)) assertAchromatic(value, name)
+
+    const geometry = await page.evaluate(() => {
+      const sidebarBrand = document.querySelector('.sidebar-brand img')!.getBoundingClientRect().left
+      const navIcon = document.querySelector('.nav-item svg')!.getBoundingClientRect().left
+      const statusIcon = document.querySelector('.connection-status svg')!.getBoundingClientRect().left
+      const breadcrumb = document.querySelector('.titlebar-breadcrumb')!.getBoundingClientRect().left
+      const heading = document.querySelector('.page-header h1')!.getBoundingClientRect().left
+      const card = document.querySelector('.settings-card')!.getBoundingClientRect().left
+      const cardRadius = getComputedStyle(document.querySelector('.settings-card')!).borderRadius
+      const navRadius = getComputedStyle(document.querySelector('.nav-item')!).borderRadius
+      const trackRadius = getComputedStyle(document.querySelector('.segments')!).borderRadius
+      const segmentRadius = getComputedStyle(document.querySelector('.segment')!).borderRadius
+      const optionLabels = Array.from(document.querySelectorAll('section:not([hidden]) .option-label')).map(el => el.getBoundingClientRect().left)
+      return { sidebarBrand, navIcon, statusIcon, breadcrumb, heading, card, cardRadius, navRadius, trackRadius, segmentRadius, optionLabels }
+    })
+
+    expect(Math.abs(geometry.sidebarBrand - geometry.navIcon)).toBeLessThanOrEqual(1)
+    expect(Math.abs(geometry.sidebarBrand - geometry.statusIcon)).toBeLessThanOrEqual(1)
+    expect(Math.abs(geometry.breadcrumb - geometry.heading)).toBeLessThanOrEqual(1)
+    expect(Math.abs(geometry.breadcrumb - geometry.card)).toBeLessThanOrEqual(1)
+    expect(geometry.cardRadius).toBe('10px')
+    expect(geometry.navRadius).toBe('8px')
+    expect(geometry.trackRadius).toBe('8px')
+    expect(geometry.segmentRadius).toBe('5px')
+    expect(geometry.optionLabels.length).toBe(3)
+    for (const left of geometry.optionLabels) {
+      expect(Math.abs(left - geometry.optionLabels[0])).toBeLessThanOrEqual(1)
+    }
+  })
+}

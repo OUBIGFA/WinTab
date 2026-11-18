@@ -246,6 +246,7 @@ public partial class MainWindow : Window, WinTab.UI.Desktop.IApplicationUi
         DoubleClickScopeHintText.Text = UiStrings.DoubleClickScopeHint;
         DoubleClickEmptyAreaTitleText.Text = UiStrings.DoubleClickEmptyAreaTitle;
         DoubleClickEmptyAreaDescText.Text = UiStrings.DoubleClickEmptyAreaDescription;
+        DoubleClickEmptyAreaActionLabelText.Text = UiStrings.DoubleClickEmptyAreaActionLabel;
         DoubleClickEmptyAreaParent.Content = UiStrings.DoubleClickEmptyAreaParent;
         DoubleClickEmptyAreaBack.Content = UiStrings.DoubleClickEmptyAreaBack;
         System.Windows.Automation.AutomationProperties.SetName(DoubleClickEmptyAreaOptions, UiStrings.DoubleClickEmptyAreaActionLabel);

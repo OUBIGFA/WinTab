@@ -144,10 +144,10 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="8">
+                                    CornerRadius="6">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" MinWidth="24" />
+                                        <ColumnDefinition Width="Auto" MinWidth="26" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
@@ -159,7 +159,7 @@
                                                       VerticalAlignment="Center"
                                                       HorizontalAlignment="Center"
                                                       TextBlock.Foreground="{DynamicResource PrimaryLightBrush}"
-                                                      Margin="8,0,0,0" />
+                                                      Margin="6,0,0,0" />
 
                                     <!-- Checkmark (shown when IsChecked=True) -->
                                     <Path x:Name="Checkmark"
@@ -169,7 +169,7 @@
                                           Stretch="Uniform"
                                           Width="16"
                                           Height="16"
-                                          Margin="8,0,0,0"
+                                          Margin="6,0,0,0"
                                           Visibility="Collapsed" />
 
                                     <!-- Header -->
@@ -201,7 +201,7 @@
                                                 BorderBrush="{DynamicResource WindowBorderBrush}"
                                                 BorderThickness="1"
                                                 Padding="4"
-                                                CornerRadius="8">
+                                                CornerRadius="10">
                                             <ScrollViewer CanContentScroll="True">
                                                 <ItemsPresenter />
                                             </ScrollViewer>

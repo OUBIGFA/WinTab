@@ -118,7 +118,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
                         <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="1" CornerRadius="8" Padding="12,0">
+                                BorderThickness="1" CornerRadius="6" Padding="12,0">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                     </ControlTemplate>
@@ -253,7 +253,7 @@
                                                 <DockPanel LastChildFill="False">
                                                     <TextBlock x:Name="DoubleClickScopeLabelText" Text="Applies to" VerticalAlignment="Center"
                                                                FontSize="13" Margin="0,0,12,0" DockPanel.Dock="Left" />
-                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="10" Padding="2">
+                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="8" Padding="2">
                                                         <StackPanel Orientation="Horizontal">
                                                             <RadioButton x:Name="DoubleClickScopeExplorerOnly" GroupName="DoubleClickScope" Content="Explorer only" Style="{StaticResource SegmentStyle}" />
                                                             <RadioButton x:Name="DoubleClickScopeIncludeNotepad" GroupName="DoubleClickScope" Content="Include Notepad" Style="{StaticResource SegmentStyle}" />
@@ -273,13 +273,16 @@
                                         <StackPanel>
                                             <TextBlock x:Name="DoubleClickEmptyAreaTitleText" Text="Double-click empty space" Style="{StaticResource SettingTitleStyle}" />
                                             <TextBlock x:Name="DoubleClickEmptyAreaDescText" Text="Navigate within the current tab from the file list background" Style="{StaticResource SettingDescriptionStyle}" />
-                                            <Border x:Name="DoubleClickEmptyAreaOptions" HorizontalAlignment="Left" Margin="0,10,0,0"
-                                                    Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="10" Padding="2">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <RadioButton x:Name="DoubleClickEmptyAreaParent" GroupName="EmptyAreaAction" Content="Up one level" Style="{StaticResource SegmentStyle}" />
-                                                    <RadioButton x:Name="DoubleClickEmptyAreaBack" GroupName="EmptyAreaAction" Content="Back" Style="{StaticResource SegmentStyle}" />
-                                                </StackPanel>
-                                            </Border>
+                                            <DockPanel x:Name="DoubleClickEmptyAreaOptions" LastChildFill="False" Margin="0,10,0,0">
+                                                <TextBlock x:Name="DoubleClickEmptyAreaActionLabelText" Text="Double-click action" VerticalAlignment="Center"
+                                                           FontSize="13" Margin="0,0,12,0" DockPanel.Dock="Left" />
+                                                <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="8" Padding="2">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <RadioButton x:Name="DoubleClickEmptyAreaParent" GroupName="EmptyAreaAction" Content="Up one level" Style="{StaticResource SegmentStyle}" />
+                                                        <RadioButton x:Name="DoubleClickEmptyAreaBack" GroupName="EmptyAreaAction" Content="Back" Style="{StaticResource SegmentStyle}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DockPanel>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
@@ -302,7 +305,7 @@
                                                 <DockPanel LastChildFill="False">
                                                     <TextBlock x:Name="WheelSensitivityLabelText" Text="Sensitivity" VerticalAlignment="Center"
                                                                FontSize="13" Margin="0,0,12,0" DockPanel.Dock="Left" />
-                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="10" Padding="2">
+                                                    <Border DockPanel.Dock="Left" Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="8" Padding="2">
                                                         <StackPanel Orientation="Horizontal">
                                                             <RadioButton x:Name="WheelSensitivityLow" GroupName="WheelSensitivity" Content="Low" Style="{StaticResource SegmentStyle}" />
                                                             <RadioButton x:Name="WheelSensitivityMedium" GroupName="WheelSensitivity" Content="Medium" Style="{StaticResource SegmentStyle}" />
@@ -421,7 +424,7 @@
                                             </StackPanel>
                                         </DockPanel>
                                         <StackPanel x:Name="RestoreModePanel" Margin="0,10,0,0">
-                                            <Border Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="10" Padding="2" HorizontalAlignment="Left">
+                                            <Border Background="{DynamicResource ControlBackgroundBrush}" CornerRadius="8" Padding="2" HorizontalAlignment="Left">
                                                 <StackPanel Orientation="Horizontal">
                                                     <RadioButton x:Name="RestoreNormalLaunchOnly" GroupName="RestoreMode" Content="Normal launch only" Style="{StaticResource SegmentStyle}" />
                                                     <RadioButton x:Name="RestoreAnyFolder" GroupName="RestoreMode" Content="Any folder" Style="{StaticResource SegmentStyle}" />

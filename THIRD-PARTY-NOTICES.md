@@ -280,10 +280,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-### MyGo and mygo-runtime 0.9.2
+### MyGo and mygo-runtime 0.10.0
 
-- github.com/egoist/mygo v0.9.2
-- mygo-runtime 0.9.2
+- github.com/egoist/mygo v0.10.0
+- mygo-runtime 0.10.0
 
 MIT License
 
