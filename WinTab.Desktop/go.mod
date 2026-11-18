@@ -7,6 +7,7 @@ require github.com/egoist/mygo v0.10.0
 require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
+	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/tc-hib/go-winres v0.3.3 // indirect

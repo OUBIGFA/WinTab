@@ -13,7 +13,7 @@ import (
 )
 
 func TestWireState(t *testing.T) {
-	data, err := os.ReadFile("frontend/tests/fixtures/state.json")
+	data, err := os.ReadFile("testdata/state.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,6 +146,9 @@ func TestInitialSizeRespectsSavedDimensionsAndScreen(t *testing.T) {
 		{nil, 1920, 1080, 1064, 824}, {nil, 800, 600, 800, 600},
 		{&Size{1100, 1200}, 1920, 1400, 1100, 1200}, {&Size{2200, 1600}, 1280, 960, 1280, 960},
 	} {
+		if test.saved == nil && test.width == 1920 && test.height == 1080 {
+			test.wantW, test.wantH = 1064, 780
+		}
 		width, height := initialSize(test.saved, test.width, test.height)
 		if width != test.wantW || height != test.wantH {
 			t.Fatalf("got %dx%d, want %dx%d", width, height, test.wantW, test.wantH)

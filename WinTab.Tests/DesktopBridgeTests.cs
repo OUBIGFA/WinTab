@@ -13,7 +13,7 @@ internal static class DesktopBridgeTests
     {
         yield return ("desktop bridge accepts typed settings and recovery commands", Commands);
         yield return ("desktop bridge rejects unknown commands and malformed values", InvalidCommands);
-        yield return ("desktop bridge preserves the shared frontend and Go state contract", StateContract);
+        yield return ("desktop bridge preserves the Go desktop UI state contract", StateContract);
         yield return ("desktop bridge reads Unicode frames and detects clean disconnects", Framing);
         yield return ("desktop bridge rejects oversized and incomplete frames", InvalidFrames);
         yield return ("desktop shortcut capture leaves the renderer's physical chord untouched", ShortcutScope);
@@ -94,7 +94,7 @@ internal static class DesktopBridgeTests
         using var expected = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "DesktopState.json")));
         var actual = JsonSerializer.SerializeToElement(state, DesktopCommand.Json);
         Check.That(JsonElement.DeepEquals(expected.RootElement, actual),
-            "The resident snapshot must match the fixture consumed by Go and the frontend");
+            "The resident snapshot must match the fixture consumed by the Go desktop UI");
         return Task.CompletedTask;
     }
 

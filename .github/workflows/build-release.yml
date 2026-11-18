@@ -61,14 +61,6 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      - name: Setup Node.js
-        if: matrix.arch != 'x86'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: WinTab.Desktop/frontend/package-lock.json
-
       - name: Setup Go
         if: matrix.arch != 'x86'
         uses: actions/setup-go@v5

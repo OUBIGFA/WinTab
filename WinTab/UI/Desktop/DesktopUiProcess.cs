@@ -215,7 +215,7 @@ internal sealed class DesktopUiProcess(Dispatcher dispatcher, Func<DesktopComman
         processChanged(0);
         _outbox?.Writer.TryComplete();
         if (_process is not { } process) return;
-        // EOF makes MyGo quit even after a parent crash. Normal exit gives it time to release WebView2.
+        // EOF makes MyGo quit even after a parent crash. Normal exit lets it close cleanly.
         try
         {
             process.StandardInput.Close();

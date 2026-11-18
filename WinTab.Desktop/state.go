@@ -48,15 +48,3 @@ type State struct {
 	UpdateFeedback   *string  `json:"updateFeedback"`
 	StorageError     *string  `json:"storageError"`
 }
-
-type WindowInfo struct {
-	Width        int  `json:"width"`
-	MaxWidth     int  `json:"maxWidth"`
-	MaxHeight    int  `json:"maxHeight"`
-	HasSavedSize bool `json:"hasSavedSize"`
-}
-
-type Bootstrap struct {
-	State  State      `json:"state"`
-	Window WindowInfo `json:"window"`
-}

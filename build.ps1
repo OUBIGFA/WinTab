@@ -17,7 +17,7 @@
     Skip the Inno Setup compile step.
 
 .PARAMETER SkipTests
-    Skip the .NET, frontend, Go bridge and installer tests.
+    Skip the .NET, Go desktop UI and installer tests.
 
 .PARAMETER Combined
     Also build the combined (auto-detect) installer in addition to per-arch installers.

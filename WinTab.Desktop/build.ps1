@@ -1,5 +1,5 @@
 #requires -Version 5.1
-<# Builds the bundled settings renderer after the resident application has been published. #>
+<# Builds the native MyGo settings UI renderer after the resident application has been published. #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('x64', 'arm64')][string[]]$Arch,
@@ -12,64 +12,32 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $desktopRoot = $PSScriptRoot
 $repoRoot = Split-Path -Parent $desktopRoot
-$npm = (Get-Command npm.cmd -ErrorAction Stop).Source
 $go = (Get-Command go.exe -ErrorAction Stop).Source
 $numericVersion = $Version.TrimStart('v').Split('-')[0]
 
-# The Go bridge and browser runtime share a protocol and must be upgraded together.
-$goModule = Get-Content -LiteralPath (Join-Path $desktopRoot 'go.mod') -Raw -Encoding UTF8
-$package = Get-Content -LiteralPath (Join-Path $desktopRoot 'frontend/package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if ($goModule -notmatch '(?m)^require github\.com/egoist/mygo v([^\s]+)\r?$' -or
-    $Matches[1] -ne $package.dependencies.'mygo-runtime') {
-    throw 'MyGo and mygo-runtime must use the same exact version'
-}
-
-Push-Location (Join-Path $desktopRoot 'frontend')
-try {
-    Write-Host '==> Building settings frontend' -ForegroundColor Cyan
-    & $npm ci --no-audit --no-fund
-    if ($LASTEXITCODE -ne 0) { throw "Frontend dependency restore failed (exit $LASTEXITCODE)" }
-    & $npm run build
-    if ($LASTEXITCODE -ne 0) { throw "Frontend build failed (exit $LASTEXITCODE)" }
-    if (-not $SkipTests) {
-        & $npm exec -- playwright install chromium
-        if ($LASTEXITCODE -ne 0) { throw "Test browser setup failed (exit $LASTEXITCODE)" }
-        $testOutput = Join-Path $repoRoot ('_temp/frontend-tests-' + [Guid]::NewGuid().ToString('N'))
-        & $npm test -- "--output=$testOutput"
-        if ($LASTEXITCODE -ne 0) { throw "Frontend tests failed (exit $LASTEXITCODE), results: $testOutput" }
-        # Only recycle this run's test output; failed runs retain their diagnostics for inspection.
-        if (Test-Path -LiteralPath $testOutput) {
-            $temporaryRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '_temp'))
-            $resolvedOutput = [IO.Path]::GetFullPath($testOutput)
-            if (-not $resolvedOutput.StartsWith($temporaryRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-                throw "Test output escaped the temporary directory: $resolvedOutput"
-            }
-            try {
-                Add-Type -AssemblyName Microsoft.VisualBasic
-                [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($resolvedOutput,
-                    [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
-                    [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin)
-            }
-            catch {
-                if (Test-Path -LiteralPath $resolvedOutput) {
-                    Write-Warning ("Test output could not be recycled and remains at {0}: {1}" -f $resolvedOutput, $_)
-                }
-            }
-        }
+$sourceLogo = Join-Path $repoRoot 'WinTab/wintab-logo.png'
+$desktopLogo = Join-Path $desktopRoot 'assets/wintab-logo.png'
+if (Test-Path -LiteralPath $sourceLogo) {
+    $assetsDir = Split-Path -Parent $desktopLogo
+    if (-not (Test-Path -LiteralPath $assetsDir)) {
+        New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
     }
+    Copy-Item -LiteralPath $sourceLogo -Destination $desktopLogo -Force
 }
-finally { Pop-Location }
 
 $previousGoOS = $env:GOOS
 $previousGoArch = $env:GOARCH
 $previousCgo = $env:CGO_ENABLED
 Push-Location $desktopRoot
 try {
+    Write-Host '==> Building native MyGo settings UI' -ForegroundColor Cyan
     & $go mod download
     if ($LASTEXITCODE -ne 0) { throw "Desktop dependency restore failed (exit $LASTEXITCODE)" }
+    & $go vet ./...
+    if ($LASTEXITCODE -ne 0) { throw "Desktop static check failed (exit $LASTEXITCODE)" }
     if (-not $SkipTests) {
-        & $go test ./...
-        if ($LASTEXITCODE -ne 0) { throw "Desktop bridge tests failed (exit $LASTEXITCODE)" }
+        & $go test -count=1 ./...
+        if ($LASTEXITCODE -ne 0) { throw "Desktop UI tests failed (exit $LASTEXITCODE)" }
     }
     & $go tool go-winres make --in windows-resources.json --arch amd64,arm64 --product-version $numericVersion --file-version $numericVersion
     if ($LASTEXITCODE -ne 0) { throw "Desktop Windows resource generation failed (exit $LASTEXITCODE)" }
@@ -81,8 +49,8 @@ try {
         if (-not (Test-Path -LiteralPath (Join-Path (Split-Path -Parent $destination) 'WinTab.exe'))) {
             throw "Publish the resident application before its renderer: $destination"
         }
-        Write-Host "    - settings renderer: $architecture"
-        & $go build -trimpath -buildvcs=false -ldflags "-H windowsgui -s -w -X main.version=$numericVersion" -o $destination .
+        Write-Host "    - settings UI: $architecture"
+        & $go build -tags mygo_nowebview -trimpath -buildvcs=false -ldflags "-H windowsgui -s -w -X main.version=$numericVersion" -o $destination .
         if ($LASTEXITCODE -ne 0) { throw "Desktop build failed for $architecture (exit $LASTEXITCODE)" }
     }
 }

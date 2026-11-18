@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -16,24 +14,20 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 )
 
-//go:embed all:frontend/dist
-var assets embed.FS
-
 var version = "development"
-var stateChanged = mygo.NewEvent[State]("state-changed")
-var userResized = mygo.NewEvent[bool]("user-resized")
 
-// Desktop exposes only application settings and fixed actions to the bundled page.
-// External pages, arbitrary URLs, file paths and shell commands are never accepted.
+// Desktop drives the native MyGo UI window while forwarding persisted settings and
+// shell commands over anonymous stdio pipes to the resident WinTab process.
 type Desktop struct {
-	pipe         *bridge
-	mu           sync.Mutex
-	state        State
-	win          *mygo.Window // read and written only on MyGo's main thread
-	ready        atomic.Bool
-	hasSavedSize bool
+	pipe  *bridge
+	mu    sync.Mutex
+	state State
+	win   *mygo.Window // read and written only on MyGo's main thread
+	ui    *uiModel     // read and written only on MyGo's main thread
+	ready atomic.Bool
 }
 
 func (d *Desktop) accept(state State) {
@@ -44,7 +38,18 @@ func (d *Desktop) accept(state State) {
 	}
 	themeChanged := state.Settings.Theme != d.state.Settings.Theme
 	d.state = state
+	win := d.win
+	uiModel := d.ui
 	d.mu.Unlock()
+
+	if win != nil && uiModel != nil {
+		win.Update(func() {
+			d.mu.Lock()
+			latest := d.state
+			d.mu.Unlock()
+			uiModel.applyState(latest)
+		})
+	}
 	if !themeChanged {
 		return
 	}
@@ -78,96 +83,131 @@ func (d *Desktop) request(ctx context.Context, method string, args any) (State, 
 	return state, nil
 }
 
-// Load returns the current persisted state and the work area used for the first-launch fit.
-func (d *Desktop) Load(ctx context.Context) (Bootstrap, error) {
-	state, err := d.request(ctx, "state", nil)
-	if err != nil {
-		return Bootstrap{}, err
-	}
-	var info WindowInfo
-	mygo.RunOnMain(func() {
-		area := mygo.Screen.DisplayMatching(d.win.Bounds()).WorkArea
-		size := d.win.ContentBounds()
-		outer := d.win.Bounds()
-		info = WindowInfo{size.Width, area.Width - (outer.Width - size.Width),
-			area.Height - (outer.Height - size.Height), d.hasSavedSize}
-	})
-	return Bootstrap{state, info}, nil
-}
-
-func (d *Desktop) Set(ctx context.Context, key string, value any) (State, error) {
-	return d.request(ctx, "set", map[string]any{"key": key, "value": value})
-}
-
-func (d *Desktop) Shortcuts(ctx context.Context, groupEnabled bool, group string, tabEnabled bool, tab string) (State, error) {
-	return d.request(ctx, "shortcuts", map[string]any{
-		"groupEnabled": groupEnabled, "group": group, "tabEnabled": tabEnabled, "tab": tab,
-	})
-}
-
-func (d *Desktop) Restore(ctx context.Context, group bool) (State, error) {
-	return d.request(ctx, "restore", map[string]bool{"group": group})
-}
-
-func (d *Desktop) Update(ctx context.Context) (State, error) { return d.request(ctx, "update", nil) }
-func (d *Desktop) Logs(ctx context.Context) (State, error)   { return d.request(ctx, "logs", nil) }
-func (*Desktop) OpenProject() error {
-	return mygo.Shell.OpenExternal("https://github.com/OUBIGFA/WinTab")
-}
-
-// Ready is called after fonts and the real settings have been laid out, not at the first blank paint.
-// Manual dimensions remain authoritative; initial content fitting never writes the user's size setting.
-func (d *Desktop) Ready(width, height int) error {
-	if width < 300 || height < 240 || width > 10000 || height > 10000 {
-		return errors.New("invalid content size")
-	}
-	mygo.RunOnMain(func() {
-		if d.ready.Load() {
+func (d *Desktop) runAction(key string, call func(context.Context) (State, error), onSuccess func()) {
+	go func() {
+		state, err := call(context.Background())
+		d.mu.Lock()
+		win := d.win
+		m := d.ui
+		d.mu.Unlock()
+		if win == nil || m == nil {
 			return
 		}
-		if !d.hasSavedSize {
-			area := mygo.Screen.DisplayMatching(d.win.Bounds()).WorkArea
-			outer, inner := d.win.Bounds(), d.win.ContentBounds()
-			d.win.SetContentSize(min(width, area.Width-(outer.Width-inner.Width)), min(height, area.Height-(outer.Height-inner.Height)))
-			d.win.Center()
+		win.Update(func() {
+			delete(m.pending, key)
+			if err != nil {
+				m.actionError = true
+				return
+			}
+			m.applyState(state)
+			if onSuccess != nil {
+				onSuccess()
+			}
+		})
+	}()
+}
+
+func (d *Desktop) Set(key string, value any) {
+	d.runAction(key, func(ctx context.Context) (State, error) {
+		return d.request(ctx, "set", map[string]any{"key": key, "value": value})
+	}, nil)
+}
+
+func (d *Desktop) Shortcuts(groupEnabled bool, group string, tabEnabled bool, tab string, notifyApplied bool) {
+	d.runAction("shortcuts", func(ctx context.Context) (State, error) {
+		return d.request(ctx, "shortcuts", map[string]any{
+			"groupEnabled": groupEnabled,
+			"group":        group,
+			"tabEnabled":   tabEnabled,
+			"tab":          tab,
+		})
+	}, func() {
+		if d.ui.state != nil && (d.ui.state.ShortcutError == nil || *d.ui.state.ShortcutError == "") && notifyApplied {
+			d.ui.shortcutApplied = true
 		}
-		d.ready.Store(true)
-		d.win.Show()
-		d.win.Focus()
 	})
-	return nil
+}
+
+func (d *Desktop) Restore(group bool) {
+	d.runAction("restore", func(ctx context.Context) (State, error) {
+		return d.request(ctx, "restore", map[string]bool{"group": group})
+	}, nil)
+}
+
+func (d *Desktop) CheckUpdates() {
+	d.runAction("update", func(ctx context.Context) (State, error) {
+		return d.request(ctx, "update", nil)
+	}, nil)
+}
+
+func (d *Desktop) OpenLogs() {
+	d.runAction("logs", func(ctx context.Context) (State, error) {
+		return d.request(ctx, "logs", nil)
+	}, nil)
+}
+
+func (d *Desktop) OpenProject() {
+	if err := mygo.Shell.OpenExternal("https://github.com/OUBIGFA/WinTab"); err != nil && d.ui != nil {
+		d.ui.actionError = true
+	}
+}
+
+func (d *Desktop) Reconnect() {
+	go func() {
+		state, err := d.request(context.Background(), "state", nil)
+		d.mu.Lock()
+		win := d.win
+		m := d.ui
+		d.mu.Unlock()
+		if win == nil || m == nil {
+			return
+		}
+		win.Update(func() {
+			if err != nil {
+				m.loadError = true
+				return
+			}
+			m.applyState(state)
+		})
+	}()
 }
 
 func (d *Desktop) open(state State) {
+	d.ui = newUIModel(&state, d)
 	d.accept(state)
+
 	area := mygo.Screen.DisplayNearestPoint(mygo.Screen.CursorScreenPoint()).WorkArea
 	width, height := initialSize(state.Settings.FormSize, area.Width, area.Height)
-	d.hasSavedSize = state.Settings.FormSize != nil
-	d.win = mygo.NewWindow(mygo.WindowOptions{
-		Title: "WinTab", URL: "/", Width: width, Height: height,
-		X: area.X + (area.Width-width)/2, Y: area.Y + (area.Height-height)/2,
-		MinWidth: min(640, area.Width), MinHeight: min(480, area.Height), Hidden: true,
-		TitleBarStyle: mygo.TitleBarHidden, TitleBarHeight: 44,
-		BackgroundColor: "light-dark(#fafafa, #161616)",
-		Page:            mygo.PageOptions{DevTools: mygo.DevToolsDisabled},
-	})
-	web, _ := fs.Sub(assets, "frontend/dist")
-	icons, _ := fs.Glob(web, "assets/wintab-logo-*.png")
-	if len(icons) == 1 {
-		if icon, err := fs.ReadFile(web, icons[0]); err == nil {
-			d.win.SetIcon(icon)
-		}
+	bg := "#ffffff"
+	if state.Settings.Theme == "Dark" {
+		bg = "#161616"
 	}
-	d.win.Page().OnWillNavigate(func(event *mygo.NavigateEvent) {
-		// No browsing inside a privileged window, even when an accidental link reaches the page.
-		event.PreventDefault()
+
+	win := mygo.NewWindow(mygo.WindowOptions{
+		Title:           "WinTab",
+		Width:           width,
+		Height:          height,
+		X:               area.X + (area.Width-width)/2,
+		Y:               area.Y + (area.Height-height)/2,
+		MinWidth:        min(640, area.Width),
+		MinHeight:       min(480, area.Height),
+		TitleBarStyle:   mygo.TitleBarHidden,
+		TitleBarHeight:  44,
+		BackgroundColor: bg,
+		Content:         ui.View(d.ui.view),
 	})
-	trackUserResize(d.win, func(size Size) {
+	d.mu.Lock()
+	d.win = win
+	d.mu.Unlock()
+
+	if err := win.SetIcon(logoPNG); err != nil {
+		log.Printf("set window icon: %v", err)
+	}
+	d.ready.Store(true)
+	trackUserResize(win, func(size Size) {
 		if !d.ready.Load() {
 			return
 		}
-		d.hasSavedSize = true
-		_ = userResized.Broadcast(true)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -176,20 +216,13 @@ func (d *Desktop) open(state State) {
 			}
 		}()
 	})
-	go func() {
-		time.Sleep(25 * time.Second)
-		if !d.ready.Load() {
-			log.Print("settings page did not become ready")
-			mygo.App.Exit(2)
-		}
-	}()
 }
 
 func initialSize(saved *Size, width, height int) (int, int) {
 	if saved != nil {
 		return min(max(int(saved.Width), 400), width), min(max(int(saved.Height), 300), height)
 	}
-	return min(1064, width), min(824, height)
+	return min(1064, width), min(780, height)
 }
 
 func main() {
@@ -206,18 +239,11 @@ func main() {
 		}
 		return
 	}
-	web, err := fs.Sub(assets, "frontend/dist")
-	if err != nil {
-		log.Fatal(err)
-	}
+
 	mygo.App.SetName("WinTab")
 	mygo.App.SetVersion(version)
-	if cache, err := os.UserCacheDir(); err == nil {
-		mygo.App.SetPath(mygo.PathUserData, filepath.Join(cache, "WinTab", "WebView2"))
-	}
-	mygo.SetFrontend(web)
 	desktop := &Desktop{pipe: newBridge(os.Stdout)}
-	mygo.Bind(desktop)
+
 	mygo.App.WhenReady(func() {
 		go desktop.pipe.read(os.Stdin, func(event string, data json.RawMessage) {
 			switch event {
@@ -228,7 +254,6 @@ func main() {
 					return
 				}
 				desktop.accept(state)
-				_ = stateChanged.Broadcast(state)
 			case "show":
 				mygo.RunOnMain(func() {
 					if desktop.win == nil || !desktop.ready.Load() {
@@ -258,6 +283,7 @@ func main() {
 			mygo.RunOnMain(func() { desktop.open(state) })
 		}()
 	})
+
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(strings.TrimSpace(err.Error()))
 	}
