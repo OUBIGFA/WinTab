@@ -384,6 +384,13 @@ func TestSidebarNavigationKeepsNeutralSelection(t *testing.T) {
 		if got := selectedPixel(cp.Explorer); got != want {
 			t.Fatalf("%s initial selected item pixel=%+v, want neutral %+v", theme, got, want)
 		}
+		tt.Key(0, ui.KeyTab)
+		if !tt.Focused(cp.Navigation) {
+			t.Fatalf("%s Tab did not focus the sidebar", theme)
+		}
+		if got := selectedPixel(cp.Explorer); got != want {
+			t.Fatalf("%s keyboard-focused selection pixel=%+v, want neutral %+v", theme, got, want)
+		}
 		m.workspaceScroll.Y = 240
 		tt.Frame()
 		if err := tt.Click(cp.RecoveryNav); err != nil {
@@ -400,6 +407,63 @@ func TestSidebarNavigationKeepsNeutralSelection(t *testing.T) {
 		}
 		if got := selectedPixel(cp.Explorer); got == (color.RGBA{R: 23, G: 23, B: 23, A: 255}) || got == (color.RGBA{R: 245, G: 245, B: 245, A: 255}) {
 			t.Fatalf("%s previous item retained an accent pixel %+v", theme, got)
+		}
+	}
+}
+
+func TestSidebarIconsRemainVisible(t *testing.T) {
+	for _, theme := range []string{"Light", "Dark"} {
+		for _, scale := range []float32{1, 1.5} {
+			t.Run(fmt.Sprintf("%s/%g", theme, scale), func(t *testing.T) {
+				m, _ := newFakeHarness(t, "zh-CN", theme)
+				cp := m.copy()
+				tt := ui.NewTesterWith(m.view, 1064, 780, ui.TesterOptions{Dark: theme == "Dark"})
+				tt.SetScale(scale)
+
+				// Sidebar colors are grayscale, so the red channel is enough to find their sRGB luminance.
+				luminance := func(gray uint8) float64 {
+					s := float64(gray) / 255
+					if s <= 0.04045 {
+						return s / 12.92
+					}
+					return math.Pow((s+0.055)/1.055, 2.4)
+				}
+				checkIcons := func(state string) {
+					img := tt.Image()
+					for _, nav := range m.sections(cp) {
+						item, ok := tt.AccessByRole(ui.RoleTreeItem, nav.label)
+						if !ok {
+							t.Fatalf("%s: missing sidebar item %q", state, nav.label)
+						}
+						x, y := item.Bounds.X, item.Bounds.Y+item.Bounds.H/2
+						bg := luminance(img.RGBAAt(int((x+4)*scale), int(y*scale)).R)
+						visible := 0
+						// The leading 16 DIP icon begins after the row's 8 DIP padding.
+						for py := int((y - 8) * scale); py < int((y+8)*scale); py++ {
+							for px := int((x + 8) * scale); px < int((x+24)*scale); px++ {
+								ink := luminance(img.RGBAAt(px, py).R)
+								if (max(ink, bg)+0.05)/(min(ink, bg)+0.05) >= 3 {
+									visible++
+								}
+							}
+						}
+						if visible < int(8*scale*scale) {
+							t.Errorf("%s: %q has only %d icon pixels with at least 3:1 contrast", state, nav.label, visible)
+						}
+					}
+				}
+
+				checkIcons("initial selection")
+				tt.Key(0, ui.KeyTab)
+				checkIcons("keyboard-focused sidebar")
+				tt.Key(0, ui.KeyEnd)
+				if item, ok := tt.AccessByRole(ui.RoleTreeItem, cp.About); !ok || !item.Selected {
+					t.Fatal("End did not select About")
+				}
+				checkIcons("About selected")
+				tt.SetWindowActive(false)
+				checkIcons("inactive window")
+			})
 		}
 	}
 }

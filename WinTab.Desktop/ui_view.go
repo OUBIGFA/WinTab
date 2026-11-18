@@ -211,7 +211,11 @@ func (m *uiModel) renderSidebar(c *ui.Context, bar ui.TitleBar, cp copyCatalog, 
 		ui.Themed(c, sidebarTheme(t)).Grow(1).Background(ui.Transparent).Children(func() {
 			if ui.Sidebar(c, &chosen, func() {
 				for _, item := range m.sections(cp) {
-					ui.SidebarItem(c, item.id, item.icon, item.label)
+					row := ui.SidebarItem(c, item.id, item.icon, item.label)
+					if item.id == chosen {
+						// Override the focused selection fill without tinting the icons.
+						row.Background(t.SurfacePressed)
+					}
 				}
 			}).Grow(1).Background(ui.Transparent).Padding(8, 10).Label(cp.Navigation).Changed() {
 				m.navigate(chosen)
