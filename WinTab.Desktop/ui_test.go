@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"image/png"
 	"math"
 	"os"
@@ -360,6 +361,46 @@ func TestDarkModeBrandLogoPlateIsPureWhite(t *testing.T) {
 	c := img.RGBAAt(18, 14)
 	if c.R != 255 || c.G != 255 || c.B != 255 {
 		t.Fatalf("dark mode sidebar logo plate corner pixel at (18,14) = %+v, want pure white", c)
+	}
+}
+
+func TestSidebarNavigationKeepsNeutralSelection(t *testing.T) {
+	for _, theme := range []string{"Light", "Dark"} {
+		m, _ := newFakeHarness(t, "zh-CN", theme)
+		cp := copyForLanguage("zh-CN")
+		tt := ui.NewTesterWith(m.view, 1064, 780, ui.TesterOptions{Dark: theme == "Dark"})
+		want := color.RGBA{R: 220, G: 220, B: 220, A: 255}
+		if theme == "Dark" {
+			want = color.RGBA{R: 58, G: 58, B: 58, A: 255}
+		}
+		selectedPixel := func(name string) color.RGBA {
+			info, ok := tt.AccessByRole(ui.RoleTreeItem, name)
+			if !ok {
+				t.Fatalf("%s missing sidebar item %q", theme, name)
+			}
+			return tt.Image().RGBAAt(int(info.Bounds.X+3), int(info.Bounds.Y+info.Bounds.H/2))
+		}
+
+		if got := selectedPixel(cp.Explorer); got != want {
+			t.Fatalf("%s initial selected item pixel=%+v, want neutral %+v", theme, got, want)
+		}
+		m.workspaceScroll.Y = 240
+		tt.Frame()
+		if err := tt.Click(cp.RecoveryNav); err != nil {
+			t.Fatal(err)
+		}
+		if m.section != "recovery" {
+			t.Fatalf("%s navigation selected %q, want recovery", theme, m.section)
+		}
+		if m.workspaceScroll.Y != 0 {
+			t.Fatalf("%s navigation kept workspace scroll at %.1f", theme, m.workspaceScroll.Y)
+		}
+		if got := selectedPixel(cp.RecoveryNav); got != want {
+			t.Fatalf("%s focused selected item pixel=%+v, want neutral %+v", theme, got, want)
+		}
+		if got := selectedPixel(cp.Explorer); got == (color.RGBA{R: 23, G: 23, B: 23, A: 255}) || got == (color.RGBA{R: 245, G: 245, B: 245, A: 255}) {
+			t.Fatalf("%s previous item retained an accent pixel %+v", theme, got)
+		}
 	}
 }
 

@@ -41,6 +41,7 @@ type uiModel struct {
 	tabCapture      shortcutCapture
 	heading         ui.Handle
 	focusHeading    bool
+	workspaceScroll ui.ScrollState
 	actions         uiActions
 }
 
@@ -113,6 +114,7 @@ func (m *uiModel) navigate(next string) {
 		return
 	}
 	m.section = next
+	m.workspaceScroll.Y = 0
 	m.focusHeading = true
 }
 
@@ -206,13 +208,15 @@ func (m *uiModel) renderSidebar(c *ui.Context, bar ui.TitleBar, cp copyCatalog, 
 		})
 
 		chosen := m.section
-		if ui.Sidebar(c, &chosen, func() {
-			for _, item := range m.sections(cp) {
-				ui.SidebarItem(c, item.id, item.icon, item.label)
+		ui.Themed(c, sidebarTheme(t)).Grow(1).Background(ui.Transparent).Children(func() {
+			if ui.Sidebar(c, &chosen, func() {
+				for _, item := range m.sections(cp) {
+					ui.SidebarItem(c, item.id, item.icon, item.label)
+				}
+			}).Grow(1).Background(ui.Transparent).Padding(8, 10).Label(cp.Navigation).Changed() {
+				m.navigate(chosen)
 			}
-		}).Grow(1).Background(ui.Transparent).Padding(8, 10).Label(cp.Navigation).Changed() {
-			m.navigate(chosen)
-		}
+		})
 
 		m.renderSidebarFooter(c, cp, dark)
 	})
@@ -359,7 +363,7 @@ func (m *uiModel) renderWorkspace(c *ui.Context, cp copyCatalog, current navEntr
 		padTop, padX, padBottom = 18, 16, 20
 	}
 
-	ui.Scroll(c.Key("scroll-" + m.section)).Grow(1).FillWidth().Children(func() {
+	ui.Scroll(c.Key("scroll-" + m.section)).TrackScroll(&m.workspaceScroll).Grow(1).FillWidth().Children(func() {
 		page := ui.Column(c).FillWidth().Padding(padTop, padX, padBottom)
 		if !compact {
 			page.MaxWidth(840).Margin(0, ui.Auto)

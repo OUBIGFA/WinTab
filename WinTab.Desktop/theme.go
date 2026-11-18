@@ -99,6 +99,18 @@ func dividerColor(dark bool) ui.Color {
 	return ui.Hex("#ebebef")
 }
 
+func sidebarTheme(t *ui.Theme) *ui.Theme {
+	copy := *t
+	// Sidebar selection is navigation state, not a primary action. Keep it neutral
+	// even while the focused item uses the theme's active selection branch.
+	copy.Accent = t.SurfacePressed
+	copy.AccentHover = t.SurfaceHover
+	copy.AccentPressed = t.SurfacePressed
+	copy.AccentText = t.Text
+	copy.InactiveAccent = t.SurfacePressed
+	return &copy
+}
+
 func darkSwitchTheme(t *ui.Theme) *ui.Theme {
 	copy := *t
 	copy.Accent = ui.Hex("#9e9e9e")
