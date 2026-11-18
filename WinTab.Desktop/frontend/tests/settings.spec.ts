@@ -450,3 +450,58 @@ for (const theme of ['Light', 'Dark'] as const) {
     expect(Math.abs(wide.breadcrumb - wide.card)).toBeLessThanOrEqual(1)
   })
 }
+
+for (const language of ['zh-CN', 'en-US'] as const) {
+  test(`session recovery controls keep zero vertical layout shift in ${language}`, async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 1050 })
+    await open(page, { language })
+    await navigate(page, copies[language].recoveryNav)
+
+    const measure = () => page.evaluate(() => {
+      const pageEl = document.querySelector('.page')!.getBoundingClientRect()
+      const saveEl = document.querySelector('.shortcut-save')!.getBoundingClientRect()
+      const applyEl = document.querySelector('.shortcut-save button')!.getBoundingClientRect()
+      const autoGroupEl = document.querySelectorAll('section:not([hidden]) .settings-group')[1]!.getBoundingClientRect()
+      const detailsEl = document.querySelector('.help-details')!.getBoundingClientRect()
+      const footerEl = document.querySelector('.page-footer')!.getBoundingClientRect()
+      return {
+        pageHeight: pageEl.height,
+        saveHeight: saveEl.height,
+        applyTop: applyEl.top,
+        autoGroupTop: autoGroupEl.top,
+        detailsTop: detailsEl.top,
+        footerTop: footerEl.top,
+      }
+    })
+
+    const baseline = await measure()
+    const expectStable = async (step: string) => {
+      const current = await measure()
+      for (const [key, value] of Object.entries(current)) {
+        expect(Math.abs(value - baseline[key as keyof typeof baseline]), `${language} ${step} ${key}`).toBeLessThanOrEqual(0.5)
+      }
+    }
+
+    await page.locator('#enable-group').click()
+    await expectStable('uncheck enable-group')
+    await page.locator('#enable-group').click()
+    await expectStable('recheck enable-group')
+    await page.locator('#enable-tab').click()
+    await expectStable('uncheck enable-tab')
+    await page.locator('#enable-tab').click()
+    await expectStable('recheck enable-tab')
+
+    await page.locator('#group-shortcut').fill('Ctrl+K')
+    await expectStable('draft shortcut')
+    await page.getByRole('button', { name: copies[language].apply, exact: true }).click()
+    await expect(page.getByText(copies[language].applied, { exact: true })).toBeVisible()
+    await expectStable('applied shortcut')
+
+    await page.locator('#enable-group').click()
+    await expectStable('checkbox after applied')
+    await page.locator('#restoreTabs').click()
+    await expectStable('auto-restore on')
+    await page.locator('#restoreTabs').click()
+    await expectStable('auto-restore off')
+  })
+}

@@ -107,10 +107,14 @@ export function App() {
   const toggle = (key: SettableKey, title: string, checked: boolean, disabled = false, described = true) =>
     <Toggle id={key} label={title} description={described ? `${key}-description` : undefined} checked={checked}
       disabled={disabled || pending.has(key)} onChange={value => set(key, value)} />
-  const saveShortcuts = async (groupEnabled = s!.restoreGroupShortcutEnabled, tabEnabled = s!.reopenTabShortcutEnabled) => {
+  const saveShortcuts = async (
+    groupEnabled = s!.restoreGroupShortcutEnabled,
+    tabEnabled = s!.reopenTabShortcutEnabled,
+    notifyApplied = false,
+  ) => {
     setShortcutApplied(false)
     const next = await run('shortcuts', () => desktop.shortcuts(groupEnabled, groupDraft, tabEnabled, tabDraft))
-    if (next && !next.shortcutError) setShortcutApplied(true)
+    if (next && !next.shortcutError && notifyApplied) setShortcutApplied(true)
   }
   const restoreButton = (group: boolean) => <button type="button" className="button button-outline"
     disabled={restoring || !state?.shellReady || (!group && !state.recordClosedTabs)}
@@ -121,7 +125,7 @@ export function App() {
   const shortcutLine = (group: boolean) => <div className="shortcut-line">
     <Checkbox id={group ? 'enable-group' : 'enable-tab'} label={group ? t.enableGroup : t.enableTab}
       checked={group ? s!.restoreGroupShortcutEnabled : s!.reopenTabShortcutEnabled} disabled={pending.has('shortcuts')}
-      onChange={enabled => { void saveShortcuts(group ? enabled : s!.restoreGroupShortcutEnabled, group ? s!.reopenTabShortcutEnabled : enabled) }}>{t.shortcut}</Checkbox>
+      onChange={enabled => { void saveShortcuts(group ? enabled : s!.restoreGroupShortcutEnabled, group ? s!.reopenTabShortcutEnabled : enabled, false) }}>{t.shortcut}</Checkbox>
     <ShortcutInput id={group ? 'group-shortcut' : 'tab-shortcut'} label={group ? t.groupShortcut : t.tabShortcut}
       value={group ? groupDraft : tabDraft} invalid={!!state?.shortcutError} hint={t.captureHelp}
       onChange={value => { (group ? setGroupDraft : setTabDraft)(value); setShortcutApplied(false) }} />
@@ -278,15 +282,19 @@ export function App() {
               <div className="shortcut-save">
                 <div className="shortcut-save-copy">
                   <p className="shortcut-save-title">{t.captureHint}</p>
-                  <p className="shortcut-save-note">{t.shortcutsNote}</p>
+                  {state.shortcutError ? (
+                    <p className="inline-feedback" role="alert"><CircleAlert aria-hidden="true" /><span>{state.shortcutError}</span></p>
+                  ) : dirty ? (
+                    <p className="inline-feedback" role="status"><Info aria-hidden="true" /><span>{t.draft}</span></p>
+                  ) : shortcutApplied ? (
+                    <p className="inline-feedback" role="status"><Check aria-hidden="true" /><span>{t.applied}</span></p>
+                  ) : (
+                    <p className="shortcut-save-note">{t.shortcutsNote}</p>
+                  )}
                   <p className="sr-only" id="shortcut-help">{t.captureHelp}</p>
-                  {(dirty || shortcutApplied || state.shortcutError) && <p className="inline-feedback" role={state.shortcutError ? 'alert' : 'status'}>
-                    {state.shortcutError ? <CircleAlert aria-hidden="true" /> : <Check aria-hidden="true" />}
-                    <span>{state.shortcutError || (dirty ? t.draft : t.applied)}</span>
-                  </p>}
                 </div>
                 <button type="button" className={`button ${dirty ? 'button-primary' : 'button-outline'}`} disabled={pending.has('shortcuts') || !dirty}
-                  onClick={() => { void saveShortcuts() }}><Check aria-hidden="true" /><span>{t.apply}</span></button>
+                  onClick={() => { void saveShortcuts(s!.restoreGroupShortcutEnabled, s!.reopenTabShortcutEnabled, true) }}><Check aria-hidden="true" /><span>{t.apply}</span></button>
               </div>
             </div>
           </div>

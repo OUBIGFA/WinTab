@@ -491,7 +491,7 @@ kbd {
 }
 .shortcut-save-copy { min-width: 0; flex: 1 }
 .shortcut-save-title { font-size: 13px; line-height: 19px; font-weight: 500; color: var(--foreground) }
-.shortcut-save-note { font-size: 12px; line-height: 18px; color: var(--muted); margin-top: 2px }
+.shortcut-save-note { font-size: 12.5px; line-height: 18px; color: var(--muted); margin-top: 3px }
 
 .inline-feedback, .section-feedback {
   display: flex;
@@ -503,7 +503,8 @@ kbd {
   color: var(--foreground);
   font-weight: 500;
 }
-.inline-feedback svg, .section-feedback svg { width: 14px; height: 14px; margin-top: 2px }
+.shortcut-save .inline-feedback { margin-top: 3px }
+.inline-feedback svg, .section-feedback svg { width: 14px; height: 14px; margin-top: 2px; flex-shrink: 0 }
 .section-feedback {
   margin: 16px 0 0;
   padding: 10px 14px;
@@ -590,7 +591,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 20px;
+  min-height: 36px;
   color: var(--faint);
   font-size: 12px;
   line-height: 18px;
