@@ -211,7 +211,7 @@ func (m *uiModel) renderSidebar(c *ui.Context, bar ui.TitleBar, cp copyCatalog, 
 		ui.Themed(c, sidebarTheme(t)).Grow(1).Background(ui.Transparent).Children(func() {
 			if ui.Sidebar(c, &chosen, func() {
 				for _, item := range m.sections(cp) {
-					row := ui.SidebarItem(c, item.id, item.icon, item.label)
+					row := ui.SidebarItem(c, item.id, item.icon, item.label).TextColor(t.Text)
 					if item.id == chosen {
 						// Override the focused selection fill without tinting the icons.
 						row.Background(t.SurfacePressed)
@@ -401,8 +401,6 @@ func (m *uiModel) renderWorkspace(c *ui.Context, cp copyCatalog, current navEntr
 			case "about":
 				m.renderAbout(c, cp, dark)
 			}
-
-			m.renderFooter(c, cp)
 		})
 	})
 }
@@ -453,26 +451,6 @@ func (m *uiModel) renderNotices(c *ui.Context, cp copyCatalog, dark bool) {
 				ui.Text(c, msg).FontSize(13.5)
 			}
 		})
-	})
-}
-
-func (m *uiModel) renderFooter(c *ui.Context, cp copyCatalog) {
-	t := c.Theme()
-	show := m.section != "about" && !m.dirty() && !m.actionError &&
-		(m.state.ShortcutError == nil || *m.state.ShortcutError == "") &&
-		(m.state.StorageError == nil || *m.state.StorageError == "")
-
-	ui.Row(c).MinHeight(36).Padding(18, 0, 0, 0).Gap(7).AlignItems(ui.Center).Children(func() {
-		if !show {
-			return
-		}
-		if len(m.pending) > 0 {
-			ui.Spinner(c).FontSize(13).TextColor(t.TextMuted)
-			ui.Text(c, cp.Saving).FontSize(12).TextColor(t.TextMuted)
-		} else {
-			ui.Icon(c, iconCheck).FontSize(13).TextColor(t.TextMuted)
-			ui.Text(c, cp.Saved).FontSize(12).TextColor(t.TextMuted)
-		}
 	})
 }
 

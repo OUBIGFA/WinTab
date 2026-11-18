@@ -20,7 +20,6 @@ type copyCatalog struct {
 	ManualRecovery     string
 	Automatic          string
 	RecoveryDetails    string
-	Saved              string
 	Connected          string
 	ShortcutsNote      string
 	Retry              string
@@ -136,9 +135,8 @@ var zhCopy = copyCatalog{
 	ManualRecovery:     "手动恢复与快捷键",
 	Automatic:          "自动恢复",
 	RecoveryDetails:    "恢复范围与例外",
-	Saved:              "设置自动保存",
 	Connected:          "正在后台运行",
-	ShortcutsNote:      "快捷键修改后需要应用，其余设置自动保存",
+	ShortcutsNote:      "快捷键修改后需要应用",
 	Retry:              "重新连接",
 	LoadTitle:          "连接 WinTab",
 	LoadErrorTitle:     "暂时无法连接",
@@ -252,9 +250,8 @@ var enCopy = copyCatalog{
 	ManualRecovery:     "Manual recovery & shortcuts",
 	Automatic:          "Automatic recovery",
 	RecoveryDetails:    "Recovery scope & exceptions",
-	Saved:              "Settings save automatically",
 	Connected:          "Running in the background",
-	ShortcutsNote:      "Apply shortcut changes; other settings auto-save",
+	ShortcutsNote:      "Apply shortcut changes",
 	Retry:              "Reconnect",
 	LoadTitle:          "Connecting to WinTab",
 	LoadErrorTitle:     "Connection unavailable",

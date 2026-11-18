@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -407,6 +408,104 @@ func TestSidebarNavigationKeepsNeutralSelection(t *testing.T) {
 		}
 		if got := selectedPixel(cp.Explorer); got == (color.RGBA{R: 23, G: 23, B: 23, A: 255}) || got == (color.RGBA{R: 245, G: 245, B: 245, A: 255}) {
 			t.Fatalf("%s previous item retained an accent pixel %+v", theme, got)
+		}
+	}
+}
+
+func TestSidebarColorsStayStableWhenFocusMoves(t *testing.T) {
+	for _, theme := range []string{"Light", "Dark"} {
+		for _, scale := range []float32{1, 1.5} {
+			t.Run(fmt.Sprintf("%s/%g", theme, scale), func(t *testing.T) {
+				m, _ := newFakeHarness(t, "zh-CN", theme)
+				cp := m.copy()
+				tt := ui.NewTesterWith(m.view, 1064, 780, ui.TesterOptions{Dark: theme == "Dark"})
+				tt.SetScale(scale)
+				for _, nav := range m.sections(cp) {
+					if err := tt.Click(nav.label); err != nil {
+						t.Fatal(err)
+					}
+					tt.ClickAt(1052, 120)
+					if err := tt.Click(nav.label); err != nil {
+						t.Fatal(err)
+					}
+					if !tt.Focused(cp.Navigation) {
+						t.Fatalf("%q click did not focus the sidebar", nav.label)
+					}
+					content := func() []color.RGBA {
+						item, ok := tt.AccessByRole(ui.RoleTreeItem, nav.label)
+						if !ok || !item.Selected {
+							t.Fatalf("%q is not the selected sidebar item", nav.label)
+						}
+						img := tt.Image()
+						var pixels []color.RGBA
+						for py := int((item.Bounds.Y + 4) * scale); py < int((item.Bounds.Y+item.Bounds.H-4)*scale); py++ {
+							for px := int((item.Bounds.X + 6) * scale); px < int((item.Bounds.X+item.Bounds.W-6)*scale); px++ {
+								pixels = append(pixels, img.RGBAAt(px, py))
+							}
+						}
+						return pixels
+					}
+					want := content()
+					checkColors := func(state string) {
+						got := content()
+						if len(got) != len(want) {
+							t.Fatalf("%s: %q content size changed", state, nav.label)
+						}
+						for index, pixel := range want {
+							if got[index] != pixel {
+								t.Fatalf("%s: %q content pixel %d changed from %+v to %+v", state, nav.label, index, pixel, got[index])
+							}
+						}
+					}
+					tt.ClickAt(1052, 120)
+					if tt.Focused(cp.Navigation) {
+						t.Fatal("blank workspace click did not move focus out of the sidebar")
+					}
+					checkColors("blank workspace click")
+					if err := tt.Click(nav.label); err != nil {
+						t.Fatal(err)
+					}
+					checkColors("mouse focus")
+					tt.Key(0, ui.KeyTab)
+					if tt.Focused(cp.Navigation) {
+						t.Fatal("Tab did not move focus out of the sidebar")
+					}
+					checkColors("Tab out of sidebar")
+					tt.Key(ui.Shift, ui.KeyTab)
+					if !tt.Focused(cp.Navigation) {
+						t.Fatal("Shift+Tab did not return focus to the sidebar")
+					}
+					checkColors("keyboard focus")
+					tt.SetWindowActive(false)
+					checkColors("inactive window")
+					tt.SetWindowActive(true)
+					checkColors("reactivated window")
+				}
+			})
+		}
+	}
+}
+
+func TestSettingsPagesOmitAutomaticSaveHints(t *testing.T) {
+	for _, lang := range []string{"zh-CN", "en-US"} {
+		for _, width := range []int{600, 1064} {
+			t.Run(fmt.Sprintf("%s/%d", lang, width), func(t *testing.T) {
+				m, _ := newFakeHarness(t, lang, "Light")
+				tt := ui.NewTester(m.view, width, 780)
+				for _, nav := range m.sections(m.copy()) {
+					if err := tt.Click(nav.label); err != nil {
+						t.Fatal(err)
+					}
+					for _, item := range tt.AccessAll() {
+						text := strings.ToLower(item.Name + " " + item.Description)
+						for _, hint := range []string{"自动保存", "save automatically", "saved automatically", "auto-save", "autosave"} {
+							if strings.Contains(text, hint) {
+								t.Fatalf("%s still shows an automatic-save hint: %q", nav.id, item.Name)
+							}
+						}
+					}
+				}
+			})
 		}
 	}
 }

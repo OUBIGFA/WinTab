@@ -101,11 +101,11 @@ func dividerColor(dark bool) ui.Color {
 
 func sidebarTheme(t *ui.Theme) *ui.Theme {
 	copy := *t
-	// MyGo uses the accent for sidebar icons, including the selected item
-	// when keyboard focus is elsewhere. Keep it a foreground color.
+	// MyGo switches focused icons from Accent to AccentText. Keep both
+	// foreground colors identical; item labels use Text independently.
 	copy.Accent = t.TextMuted
 	copy.InactiveAccent = t.TextMuted
-	copy.AccentText = t.Text
+	copy.AccentText = t.TextMuted
 	return &copy
 }
 
