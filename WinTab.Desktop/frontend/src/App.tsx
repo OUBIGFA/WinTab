@@ -133,14 +133,16 @@ export function App() {
       <span>WinTab</span>
     </div>
     <header className="titlebar">
-      <div className="titlebar-brand">
-        <img src={logo} alt="" />
-        <span>WinTab</span>
-      </div>
-      <div className="titlebar-breadcrumb" aria-hidden="true">
-        <span>{t.settings}</span>
-        <ChevronRight />
-        <span>{current.label}</span>
+      <div className="titlebar-track">
+        <div className="titlebar-brand">
+          <img src={logo} alt="" />
+          <span>WinTab</span>
+        </div>
+        <div className="titlebar-breadcrumb" aria-hidden="true">
+          <span>{t.settings}</span>
+          <ChevronRight />
+          <span>{current.label}</span>
+        </div>
       </div>
       <div className="titlebar-actions">
         <button type="button" className="icon-button" aria-label={s?.theme === 'Dark' ? t.light : t.dark} title={s?.theme === 'Dark' ? t.light : t.dark}

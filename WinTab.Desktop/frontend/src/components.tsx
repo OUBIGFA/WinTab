@@ -19,7 +19,7 @@ export function Checkbox({ id, label, children, checked, disabled, onChange }: {
   return <div className="checkbox-label">
     <CheckboxPrimitive.Root id={id} className="checkbox" checked={checked} disabled={disabled}
       aria-label={label} onCheckedChange={value => onChange(value === true)}>
-      <CheckboxPrimitive.Indicator><Check size={12} strokeWidth={2.5} /></CheckboxPrimitive.Indicator>
+      <CheckboxPrimitive.Indicator><Check size={12} strokeWidth={2.75} /></CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
     <label htmlFor={id}>{children}</label>
   </div>

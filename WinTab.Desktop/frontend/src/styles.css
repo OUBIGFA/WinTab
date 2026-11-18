@@ -90,11 +90,18 @@ img { object-fit: contain; display: block }
 input { caret-color: var(--foreground) }
 a { color: var(--foreground); text-underline-offset: 3px }
 
-/* Keep the mark crisp and pure achromatic while preserving its inner ring. */
-.sidebar-brand img, .titlebar-brand img, .product-identity img { filter: grayscale(1) }
+/* Keep the original black mark untouched in Light mode; give it a clean padded white plate in Dark mode. */
 :root[data-theme='Dark'] .sidebar-brand img,
-:root[data-theme='Dark'] .titlebar-brand img,
-:root[data-theme='Dark'] .product-identity img { filter: grayscale(1) invert(1) opacity(0.94) }
+:root[data-theme='Dark'] .titlebar-brand img {
+  background: #ffffff;
+  padding: 2px;
+  border-radius: var(--radius-inner);
+}
+:root[data-theme='Dark'] .product-identity img {
+  background: #ffffff;
+  padding: 6px;
+  border-radius: var(--radius-panel);
+}
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0 }
 
@@ -126,20 +133,38 @@ a { color: var(--foreground); text-underline-offset: 3px }
 .titlebar {
   grid-column: 2;
   grid-row: 1;
+  position: relative;
   display: flex;
   align-items: center;
   height: var(--titlebar-height);
-  padding: 0 calc(var(--mygo-titlebar-inset-right, 138px) + 12px) 0 var(--page-pad-x);
   background: var(--page);
   border-bottom: 1px solid var(--line);
   --app-region: drag;
+}
+.titlebar-track {
+  width: 100%;
+  max-width: 840px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 var(--page-pad-x);
+  display: flex;
+  align-items: center;
 }
 .titlebar-brand { display: none; align-items: center; gap: 9px; font-size: 14px; font-weight: 600; letter-spacing: -0.01em }
 .titlebar-brand img { width: 20px; height: 20px }
 .titlebar-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; min-width: 0 }
 .titlebar-breadcrumb svg { width: 14px; height: 14px; color: var(--faint) }
 .titlebar-breadcrumb span:last-child { color: var(--foreground); font-weight: 500; overflow: hidden; text-overflow: ellipsis }
-.titlebar-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; --app-region: no-drag }
+.titlebar-actions {
+  position: absolute;
+  right: calc(var(--mygo-titlebar-inset-right, 138px) + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  --app-region: no-drag;
+}
 .titlebar-divider { width: 1px; height: 16px; background: var(--line); margin-left: 6px }
 
 .icon-button {
@@ -229,12 +254,11 @@ a { color: var(--foreground); text-underline-offset: 3px }
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
   scrollbar-color: var(--outline) transparent;
   scrollbar-width: thin;
   background: var(--page);
 }
-.page { max-width: 840px; padding: 24px var(--page-pad-x) 22px }
+.page { width: 100%; max-width: 840px; margin: 0 auto; padding: 24px var(--page-pad-x) 22px }
 
 .page-header { margin-bottom: 20px }
 .page-header h1 { font-size: 24px; line-height: 30px; font-weight: 600; letter-spacing: -0.02em; outline: none }
@@ -358,7 +382,7 @@ kbd {
 .checkbox:hover:not(:disabled) { border-color: var(--foreground) }
 .checkbox[data-state='checked'] { background: var(--primary); border-color: var(--primary); color: var(--on-primary) }
 .checkbox span { display: flex }
-.checkbox svg { width: 12px; height: 12px }
+.checkbox svg { width: 12px; height: 12px; stroke-width: 2.75 }
 
 /* Concentric segments: outer 8px - 3px pad = 5px inner radius */
 .segments {
@@ -612,8 +636,11 @@ kbd {
   .titlebar {
     grid-column: 1;
     grid-row: 1;
-    padding: 0 calc(var(--mygo-titlebar-inset-right, 138px) + 8px) 0 16px;
   }
+  .titlebar-track {
+    padding: 0 calc(var(--mygo-titlebar-inset-right, 138px) + 92px) 0 16px;
+  }
+  .titlebar-actions { right: calc(var(--mygo-titlebar-inset-right, 138px) + 8px) }
   .titlebar-brand { display: flex }
   .titlebar-breadcrumb { display: none }
   .sidebar {

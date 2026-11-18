@@ -76,8 +76,16 @@
                     <StackPanel Orientation="Horizontal" Background="Transparent">
                         <Border x:Name="Box" Width="16" Height="16" CornerRadius="4" VerticalAlignment="Center"
                                 BorderThickness="1" BorderBrush="{DynamicResource ControlBorderBrush}" Background="{DynamicResource SurfaceBrush}">
-                            <controls:LineIcon x:Name="Check" Data="{StaticResource CheckIcon}" Width="14" Height="14"
-                                               Foreground="{DynamicResource CheckBoxCheckedGlyphBrush}" Visibility="Collapsed" />
+                            <Viewbox x:Name="Check" Width="14" Height="14" Visibility="Collapsed">
+                                <Grid Width="24" Height="24">
+                                    <Path Data="{StaticResource CheckIcon}"
+                                          Stroke="{DynamicResource CheckBoxCheckedGlyphBrush}"
+                                          StrokeThickness="2.75"
+                                          StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round"
+                                          StrokeLineJoin="Round" />
+                                </Grid>
+                            </Viewbox>
                         </Border>
                         <ContentPresenter Content="{TemplateBinding Content}" Margin="8,0,0,0"
                                           VerticalAlignment="Center" RecognizesAccessKey="True" />

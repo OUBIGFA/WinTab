@@ -404,5 +404,49 @@ for (const theme of ['Light', 'Dark'] as const) {
     for (const left of geometry.optionLabels) {
       expect(Math.abs(left - geometry.optionLabels[0])).toBeLessThanOrEqual(1)
     }
+
+    const brandStyles = await page.evaluate(() => {
+      const sidebar = getComputedStyle(document.querySelector('.sidebar-brand img')!)
+      const about = getComputedStyle(document.querySelector('.product-identity img')!)
+      return {
+        sidebarBg: sidebar.backgroundColor,
+        sidebarFilter: sidebar.filter,
+        aboutBg: about.backgroundColor,
+        aboutFilter: about.filter,
+      }
+    })
+    const expectedBrandBg = theme === 'Dark' ? 'rgb(255, 255, 255)' : 'rgba(0, 0, 0, 0)'
+    expect(brandStyles.sidebarBg).toBe(expectedBrandBg)
+    expect(brandStyles.aboutBg).toBe(expectedBrandBg)
+    expect(brandStyles.sidebarFilter).toBe('none')
+    expect(brandStyles.aboutFilter).toBe('none')
+
+    await page.locator('.nav-item').nth(1).click()
+    const checkboxStroke = await page.evaluate(() => {
+      const svg = document.querySelector('section:not([hidden]) .checkbox svg')!
+      return parseFloat(getComputedStyle(svg).strokeWidth)
+    })
+    expect(checkboxStroke).toBeGreaterThanOrEqual(2.5)
+
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await page.locator('.nav-item').nth(0).click()
+    const wide = await page.evaluate(() => {
+      const ws = document.querySelector('.workspace')!.getBoundingClientRect()
+      const pg = document.querySelector('.page')!.getBoundingClientRect()
+      const breadcrumb = document.querySelector('.titlebar-breadcrumb')!.getBoundingClientRect().left
+      const heading = document.querySelector('.page-header h1')!.getBoundingClientRect().left
+      const card = document.querySelector('.settings-card')!.getBoundingClientRect().left
+      return {
+        leftGap: pg.left - ws.left,
+        rightGap: ws.right - pg.right,
+        breadcrumb,
+        heading,
+        card,
+      }
+    })
+    expect(wide.leftGap).toBeGreaterThan(100)
+    expect(Math.abs(wide.leftGap - wide.rightGap)).toBeLessThanOrEqual(2)
+    expect(Math.abs(wide.breadcrumb - wide.heading)).toBeLessThanOrEqual(1)
+    expect(Math.abs(wide.breadcrumb - wide.card)).toBeLessThanOrEqual(1)
   })
 }
