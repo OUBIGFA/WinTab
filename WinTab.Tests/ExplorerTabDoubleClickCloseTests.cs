@@ -2,16 +2,21 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using WinTab.Helpers;
 using WinTab.Hooks;
+using H.Hooks;
 
 internal static class ExplorerTabDoubleClickCloseTests
 {
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
+        yield return ("double-click hook ignores idle mouse movement before allocating input events", IdleMouseMoves);
+        yield return ("double-click tracks movement only while a tab press can still become a click", MovementTrackingLifetime);
         yield return ("double-click deferred hit testing preserves cold gestures and native input", DeferredHitTestPreservesColdGesture);
         yield return ("double-click close can continue after a tab-strip hit-test refresh gap", ContinuousDoubleClicksCloseNextTabWithoutIntermediateClick);
         yield return ("double-click close ignores confirmed non-tab points after a close", ConfirmedNonTabHitsStayNative);
@@ -28,6 +33,76 @@ internal static class ExplorerTabDoubleClickCloseTests
         yield return ("double-click return waits for exactly its own tab to close", ReturnRequiresConfirmedClose);
         yield return ("double-click return preserves history across incomplete snapshots", IncompleteSnapshotKeepsHistory);
         foreach (var test in ExplorerTabCloseQueueTests.All()) yield return test;
+    }
+
+    private static Task IdleMouseMoves()
+    {
+        // The hook only borrows the watcher's tab strip and event. Do not start Explorer, global
+        // hooks or send real input: exercise H.Hooks' actual native callback with local input data.
+        var watcher = (ExplorerWatcher)RuntimeHelpers.GetUninitializedObject(typeof(ExplorerWatcher));
+        using var hook = new ExplorerTabDoubleClickHook(watcher);
+        var mouse = (LowLevelMouseHook)typeof(ExplorerTabDoubleClickHook)
+            .GetField("_lowLevelMouseHook", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(hook)!;
+        var callback = typeof(LowLevelMouseHook).GetMethod("InternalCallback", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var parameters = callback.GetParameters();
+        var data = Marshal.AllocHGlobal(32);
+        try
+        {
+            Marshal.Copy(new byte[32], 0, data, 32);
+            static object NativeArgument(Type type, object value)
+            {
+                var argument = Activator.CreateInstance(type)!;
+                type.GetField("Value", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(argument, value);
+                return argument;
+            }
+            var input = new[] { (object)0,
+                NativeArgument(parameters[1].ParameterType, (nuint)0x0200),
+                NativeArgument(parameters[2].ParameterType, data) };
+            var delivered = 0;
+            mouse.Move += (_, _) => delivered++;
+            for (var index = 0; index < 100; index++) callback.Invoke(mouse, input);
+            Check.Equal(0, delivered, "Ordinary desktop pointer movement must not create double-click input work");
+        }
+        finally { Marshal.FreeHGlobal(data); }
+        return Task.CompletedTask;
+    }
+
+    private static Task MovementTrackingLifetime()
+    {
+        var environment = new FakeDoubleClickEnvironment();
+        var controller = new ExplorerTabDoubleClickCloseController(environment);
+        var point = new Point(10, 10);
+        Check.That(!controller.NeedsMouseMoveTracking, "Idle input needs no move callbacks");
+        controller.HandleLeftMouseDown(point, 0);
+        Check.That(!controller.NeedsMouseMoveTracking, "Pressing outside a tab needs no move callbacks");
+        controller.HandleLeftMouseUp(10, point);
+
+        foreach (var hit in new bool?[] { true, null })
+        {
+            environment.DefaultHit = hit;
+            controller.HandleLeftMouseDown(point, 100);
+            Check.That(controller.NeedsMouseMoveTracking, "A tab press must still detect dragging with cold bounds");
+            controller.HandleMouseMove(new Point(11, 10));
+            Check.That(controller.NeedsMouseMoveTracking, "Small movement must preserve the click");
+            controller.HandleLeftMouseUp(110, point);
+            Check.That(!controller.NeedsMouseMoveTracking, "Releasing the first click must stop move callbacks");
+            controller.HandleLeftMouseDown(point, 150);
+            Check.That(controller.NeedsMouseMoveTracking, "The second press must detect dragging too");
+            controller.HandleMouseMove(new Point(30, 10));
+            Check.That(!controller.NeedsMouseMoveTracking, "A cancelled drag needs no further move callbacks");
+            var release = controller.HandleLeftMouseUp(160, point);
+            Check.That(release.CloseRequest == null, "Returning after dragging must not close the tab");
+            Check.Equal(hit == true, release.Handled, "A swallowed down must still consume its matching up");
+            controller.Reset();
+        }
+
+        environment.DefaultHit = true;
+        controller.HandleLeftMouseDown(point, 200);
+        controller.CancelGesture();
+        Check.That(!controller.NeedsMouseMoveTracking, "Wheel or another button cancels move tracking");
+        controller.Reset();
+        Check.That(!controller.NeedsMouseMoveTracking, "Stopping the hook cancels move tracking");
+        return Task.CompletedTask;
     }
 
     private static ExplorerTabAutomation.Tab[] Tabs(string selected, params string[] ids) =>

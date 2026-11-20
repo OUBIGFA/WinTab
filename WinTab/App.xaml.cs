@@ -4,6 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Runtime.InteropServices;
 using WinTab.UI.Desktop;
 using WinTab.UI.Views;
@@ -21,6 +23,14 @@ public partial class App : Application
     private EventWaitHandle? _openRecycleBinEvent;
     private IApplicationUi? _applicationUi;
     private bool _isExiting;
+
+    public App()
+    {
+        // The resident UI is a small, mostly static tray menu. Starting a WPF GPU device on its
+        // first open retains driver buffers for the process lifetime (large on some adapters).
+        // Software rendering also suits the x86 settings window; the Go UI has its own renderer.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {

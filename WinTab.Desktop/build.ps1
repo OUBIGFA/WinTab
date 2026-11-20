@@ -14,6 +14,9 @@ $desktopRoot = $PSScriptRoot
 $repoRoot = Split-Path -Parent $desktopRoot
 $go = (Get-Command go.exe -ErrorAction Stop).Source
 $numericVersion = $Version.TrimStart('v').Split('-')[0]
+# Match MyGo's production build: settings need neither development inspection nor
+# automatic native-library downloads. Test the same code that the installer will carry.
+$productionTags = 'mygo_nowebview,mygo_noinspector,mygo_nodownload'
 
 $sourceLogo = Join-Path $repoRoot 'WinTab/wintab-logo.png'
 $desktopLogo = Join-Path $desktopRoot 'assets/wintab-logo.png'
@@ -33,10 +36,10 @@ try {
     Write-Host '==> Building native MyGo settings UI' -ForegroundColor Cyan
     & $go mod download
     if ($LASTEXITCODE -ne 0) { throw "Desktop dependency restore failed (exit $LASTEXITCODE)" }
-    & $go vet ./...
+    & $go vet -tags $productionTags ./...
     if ($LASTEXITCODE -ne 0) { throw "Desktop static check failed (exit $LASTEXITCODE)" }
     if (-not $SkipTests) {
-        & $go test -count=1 ./...
+        & $go test -tags $productionTags -count=1 ./...
         if ($LASTEXITCODE -ne 0) { throw "Desktop UI tests failed (exit $LASTEXITCODE)" }
     }
     & $go tool go-winres make --in windows-resources.json --arch amd64,arm64 --product-version $numericVersion --file-version $numericVersion
@@ -50,7 +53,7 @@ try {
             throw "Publish the resident application before its renderer: $destination"
         }
         Write-Host "    - settings UI: $architecture"
-        & $go build -tags mygo_nowebview -trimpath -buildvcs=false -ldflags "-H windowsgui -s -w -X main.version=$numericVersion" -o $destination .
+        & $go build -tags $productionTags -trimpath -buildvcs=false -ldflags "-H windowsgui -s -w -X main.version=$numericVersion" -o $destination .
         if ($LASTEXITCODE -ne 0) { throw "Desktop build failed for $architecture (exit $LASTEXITCODE)" }
     }
 }

@@ -44,14 +44,20 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         _closeQueue = new ExplorerTabCloseQueue(new CloseEnvironment(this));
         _lowLevelMouseHook = new LowLevelMouseHook
         {
-            AddKeyboardKeys = true,
+            // The gesture uses only the current mouse button and position. Sampling keyboard
+            // combinations on every global mouse move adds work even outside Explorer.
+            AddKeyboardKeys = false,
             Handling = true,
-            GenerateMouseMoveEvents = true
+            GenerateMouseMoveEvents = false
         };
         _lowLevelMouseHook.Down += OnMouseDown;
         _lowLevelMouseHook.Up += OnMouseUp;
-        _lowLevelMouseHook.Move += (_, e) => _controller.HandleMouseMove(e.Position);
-        _lowLevelMouseHook.Wheel += (_, _) => _controller.CancelGesture();
+        _lowLevelMouseHook.Move += (_, e) =>
+        {
+            _controller.HandleMouseMove(e.Position);
+            _lowLevelMouseHook.GenerateMouseMoveEvents = _controller.NeedsMouseMoveTracking;
+        };
+        _lowLevelMouseHook.Wheel += (_, _) => CancelGesture();
         _watcher.TabActivity += OnTabActivity;
     }
 
@@ -62,6 +68,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _controller.Reset();
+        _lowLevelMouseHook.GenerateMouseMoveEvents = false;
         _lowLevelMouseHook.Start();
         _active = true;
         _activationWork.Request();
@@ -73,17 +80,20 @@ public sealed class ExplorerTabDoubleClickHook : IHook
         Interlocked.Increment(ref _generation);
         _lowLevelMouseHook.Stop();
         _controller.Reset();
+        _lowLevelMouseHook.GenerateMouseMoveEvents = false;
     }
 
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
         if (!IsLeftMouse(e))
         {
-            _controller.CancelGesture();
+            CancelGesture();
             return;
         }
 
         var decision = _controller.HandleLeftMouseDown(e.Position, Environment.TickCount64);
+        // H.Hooks rejects WM_MOUSEMOVE before allocating event arguments when this is false.
+        _lowLevelMouseHook.GenerateMouseMoveEvents = _controller.NeedsMouseMoveTracking;
         if (decision.Handled)
             e.IsHandled = true;
     }
@@ -94,6 +104,7 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             return;
 
         var decision = _controller.HandleLeftMouseUp(Environment.TickCount64, e.Position);
+        _lowLevelMouseHook.GenerateMouseMoveEvents = false;
         if (decision.Handled)
             e.IsHandled = true;
 
@@ -101,6 +112,12 @@ public sealed class ExplorerTabDoubleClickHook : IHook
             return;
 
         QueueClose(closeRequest);
+    }
+
+    private void CancelGesture()
+    {
+        _controller.CancelGesture();
+        _lowLevelMouseHook.GenerateMouseMoveEvents = false;
     }
 
     private void QueueClose(ExplorerTabCloseRequest closeRequest)

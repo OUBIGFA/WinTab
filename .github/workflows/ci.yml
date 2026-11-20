@@ -43,13 +43,14 @@ jobs:
         working-directory: WinTab.Desktop
         shell: pwsh
         run: |
-          go vet ./...
+          $productionTags = 'mygo_nowebview,mygo_noinspector,mygo_nodownload'
+          go vet -tags $productionTags ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go test ./...
+          go test -tags $productionTags ./...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           foreach ($architecture in @('amd64', 'arm64')) {
             $env:GOARCH = $architecture
             $env:CGO_ENABLED = '0'
-            go build -tags mygo_nowebview -o "../_temp/ci-$architecture/WinTab.UI.exe" .
+            go build -tags $productionTags -o "../_temp/ci-$architecture/WinTab.UI.exe" .
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

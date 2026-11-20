@@ -21,6 +21,9 @@ internal sealed class ExplorerTabDoubleClickCloseController(IExplorerTabDoubleCl
     /// <summary>Unrelated input cancels queued actions, but the next pair at the same tab position does not.</summary>
     public int InteractionVersion => Volatile.Read(ref _interactionVersion);
 
+    /// <summary>Only a held tab press needs move events to distinguish a click from a drag.</summary>
+    public bool NeedsMouseMoveTracking => _leftDown && (_lastClickCandidate != null || _pendingClose != null);
+
     public MouseHookDecision HandleLeftMouseDown(Point currentPoint, long now)
     {
         // A repeated down without an up is not a second click. In particular, a drag must not arm a close.
