@@ -42,6 +42,7 @@ type uiModel struct {
 	heading         ui.Handle
 	focusHeading    bool
 	workspaceScroll ui.ScrollState
+	systemDark      bool // the desktop's appearance at the start of the current frame
 	actions         uiActions
 }
 
@@ -83,7 +84,16 @@ func (m *uiModel) language() string {
 }
 
 func (m *uiModel) dark() bool {
-	return m.state != nil && m.state.Settings.Theme == "Dark"
+	if m.state == nil {
+		return false
+	}
+	switch m.state.Settings.Theme {
+	case "Dark":
+		return true
+	case "System":
+		return m.systemDark
+	}
+	return false
 }
 
 func (m *uiModel) copy() copyCatalog {
@@ -155,6 +165,8 @@ func (m *uiModel) runAction(key string, call func()) {
 }
 
 func (m *uiModel) view(c *ui.Context) {
+	// Before SetTheme, the context carries the default theme, which follows the system appearance.
+	m.systemDark = c.Theme().Dark
 	dark := m.dark()
 	t := appTheme(c, dark)
 	c.SetTheme(t)
@@ -764,17 +776,16 @@ func (m *uiModel) renderPreferences(c *ui.Context, cp copyCatalog, dark bool) {
 	settingGroup(c, cp.Appearance, dark, func() {
 		ui.Row(c).FillWidth().Padding(14, 18).Gap(20).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, cp.ThemeLabel).FontSize(14).FontWeight(600).Grow(1)
+			themes := []string{"Light", "Dark", "System"}
 			idx := 0
-			if s.Theme == "Dark" {
-				idx = 1
-			}
-			if ui.Segmented(c.Key("seg-theme"), &idx, cp.LightChoice, cp.DarkChoice).
-				Disabled(m.pending["theme"]).Label(cp.ThemeLabel).Changed() {
-				if idx == 1 {
-					m.set("theme", "Dark")
-				} else {
-					m.set("theme", "Light")
+			for i, value := range themes {
+				if s.Theme == value {
+					idx = i
 				}
+			}
+			if ui.Segmented(c.Key("seg-theme"), &idx, cp.LightChoice, cp.DarkChoice, cp.SystemChoice).
+				Disabled(m.pending["theme"]).Label(cp.ThemeLabel).Changed() && idx >= 0 && idx < len(themes) {
+				m.set("theme", themes[idx])
 			}
 		})
 		ui.Row(c).FillWidth().Padding(14, 18).Gap(20).AlignItems(ui.Center).Children(func() {

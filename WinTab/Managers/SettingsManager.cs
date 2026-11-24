@@ -187,5 +187,7 @@ public static class SettingsManager
         : value.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? "zh-CN" : "en-US";
 
     private static string NormalizeTheme(string? value) =>
-        string.Equals(value, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
+        string.Equals(value, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark"
+        : string.Equals(value, "System", StringComparison.OrdinalIgnoreCase) ? "System"
+        : "Light";
 }

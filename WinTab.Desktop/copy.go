@@ -15,6 +15,7 @@ type copyCatalog struct {
 	ThemeLabel         string
 	LightChoice        string
 	DarkChoice         string
+	SystemChoice       string
 	LanguageLabel      string
 	Background         string
 	ManualRecovery     string
@@ -130,6 +131,7 @@ var zhCopy = copyCatalog{
 	ThemeLabel:         "主题",
 	LightChoice:        "浅色",
 	DarkChoice:         "深色",
+	SystemChoice:       "跟随系统",
 	LanguageLabel:      "界面语言",
 	Background:         "后台运行",
 	ManualRecovery:     "手动恢复与快捷键",
@@ -245,6 +247,7 @@ var enCopy = copyCatalog{
 	ThemeLabel:         "Theme",
 	LightChoice:        "Light",
 	DarkChoice:         "Dark",
+	SystemChoice:       "System",
 	LanguageLabel:      "Language",
 	Background:         "Background behavior",
 	ManualRecovery:     "Manual recovery & shortcuts",

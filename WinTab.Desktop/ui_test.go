@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -362,6 +363,56 @@ func TestDarkModeBrandLogoPlateIsPureWhite(t *testing.T) {
 	c := img.RGBAAt(18, 14)
 	if c.R != 255 || c.G != 255 || c.B != 255 {
 		t.Fatalf("dark mode sidebar logo plate corner pixel at (18,14) = %+v, want pure white", c)
+	}
+}
+
+func TestSystemThemeFollowsDesktopAppearance(t *testing.T) {
+	m, _ := newFakeHarness(t, "zh-CN", "System")
+	tt := ui.NewTesterWith(m.view, 1064, 780, ui.TesterOptions{Dark: true})
+	if !m.dark() {
+		t.Fatal("System theme stayed light while the desktop is dark")
+	}
+	tt.SetDark(false)
+	if m.dark() {
+		t.Fatal("System theme stayed dark after the desktop turned light")
+	}
+	tt.SetDark(true)
+	if !m.dark() {
+		t.Fatal("System theme did not follow the desktop back to dark")
+	}
+
+	// A fixed choice ignores the desktop appearance.
+	m.state.Settings.Theme = "Light"
+	tt.SetDark(true)
+	if m.dark() {
+		t.Fatal("Light theme followed the dark desktop")
+	}
+}
+
+func TestThemeChoiceOffersSystem(t *testing.T) {
+	m, fa := newFakeHarness(t, "zh-CN", "Light")
+	tt := ui.NewTester(m.view, 1064, 780)
+	if err := tt.Click(zhCopy.Preferences); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.Click(zhCopy.SystemChoice); err != nil {
+		t.Fatal(err)
+	}
+	if got := fa.calls[len(fa.calls)-1]; got != "set:theme=System" {
+		t.Fatalf("theme choice sent %q, want set:theme=System", got)
+	}
+	if m.state.Settings.Theme != "System" {
+		t.Fatalf("theme = %q, want System", m.state.Settings.Theme)
+	}
+}
+
+func TestThemeSourceMapsPreferences(t *testing.T) {
+	for theme, want := range map[string]mygo.ThemeSource{
+		"Light": mygo.ThemeLight, "Dark": mygo.ThemeDark, "System": mygo.ThemeSystem, "": mygo.ThemeLight,
+	} {
+		if got := themeSource(theme); got != want {
+			t.Errorf("themeSource(%q) = %q, want %q", theme, got, want)
+		}
 	}
 }
 

@@ -56,6 +56,8 @@ public partial class MainWindow : Window, WinTab.UI.Desktop.IApplicationUi
         _hookManager.SessionCommandFinished += SessionCommandFinished;
         _trayIcon.StartupChanged += (_, _) => SyncSettingsIntoUi();
         SettingsManager.StaticPropertyChanged += SettingsManager_StaticPropertyChanged;
+        // A preference that follows Windows can change the palette without a settings change.
+        ThemeManager.ThemeApplied += ApplyTheme;
 
         MinimizeButton.Click += (_, _) => Hide();
         CloseButton.Click += (_, _) => Hide();

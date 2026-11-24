@@ -28,7 +28,7 @@ WinTab folds your File Explorer windows into one: newly opened windows become ta
 - Middle-click a folder in the navigation pane, file list, Home or the address bar to open it in the foreground
 - When native focus such as "Open file location" lands on a background tab, that tab is brought to the front
 - Hold `Ctrl + Shift` while opening folders to keep a separate window; drag a tab off the tab row to split it into a new window
-- Runs from the system tray, starts with Windows, and switches between light / dark themes and Chinese / English
+- Runs from the system tray, starts with Windows, uses a light, dark or system theme, and switches between Chinese / English
 
 The x64 and ARM64 settings interface uses MyGo, with sections for File Explorer, Session recovery, Appearance & system, and About. The x86 installer keeps the WPF settings interface.
 

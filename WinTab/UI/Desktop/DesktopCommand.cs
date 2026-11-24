@@ -49,7 +49,7 @@ internal sealed record DesktopCommand(long Id, string Method)
                     "doubleClickCloseIncludeNotepad" or "doubleClickEmptyArea" or "middleClickForegroundTab" or "wheelSwitchTab" or
                     "showTrayIcon" or "autoUpdate" or "startup" => command with { Enabled = Bool(args, "value") },
                     "language" => command with { Text = Choice(args, "value", "zh-CN", "en-US") },
-                    "theme" => command with { Text = Choice(args, "value", "Light", "Dark") },
+                    "theme" => command with { Text = Choice(args, "value", "Light", "Dark", "System") },
                     "doubleClickEmptyAreaAction" => command with { Text = Choice(args, "value", "Parent", "Back") },
                     "wheelSwitchSensitivity" => command with { Text = Choice(args, "value", "Low", "Medium", "High") },
                     _ => throw new FormatException("Unknown setting")

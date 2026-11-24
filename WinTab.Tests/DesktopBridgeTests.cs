@@ -34,7 +34,7 @@ internal static class DesktopBridgeTests
             }
         }
         foreach (var (key, value) in new[] { ("language", "zh-CN"), ("language", "en-US"),
-            ("theme", "Light"), ("theme", "Dark"), ("wheelSwitchSensitivity", "Low"),
+            ("theme", "Light"), ("theme", "Dark"), ("theme", "System"), ("wheelSwitchSensitivity", "Low"),
             ("wheelSwitchSensitivity", "Medium"), ("wheelSwitchSensitivity", "High"),
             ("doubleClickEmptyAreaAction", "Parent"), ("doubleClickEmptyAreaAction", "Back") })
             Check.Equal(value, Parse("set", new { key, value }).Text);
@@ -68,7 +68,7 @@ internal static class DesktopBridgeTests
             Request("set", new { key = "windowHook", value = 0 }),
             Request("set", new { key = "windowHook" }),
             Request("set", new { key = "language", value = "fr-FR" }),
-            Request("set", new { key = "theme", value = "System" }),
+            Request("set", new { key = "theme", value = "Auto" }),
             Request("set", new { key = "doubleClickEmptyAreaAction", value = "Up" }),
             Request("set", new { key = "doubleClickEmptyAreaAction", value = "1" }),
             Request("set", new { key = "doubleClickEmptyAreaAction", value = true }),

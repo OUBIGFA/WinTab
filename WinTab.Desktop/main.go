@@ -59,14 +59,21 @@ func (d *Desktop) accept(state State) {
 		d.mu.Lock()
 		theme := d.state.Settings.Theme
 		d.mu.Unlock()
-		source := mygo.ThemeLight
-		if theme == "Dark" {
-			source = mygo.ThemeDark
-		}
-		if mygo.Theme.Source() != source {
+		if source := themeSource(theme); mygo.Theme.Source() != source {
 			mygo.Theme.SetSource(source)
 		}
 	})
+}
+
+// themeSource maps the saved preference to the appearance MyGo applies to the window.
+func themeSource(theme string) mygo.ThemeSource {
+	switch theme {
+	case "Dark":
+		return mygo.ThemeDark
+	case "System":
+		return mygo.ThemeSystem
+	}
+	return mygo.ThemeLight
 }
 
 func (d *Desktop) request(ctx context.Context, method string, args any) (State, error) {
@@ -179,7 +186,8 @@ func (d *Desktop) open(state State) {
 	area := mygo.Screen.DisplayNearestPoint(mygo.Screen.CursorScreenPoint()).WorkArea
 	width, height := initialSize(state.Settings.FormSize, area.Width, area.Height)
 	bg := "#ffffff"
-	if state.Settings.Theme == "Dark" {
+	// accept has already applied the preference, so the effective appearance includes the system choice.
+	if mygo.Theme.IsDark() {
 		bg = "#161616"
 	}
 
