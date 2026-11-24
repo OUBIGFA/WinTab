@@ -10,14 +10,14 @@
         <tb:TaskbarIcon.ContextMenu>
             <ContextMenu>
                 <MenuItem x:Name="OpenSettingsMenu" Header="Open WinTab">
-                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource Settings2Icon}" /></MenuItem.Icon>
+                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource Tuning2Icon}" /></MenuItem.Icon>
                 </MenuItem>
                 <Separator />
                 <MenuItem x:Name="RestoreGroupMenu" Header="Restore last tab group">
-                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource RotateCcwIcon}" /></MenuItem.Icon>
+                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource HistoryIcon}" /></MenuItem.Icon>
                 </MenuItem>
                 <MenuItem x:Name="ReopenTabMenu" Header="Reopen last closed tab">
-                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource RotateCcwIcon}" /></MenuItem.Icon>
+                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource HistoryIcon}" /></MenuItem.Icon>
                 </MenuItem>
                 <MenuItem x:Name="RecordClosedTabsMenu" Header="Remember recently closed tabs" IsCheckable="True" StaysOpenOnClick="True" ToolTipService.ShowOnDisabled="True" />
                 <Separator />
@@ -33,10 +33,10 @@
                 <MenuItem x:Name="ShowTrayIconMenu" Header="Show tray icon" IsCheckable="True" StaysOpenOnClick="True" />
                 <Separator />
                 <MenuItem x:Name="CheckUpdatesMenu" Header="Check for updates">
-                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource RefreshCwIcon}" /></MenuItem.Icon>
+                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource RefreshIcon}" /></MenuItem.Icon>
                 </MenuItem>
                 <MenuItem x:Name="ExitMenu" Header="Exit">
-                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource LogOutIcon}" /></MenuItem.Icon>
+                    <MenuItem.Icon><controls:LineIcon Data="{StaticResource LogoutIcon}" /></MenuItem.Icon>
                 </MenuItem>
             </ContextMenu>
         </tb:TaskbarIcon.ContextMenu>

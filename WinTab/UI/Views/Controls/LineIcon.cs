@@ -4,7 +4,7 @@ using System.Windows.Media;
 
 namespace WinTab.UI.Views.Controls;
 
-/// <summary>A theme-aware Lucide stroke icon on its original 24-unit canvas.</summary>
+/// <summary>A theme-aware Solar Linear stroke icon on its original 24-unit canvas.</summary>
 public sealed class LineIcon : Control
 {
     public static readonly DependencyProperty DataProperty = DependencyProperty.Register(

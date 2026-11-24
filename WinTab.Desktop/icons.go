@@ -19,21 +19,26 @@ func mustDecodeBitmap(data []byte) *ui.Bitmap {
 	return bmp
 }
 
-func lucideIcon(shapes string) *ui.SVG {
-	return ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">` + shapes + `</svg>`))
+// solarIcon wraps the shapes of a Solar Linear icon in its original 24-unit
+// canvas and 1.5 stroke. The source files paint with stroke="black", so the
+// stroke moves to the root as currentColor to follow the theme's text color.
+func solarIcon(shapes string) *ui.SVG {
+	return ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">` + shapes + `</svg>`))
 }
 
+// Solar Icons (Linear), packages/core/svgs of saoudi-h/solar-icons at
+// ab241e1bf578dcfe45b0197aee59bd9a08b5fe68; only the icons the UI uses.
 var (
-	iconFolderOpen   = lucideIcon(`<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>`)
-	iconRotateCCW    = lucideIcon(`<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>`)
-	iconSettings2    = lucideIcon(`<path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>`)
-	iconInfo         = lucideIcon(`<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>`)
-	iconChevronRight = lucideIcon(`<path d="m9 18 6-6-6-6"/>`)
-	iconSun          = lucideIcon(`<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>`)
-	iconMoon         = lucideIcon(`<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>`)
-	iconLanguages    = lucideIcon(`<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>`)
-	iconCheck        = lucideIcon(`<path d="M20 6 9 17l-5-5"/>`)
-	iconCircleAlert  = lucideIcon(`<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>`)
-	iconRefreshCW    = lucideIcon(`<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>`)
-	iconKeyboard     = lucideIcon(`<path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/>`)
+	iconFolderOpen    = solarIcon(`<path d="M20 11.5V9.34843V9.34841C20 7.37415 20 6.38701 19.3844 5.74537C19.3278 5.68635 19.2679 5.63018 19.2049 5.5771C18.5205 5 17.4676 5 15.3617 5H15.0627C14.1398 5 13.6783 5 13.2483 4.88508C13.012 4.82195 12.7844 4.73353 12.5697 4.62157C12.1789 4.41775 11.8526 4.11184 11.2 3.50001L11.2 3.5L10.7598 3.08731L10.7598 3.08731C10.5411 2.88224 10.4317 2.77971 10.3168 2.69039C9.82122 2.30528 9.21332 2.06921 8.57246 2.01303C8.42381 2 8.26914 2 7.9598 2C7.25377 2 6.90076 2 6.60671 2.05201C5.31225 2.28098 4.29971 3.23023 4.05548 4.44379C4 4.71946 4 5.05041 4 5.71231V11.5"/><path d="M14 17H10"/><path d="M8.70531 22H15.2947C17.2149 22 18.175 22 18.8982 21.5101C19.0858 21.383 19.2585 21.2338 19.4129 21.0655C20.008 20.4167 20.1798 19.4391 20.5233 17.4839C21.0004 14.7678 21.239 13.4097 20.6609 12.433C20.5134 12.1838 20.3315 11.9582 20.1209 11.7634C19.2958 11 17.9621 11 15.2947 11H8.7053C6.0379 11 4.7042 11 3.87908 11.7634C3.66852 11.9582 3.4866 12.1838 3.33908 12.433C2.761 13.4097 2.99958 14.7678 3.47674 17.4839C3.82024 19.4391 3.99198 20.4167 4.58706 21.0655C4.74145 21.2338 4.9142 21.383 5.10183 21.5101C5.825 22 6.7851 22 8.70531 22Z"/>`)
+	iconHistory       = solarIcon(`<path d="M12 8V12L14.5 14.5"/><path d="M4.33776 6.87058L5.60414 5.6042C9.10115 2.10719 14.7996 2.13582 18.3319 5.66816C21.8642 9.2005 21.8929 14.8989 18.3959 18.3959C14.8988 21.8929 9.20044 21.8643 5.6681 18.332C3.57589 16.2397 2.71285 13.3876 3.08355 10.6831M4.32497 4.32503L4.33776 6.87058L6.88331 6.88337"/>`)
+	iconTuning2       = solarIcon(`<path d="M9.5 14C11.1569 14 12.5 15.3431 12.5 17C12.5 18.6568 11.1569 20 9.5 20C7.84315 20 6.5 18.6568 6.5 17C6.5 15.3431 7.84315 14 9.5 14Z"/><path d="M14.5 3.99998C12.8431 3.99998 11.5 5.34312 11.5 6.99998C11.5 8.65683 12.8431 9.99998 14.5 9.99998C16.1569 9.99998 17.5 8.65683 17.5 6.99998C17.5 5.34312 16.1569 3.99998 14.5 3.99998Z"/><path d="M15 16.9585L22 16.9585"/><path d="M9 6.9585L2 6.9585"/><path d="M2 16.9585L4 16.9585"/><path d="M22 6.9585L20 6.9585"/>`)
+	iconInfoCircle    = solarIcon(`<circle cx="12" cy="12" r="10"/><path d="M12 17V11"/><path d="M12 8H12.0001"/>`)
+	iconAltArrowRight = solarIcon(`<path d="M9 5L15 12L9 19"/>`)
+	iconSun           = solarIcon(`<circle cx="12" cy="12" r="6"/><path d="M12 2V3"/><path d="M12 21V22"/><path d="M22 12L21 12"/><path d="M3 12L2 12"/><path d="M19.0703 4.9292L18.6775 5.32204"/><path d="M5.32227 18.6782L4.92943 19.0711"/><path d="M19.0703 19.0708L18.6775 18.678"/><path d="M5.32227 5.32178L4.92943 4.92894"/>`)
+	iconMoon          = solarIcon(`<path d="M12 22C17.5228 22 22 17.5228 22 12C22 11.5373 21.3065 11.4608 21.0672 11.8568C19.9289 13.7406 17.8615 15 15.5 15C11.9101 15 9 12.0899 9 8.5C9 6.13845 10.2594 4.07105 12.1432 2.93276C12.5392 2.69347 12.4627 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z"/>`)
+	iconTranslate     = solarIcon(`<path d="M12.7895 17.667L11.5263 21M12.7895 17.667H19.7368M12.7895 17.667L14.01 14.446M19.7368 17.667L21 21M19.7368 17.667L17.5314 11.847C17.3389 11.339 16.8316 11 16.2632 11C15.6948 11 15.1874 11.339 14.9949 11.847L14.01 14.446M14.01 14.446C12.5485 14.189 10.45 13.047 8.632 11.601M8.632 11.601C6.6549 13.247 4.4429 14.5 3 14.5M8.632 11.601C7.1993 10.461 5.9408 9.133 5.3056 7.9M8.632 11.601C10.5068 10.039 13 7.756 13 5.199M13 5.199C11.7779 5.338 10.0814 5.5 8.7895 5.5C6.5192 5.5 3 5 3 5M13 5.199C13.9254 5.093 14.5789 5 14.5789 5M8.2632 3H9.3158"/>`)
+	iconCheck         = solarIcon(`<path d="M5 13L9 17L19 7"/>`)
+	iconDangerCircle  = solarIcon(`<circle cx="12" cy="12" r="10"/><path d="M12 7V13"/><path d="M12 16H12.0001"/>`)
+	iconRefresh       = solarIcon(`<path d="M3.67981 13L3.67981 11.3333C3.67981 6.73096 7.4402 3 12.0789 3C15.1178 3 17.7799 4.60136 19.2545 7M2 11.3333L3.67981 13L5.35962 11.3333"/><path d="M20.3139 11V12.6667C20.3139 17.269 16.5391 21 11.8827 21C8.83213 21 6.15995 19.3986 4.67969 17M22.0001 12.6667L20.3139 11L18.6277 12.6667"/>`)
+	iconKeyboard      = solarIcon(`<path d="M8 19H16C18.8284 19 20.2426 19 21.1213 18.1213C22 17.2426 22 15.8284 22 13V11C22 8.17157 22 6.75736 21.1213 5.87868C20.2426 5 18.8284 5 16 5H8C5.17157 5 3.75736 5 2.87868 5.87868C2 6.75736 2 8.17157 2 11V13C2 15.8284 2 17.2426 2.87868 18.1213C3.75736 19 5.17157 19 8 19Z"/><path d="M7 16H17"/><path d="M6 9H6.0001"/><path d="M9 9H9.0001"/><path d="M12 9H12.0001"/><path d="M15 9H15.0001"/><path d="M18 9H18.0001"/><path d="M18 12H18.0001"/><path d="M15 12H15.0001"/><path d="M12 12H12.0001"/><path d="M9 12H9.0001"/><path d="M6 12H6.0001"/>`)
 )

@@ -31,9 +31,9 @@ func TestEmbeddedBrandAssetsAndIcons(t *testing.T) {
 	if len(logoPNG) == 0 || logoBitmap == nil {
 		t.Fatal("logo PNG was not embedded or decoded")
 	}
-	if iconFolderOpen == nil || iconRotateCCW == nil || iconSettings2 == nil || iconInfo == nil ||
-		iconChevronRight == nil || iconSun == nil || iconMoon == nil || iconLanguages == nil ||
-		iconCheck == nil || iconCircleAlert == nil || iconRefreshCW == nil || iconKeyboard == nil {
+	if iconFolderOpen == nil || iconHistory == nil || iconTuning2 == nil || iconInfoCircle == nil ||
+		iconAltArrowRight == nil || iconSun == nil || iconMoon == nil || iconTranslate == nil ||
+		iconCheck == nil || iconDangerCircle == nil || iconRefresh == nil || iconKeyboard == nil {
 		t.Fatal("one or more embedded SVG icons failed to parse")
 	}
 }

@@ -93,9 +93,9 @@ func (m *uiModel) copy() copyCatalog {
 func (m *uiModel) sections(cp copyCatalog) []navEntry {
 	return []navEntry{
 		{id: "explorer", label: cp.Explorer, intro: cp.ExplorerIntro, icon: iconFolderOpen},
-		{id: "recovery", label: cp.RecoveryNav, intro: cp.RecoveryIntro, icon: iconRotateCCW},
-		{id: "preferences", label: cp.Preferences, intro: cp.PreferencesIntro, icon: iconSettings2},
-		{id: "about", label: cp.About, intro: cp.AboutIntro, icon: iconInfo},
+		{id: "recovery", label: cp.RecoveryNav, intro: cp.RecoveryIntro, icon: iconHistory},
+		{id: "preferences", label: cp.Preferences, intro: cp.PreferencesIntro, icon: iconTuning2},
+		{id: "about", label: cp.About, intro: cp.AboutIntro, icon: iconInfoCircle},
 	}
 }
 
@@ -234,7 +234,7 @@ func (m *uiModel) renderSidebarFooter(c *ui.Context, cp copyCatalog, dark bool) 
 		switch {
 		case m.loadError:
 			statusText = cp.LoadErrorTitle
-			statusIcon = iconCircleAlert
+			statusIcon = iconDangerCircle
 		case len(m.pending) > 0:
 			statusText = cp.Saving
 		case m.state != nil && m.state.ShellReady:
@@ -308,7 +308,7 @@ func (m *uiModel) renderTitleBar(c *ui.Context, bar ui.TitleBar, cp copyCatalog,
 			} else {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Role(ui.RoleNone).Children(func() {
 					ui.Text(c, cp.Settings).FontSize(13).TextColor(t.TextMuted).SingleLine()
-					ui.Icon(c, iconChevronRight).FontSize(14).TextColor(t.TextMuted)
+					ui.Icon(c, iconAltArrowRight).FontSize(14).TextColor(t.TextMuted)
 					ui.Text(c, current.label).FontSize(13).FontWeight(500).SingleLine()
 				})
 			}
@@ -337,7 +337,7 @@ func (m *uiModel) renderTitleBar(c *ui.Context, bar ui.TitleBar, cp copyCatalog,
 				nextLang = "zh-CN"
 			}
 			langDisabled := m.state == nil || m.pending["language"]
-			if ghostIconButton(c.Key("lang-btn"), iconLanguages, cp.Language, langDisabled).Clicked() {
+			if ghostIconButton(c.Key("lang-btn"), iconTranslate, cp.Language, langDisabled).Clicked() {
 				m.set("language", nextLang)
 			}
 		})
@@ -409,11 +409,11 @@ func (m *uiModel) renderConnection(c *ui.Context, cp copyCatalog) {
 	t := c.Theme()
 	ui.Column(c).Padding(40, 0).Gap(14).Role(ui.RoleStatus).Children(func() {
 		if m.loadError {
-			ui.Icon(c, iconCircleAlert).FontSize(26).TextColor(t.TextMuted)
+			ui.Icon(c, iconDangerCircle).FontSize(26).TextColor(t.TextMuted)
 			ui.Text(c, cp.LoadErrorTitle).FontSize(22).FontWeight(600).Role(ui.RoleHeading).Level(1)
 			ui.Text(c, cp.LoadError).TextColor(t.TextMuted)
 			if ui.PrimaryButton(c, "").Children(func() {
-				ui.Icon(c, iconRefreshCW)
+				ui.Icon(c, iconRefresh)
 				ui.Text(c, cp.Retry).SingleLine()
 			}).Clicked() && m.actions != nil {
 				m.loadError = false
@@ -445,7 +445,7 @@ func (m *uiModel) renderNotices(c *ui.Context, cp copyCatalog, dark bool) {
 	ui.Row(c).Padding(12, 16).Gap(10).Margin(0, 0, 16, 0).Radius(10).
 		Background(cardSubtleBackground(dark)).Border(1, t.Border).AlignItems(ui.Start).
 		Role(ui.RoleAlert).Label(strings.Join(messages, " ")).Children(func() {
-		ui.Icon(c, iconCircleAlert).FontSize(16).Margin(2, 0, 0, 0)
+		ui.Icon(c, iconDangerCircle).FontSize(16).Margin(2, 0, 0, 0)
 		ui.Column(c).Grow(1).MinWidth(0).Gap(4).Children(func() {
 			for _, msg := range messages {
 				ui.Text(c, msg).FontSize(13.5)
@@ -569,7 +569,7 @@ func (m *uiModel) renderExplorer(c *ui.Context, cp copyCatalog, dark bool) {
 	// Hold Ctrl + Shift context note
 	ui.Row(c).FillWidth().Padding(11, 16).Gap(8).Radius(t.Radius).Background(cardSubtleBackground(dark)).
 		Border(1, t.Border).AlignItems(ui.Center).Children(func() {
-		ui.Icon(c, iconInfo).FontSize(15).TextColor(t.TextMuted)
+		ui.Icon(c, iconInfoCircle).FontSize(15).TextColor(t.TextMuted)
 		ui.Text(c, cp.Bypass).FontSize(13).TextColor(t.TextMuted)
 		keyCap(c, "Ctrl", dark)
 		ui.Text(c, "+").FontSize(13).TextColor(t.TextMuted)
@@ -615,12 +615,12 @@ func (m *uiModel) renderRecovery(c *ui.Context, cp copyCatalog, dark bool) {
 				switch {
 				case hasErr:
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Role(ui.RoleAlert).Children(func() {
-						ui.Icon(c, iconCircleAlert).FontSize(14)
+						ui.Icon(c, iconDangerCircle).FontSize(14)
 						ui.Text(c, *m.state.ShortcutError).FontSize(12.5).FontWeight(500)
 					})
 				case dirty:
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Role(ui.RoleStatus).Children(func() {
-						ui.Icon(c, iconInfo).FontSize(14)
+						ui.Icon(c, iconInfoCircle).FontSize(14)
 						ui.Text(c, cp.Draft).FontSize(12.5).FontWeight(500)
 					})
 				case m.shortcutApplied:
@@ -652,7 +652,7 @@ func (m *uiModel) renderRecovery(c *ui.Context, cp copyCatalog, dark bool) {
 	if m.state.SessionFeedback != nil && *m.state.SessionFeedback != "" {
 		ui.Row(c).FillWidth().Padding(10, 14).Gap(8).Margin(0, 0, 20, 0).Radius(t.Radius).
 			Background(cardSubtleBackground(dark)).Border(1, t.Border).AlignItems(ui.Center).Role(ui.RoleStatus).Children(func() {
-			ui.Icon(c, iconInfo).FontSize(14)
+			ui.Icon(c, iconInfoCircle).FontSize(14)
 			ui.Text(c, *m.state.SessionFeedback).FontSize(13).FontWeight(500)
 		})
 	}
@@ -712,7 +712,7 @@ func (m *uiModel) recoveryCommandBlock(
 				if restoring {
 					ui.Spinner(c).FontSize(14)
 				} else {
-					ui.Icon(c, iconRotateCCW).FontSize(14)
+					ui.Icon(c, iconHistory).FontSize(14)
 				}
 				ui.Text(c, btnLabel).SingleLine()
 			})
@@ -806,7 +806,7 @@ func (m *uiModel) renderPreferences(c *ui.Context, cp copyCatalog, dark bool) {
 
 	ui.Row(c).FillWidth().Padding(11, 16).Gap(8).Radius(t.Radius).Background(cardSubtleBackground(dark)).
 		Border(1, t.Border).AlignItems(ui.Center).Children(func() {
-		ui.Icon(c, iconInfo).FontSize(15).TextColor(t.TextMuted)
+		ui.Icon(c, iconInfoCircle).FontSize(15).TextColor(t.TextMuted)
 		ui.Text(c, cp.Running).FontSize(13).TextColor(t.TextMuted)
 	})
 }
@@ -865,7 +865,7 @@ func (m *uiModel) renderAbout(c *ui.Context, cp copyCatalog, dark bool) {
 				if updating {
 					ui.Spinner(c).FontSize(14)
 				} else {
-					ui.Icon(c, iconRefreshCW).FontSize(14)
+					ui.Icon(c, iconRefresh).FontSize(14)
 				}
 				ui.Text(c, updLabel).SingleLine()
 			})

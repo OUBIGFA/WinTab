@@ -172,13 +172,13 @@
                 <controls:LineIcon x:Name="ThemeToggleGlyph" Data="{StaticResource MoonIcon}" />
             </Button>
             <Button x:Name="LanguageToggleButton" Style="{StaticResource IconButtonStyle}" Margin="2,0,8,0" Focusable="False">
-                <controls:LineIcon Data="{StaticResource LanguagesIcon}" />
+                <controls:LineIcon Data="{StaticResource TranslateIcon}" />
             </Button>
             <Button x:Name="MinimizeButton" Style="{StaticResource CaptionButtonStyle}" Focusable="False">
                 <controls:LineIcon Data="{StaticResource MinusIcon}" />
             </Button>
             <Button x:Name="CloseButton" Style="{StaticResource CaptionButtonStyle}" Margin="2,0,0,0" Focusable="False">
-                <controls:LineIcon Data="{StaticResource XIcon}" />
+                <controls:LineIcon Data="{StaticResource CloseIcon}" />
             </Button>
         </StackPanel>
 
@@ -330,7 +330,7 @@
                                    Text="Hold Ctrl + Shift while opening folders to keep a separate window"
                                    Style="{StaticResource FootnoteStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="4,24,0,10">
-                            <controls:LineIcon Data="{StaticResource Settings2Icon}" Margin="0,0,8,0" />
+                            <controls:LineIcon Data="{StaticResource Tuning2Icon}" Margin="0,0,8,0" />
                             <TextBlock x:Name="SystemSectionTitleText" Text="System" Style="{StaticResource SectionTitleStyle}" Margin="0" />
                         </StackPanel>
                         <Border Style="{StaticResource SettingsGroupStyle}">
@@ -367,7 +367,7 @@
                     </StackPanel>
                     <StackPanel Grid.Column="2">
                         <StackPanel Orientation="Horizontal" Margin="4,0,0,10">
-                            <controls:LineIcon Data="{StaticResource RotateCcwIcon}" Margin="0,0,8,0" />
+                            <controls:LineIcon Data="{StaticResource HistoryIcon}" Margin="0,0,8,0" />
                             <TextBlock x:Name="RecoveryTitleText" Style="{StaticResource SectionTitleStyle}" Margin="0" />
                         </StackPanel>
                         <Border Style="{StaticResource SettingsGroupStyle}">
@@ -376,7 +376,7 @@
                                     <StackPanel>
                                         <TextBlock x:Name="RecoveryDescriptionText" Style="{StaticResource SettingDescriptionStyle}" Margin="0,0,0,10" />
                                         <DockPanel>
-                                            <Button x:Name="RestoreGroupButton" Tag="{StaticResource RotateCcwIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
+                                            <Button x:Name="RestoreGroupButton" Tag="{StaticResource HistoryIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
                                             <TextBlock x:Name="RestoreGroupTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
                                         </DockPanel>
                                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
@@ -396,7 +396,7 @@
                                 <Border Style="{StaticResource SettingRowStyle}">
                                     <StackPanel>
                                         <DockPanel>
-                                            <Button x:Name="ReopenTabButton" Tag="{StaticResource RotateCcwIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
+                                            <Button x:Name="ReopenTabButton" Tag="{StaticResource HistoryIcon}" DockPanel.Dock="Right" Style="{StaticResource FlatButtonStyle}" />
                                             <CheckBox x:Name="RecordClosedTabsToggle" DockPanel.Dock="Right" Style="{StaticResource SettingToggleStyle}"
                                                       AutomationProperties.LabeledBy="{Binding ElementName=ReopenTabTitleText}" Margin="12,0,16,0" ToolTipService.ShowOnDisabled="True" />
                                             <TextBlock x:Name="ReopenTabTitleText" Style="{StaticResource SettingTitleStyle}" VerticalAlignment="Center" />
@@ -442,7 +442,7 @@
                 </Grid>
 
                 <StackPanel Orientation="Horizontal" Margin="4,24,0,10">
-                    <controls:LineIcon Data="{StaticResource InfoIcon}" Margin="0,0,8,0" />
+                    <controls:LineIcon Data="{StaticResource InfoCircleIcon}" Margin="0,0,8,0" />
                     <TextBlock x:Name="AboutSectionTitleText" Text="About" Style="{StaticResource SectionTitleStyle}" Margin="0" />
                 </StackPanel>
                 <Border Style="{StaticResource SettingsGroupStyle}">
@@ -453,7 +453,7 @@
                                         Content="Open logs"
                                         Style="{StaticResource FlatButtonStyle}"
                                         VerticalAlignment="Center" />
-                                <Button x:Name="CheckUpdatesButton" Tag="{StaticResource RefreshCwIcon}"
+                                <Button x:Name="CheckUpdatesButton" Tag="{StaticResource RefreshIcon}"
                                         Content="Check for updates"
                                         Style="{StaticResource FlatButtonStyle}"
                                         VerticalAlignment="Center"
