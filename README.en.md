@@ -16,7 +16,14 @@ WinTab folds your File Explorer windows into one: newly opened windows become ta
 
 ---
 
-![](Assets/UI.png)
+![WinTab v2.6.0 File Explorer settings](Assets/UI.en.png)
+
+<details>
+<summary>Appearance & system: follow the system theme</summary>
+
+![WinTab v2.6.0 Appearance & system settings](Assets/UI-appearance.en.png)
+
+</details>
 
 ## Features
 

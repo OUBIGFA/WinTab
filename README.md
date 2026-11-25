@@ -16,7 +16,14 @@ WinTab 把资源管理器的多个窗口收进一个窗口：新打开的窗口�
 
 ---
 
-![](Assets/UI.png)
+![WinTab v2.6.0 资源管理器设置](Assets/UI.png)
+
+<details>
+<summary>外观与系统：主题跟随系统</summary>
+
+![WinTab v2.6.0 外观与系统设置](Assets/UI-appearance.png)
+
+</details>
 
 ## 功能
 

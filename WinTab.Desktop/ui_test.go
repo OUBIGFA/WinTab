@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"image/color"
 	"image/png"
@@ -626,14 +627,35 @@ func TestRenderPreviewScreenshots(t *testing.T) {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	savePNG := func(path string, m *uiModel, dark bool, w, h int, scale float32, tab string) {
+	// Read the release version from the same source as the installer so documentation
+	// cannot silently keep the test harness's older fixture version.
+	projectXML, err := os.ReadFile(filepath.Join("..", "WinTab", "WinTab.csproj"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var project struct {
+		Version string `xml:"PropertyGroup>Version"`
+	}
+	if err := xml.Unmarshal(projectXML, &project); err != nil {
+		t.Fatal(err)
+	}
+	if project.Version == "" {
+		t.Fatal("missing application version for previews")
+	}
+
+	previewModel := func(lang, theme string) *uiModel {
+		m, _ := newFakeHarness(t, lang, theme)
+		m.state.Version = project.Version
+		return m
+	}
+	savePNG := func(path string, m *uiModel, dark bool, w, h int, scale float32, section string) {
+		// Render the production view at rest, without navigation clicks or hover/focus decoration.
+		if section != "" {
+			m.section = section
+		}
 		tt := ui.NewTesterWith(m.view, w, h, ui.TesterOptions{Dark: dark})
 		tt.SetScale(scale)
-		if tab != "" {
-			if err := tt.Click(tab); err != nil {
-				t.Fatal(err)
-			}
-		}
+		tt.Move(-1, -1)
 		f, err := os.Create(path)
 		if err != nil {
 			t.Fatal(err)
@@ -644,23 +666,23 @@ func TestRenderPreviewScreenshots(t *testing.T) {
 		}
 	}
 
-	mLight, _ := newFakeHarness(t, "zh-CN", "Light")
-	savePNG(filepath.Join("..", "Assets", "UI.png"), mLight, false, 1064, 780, 1.5, "")
+	for _, language := range []struct{ tag, suffix string }{{"zh-CN", ""}, {"en-US", ".en"}} {
+		m := previewModel(language.tag, "Light")
+		// Keep the bottom Ctrl+Shift note visible in the README rather than clipping the page.
+		savePNG(filepath.Join("..", "Assets", "UI"+language.suffix+".png"), m, false, 1064, 900, 1.5, "explorer")
+		m = previewModel(language.tag, "System")
+		savePNG(filepath.Join("..", "Assets", "UI-appearance"+language.suffix+".png"), m, false, 1064, 900, 1.5, "preferences")
+	}
 
 	for _, entry := range []struct {
 		theme string
 		dark  bool
 	}{{"Light", false}, {"Dark", true}} {
-		for _, nav := range []struct{ id, label string }{
-			{"explorer", zhCopy.Explorer},
-			{"recovery", zhCopy.RecoveryNav},
-			{"preferences", zhCopy.Preferences},
-			{"about", zhCopy.About},
-		} {
-			m, _ := newFakeHarness(t, "zh-CN", entry.theme)
-			savePNG(filepath.Join(outDir, fmt.Sprintf("%s-%s-1064.png", entry.theme, nav.id)), m, entry.dark, 1064, 780, 1.5, nav.label)
+		for _, section := range []string{"explorer", "recovery", "preferences", "about"} {
+			m := previewModel("zh-CN", entry.theme)
+			savePNG(filepath.Join(outDir, fmt.Sprintf("%s-%s-1064.png", entry.theme, section)), m, entry.dark, 1064, 900, 1.5, section)
 		}
-		mWide, _ := newFakeHarness(t, "zh-CN", entry.theme)
-		savePNG(filepath.Join(outDir, fmt.Sprintf("%s-wide-1440.png", entry.theme)), mWide, entry.dark, 1440, 900, 1.0, zhCopy.Explorer)
+		mWide := previewModel("zh-CN", entry.theme)
+		savePNG(filepath.Join(outDir, fmt.Sprintf("%s-wide-1440.png", entry.theme)), mWide, entry.dark, 1440, 900, 1.0, "explorer")
 	}
 }
