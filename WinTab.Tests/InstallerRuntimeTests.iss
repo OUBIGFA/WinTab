@@ -93,24 +93,24 @@ begin
       ExpectedArchitecture := 'x86';
 #endif
     if ExpectedArchitecture = 'x86' then
-      ExpectedHash := '31AB52DCF6440AE1BAC553B21AD97FD88F2F2354DF71B19946F90FDE426595BA'
+      ExpectedHash := '0F55FC79174EA8DAA11C339FBA629B286BA6CADBB920A77DE366B408B15315A5'
     else if ExpectedArchitecture = 'arm64' then
-      ExpectedHash := '03CAB3CB3006E0C089CC716EF27FBEC7E8EA8D7C873D99F4DD397BEE64CC7412'
+      ExpectedHash := 'AB46299E102BDE89C8B8C19F5E53EB47064513F33BFD2D5FC84BF623FBF00B50'
     else
-      ExpectedHash := '4BEE05AA0637468A19CD82490858FC69E93FCE8D22C0AEB272A76B71F0DC93E9';
+      ExpectedHash := 'E61B030C1673EDFA3C0844502EFF83198C46AF9E7DF70DFC6E2EFC5B11EA513A';
 
     Check(GetArchitectureString = ExpectedArchitecture, 'Runtime architecture must match the selected installer.');
-    Check(GetDotNet9Url('') = 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.19/windowsdesktop-runtime-9.0.19-win-' + ExpectedArchitecture + '.exe', 'Runtime URL must select the official matching installer.');
-    Check(GetDotNet9Filename = 'dotnet9-' + ExpectedArchitecture + '.exe', 'Downloaded files must retain their architecture.');
-    Check(CompareText(GetDotNet9Hash, ExpectedHash) = 0, 'The download must require the verified runtime checksum.');
-    Check(IsSupportedDesktopRuntimeVersion('9.0.3'), 'An installed .NET 9 desktop runtime should be accepted.');
-    Check(IsSupportedDesktopRuntimeVersion('9.0.19'), 'Newer .NET 9 patches should be accepted.');
-    Check(not IsSupportedDesktopRuntimeVersion('9.0.19-preview.1'), 'Preview runtimes must not satisfy a stable requirement.');
-    Check(not IsSupportedDesktopRuntimeVersion('9.0.bad'), 'Malformed runtime versions must be rejected.');
-    Check(not IsSupportedDesktopRuntimeVersion('9.0.-1'), 'Negative runtime patches must be rejected.');
-    Check(not IsSupportedDesktopRuntimeVersion('9.0.19.1'), 'An extra version component must be rejected.');
-    Check(not IsSupportedDesktopRuntimeVersion('8.0.19'), 'An older major runtime must not satisfy .NET 9.');
-    Check(not IsSupportedDesktopRuntimeVersion('10.0.0'), 'A different major runtime must not satisfy .NET 9.');
+    Check(GetDotNet10Url('') = 'https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.15/windowsdesktop-runtime-10.0.15-win-' + ExpectedArchitecture + '.exe', 'Runtime URL must select the official matching installer.');
+    Check(GetDotNet10Filename = 'dotnet10-' + ExpectedArchitecture + '.exe', 'Downloaded files must retain their architecture.');
+    Check(CompareText(GetDotNet10Hash, ExpectedHash) = 0, 'The download must require the verified runtime checksum.');
+    Check(IsSupportedDesktopRuntimeVersion('10.0.0'), 'An installed .NET 10 desktop runtime should be accepted.');
+    Check(IsSupportedDesktopRuntimeVersion('10.0.15'), 'Newer .NET 10 patches should be accepted.');
+    Check(not IsSupportedDesktopRuntimeVersion('10.0.15-preview.1'), 'Preview runtimes must not satisfy a stable requirement.');
+    Check(not IsSupportedDesktopRuntimeVersion('10.0.bad'), 'Malformed runtime versions must be rejected.');
+    Check(not IsSupportedDesktopRuntimeVersion('10.0.-1'), 'Negative runtime patches must be rejected.');
+    Check(not IsSupportedDesktopRuntimeVersion('10.0.15.1'), 'An extra version component must be rejected.');
+    Check(not IsSupportedDesktopRuntimeVersion('9.0.23'), 'An older major runtime must not satisfy .NET 10.');
+    Check(not IsSupportedDesktopRuntimeVersion('11.0.0'), 'A newer major runtime must not satisfy .NET 10.');
     Check(IsSuccessfulRuntimeExitCode(0), 'A completed installation should succeed.');
     Check(IsSuccessfulRuntimeExitCode(3010), 'A successful installation requiring restart should succeed.');
     Check(not IsSuccessfulRuntimeExitCode(1603), 'A failed runtime installation must not report success.');

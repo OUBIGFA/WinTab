@@ -1,7 +1,7 @@
-#define DotNet9Version "9.0"
-#define DotNet9InstallerUrl "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.19/windowsdesktop-runtime-9.0.19-win-x64.exe"
-#define DotNet9InstallerUrlX86 "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.19/windowsdesktop-runtime-9.0.19-win-x86.exe"
-#define DotNet9InstallerUrlArm64 "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/9.0.19/windowsdesktop-runtime-9.0.19-win-arm64.exe"
+#define DotNet10Version "10.0"
+#define DotNet10InstallerUrl "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.15/windowsdesktop-runtime-10.0.15-win-x64.exe"
+#define DotNet10InstallerUrlX86 "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.15/windowsdesktop-runtime-10.0.15-win-x86.exe"
+#define DotNet10InstallerUrlArm64 "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.15/windowsdesktop-runtime-10.0.15-win-arm64.exe"
 
 [Code]
 function IsX86: Boolean;
@@ -33,35 +33,35 @@ begin
 #endif
 end;
 
-function GetDotNet9Url(Param: String): String;
+function GetDotNet10Url(Param: String): String;
 var
   Architecture: String;
 begin
   Architecture := GetArchitectureString;
   if Architecture = 'x86' then
-    Result := '{#DotNet9InstallerUrlX86}'
+    Result := '{#DotNet10InstallerUrlX86}'
   else if Architecture = 'arm64' then
-    Result := '{#DotNet9InstallerUrlArm64}'
+    Result := '{#DotNet10InstallerUrlArm64}'
   else
-    Result := '{#DotNet9InstallerUrl}';
+    Result := '{#DotNet10InstallerUrl}';
 end;
 
-function GetDotNet9Filename: String;
+function GetDotNet10Filename: String;
 begin
-  Result := 'dotnet9-' + GetArchitectureString + '.exe';
+  Result := 'dotnet10-' + GetArchitectureString + '.exe';
 end;
 
-function GetDotNet9Hash: String;
+function GetDotNet10Hash: String;
 var
   Architecture: String;
 begin
   Architecture := GetArchitectureString;
   if Architecture = 'x86' then
-    Result := '31AB52DCF6440AE1BAC553B21AD97FD88F2F2354DF71B19946F90FDE426595BA'
+    Result := '0F55FC79174EA8DAA11C339FBA629B286BA6CADBB920A77DE366B408B15315A5'
   else if Architecture = 'arm64' then
-    Result := '03CAB3CB3006E0C089CC716EF27FBEC7E8EA8D7C873D99F4DD397BEE64CC7412'
+    Result := 'AB46299E102BDE89C8B8C19F5E53EB47064513F33BFD2D5FC84BF623FBF00B50'
   else
-    Result := '4BEE05AA0637468A19CD82490858FC69E93FCE8D22C0AEB272A76B71F0DC93E9';
+    Result := 'E61B030C1673EDFA3C0844502EFF83198C46AF9E7DF70DFC6E2EFC5B11EA513A';
 end;
 
 function IsSupportedDesktopRuntimeVersion(Version: String): Boolean;
@@ -70,7 +70,7 @@ var
   PatchText: String;
   PatchVersion: Integer;
 begin
-  Prefix := '{#DotNet9Version}.';
+  Prefix := '{#DotNet10Version}.';
   Result := Pos(Prefix, Version) = 1;
   if not Result then
     Exit;
@@ -85,7 +85,7 @@ begin
   Result := (ExitCode = 0) or (ExitCode = 3010);
 end;
 
-function IsDotNet9Installed: Boolean;
+function IsDotNet10Installed: Boolean;
 var
   Versions: TArrayOfString;
   VersionIndex: Integer;

@@ -8,7 +8,7 @@ Windows 11 文件资源管理器标签页工具
 
 简体中文 | [English](README.en.md)
 
-![Platform](https://img.shields.io/badge/platform-Windows%2011-555555) ![.NET](https://img.shields.io/badge/.NET-9.0-555555) ![License](https://img.shields.io/badge/license-MIT-555555)
+![Platform](https://img.shields.io/badge/platform-Windows%2011-555555) ![.NET](https://img.shields.io/badge/.NET-10.0-555555) ![License](https://img.shields.io/badge/license-MIT-555555)
 
 </div>
 
@@ -60,7 +60,7 @@ WinTab 运行时持续记录标签组，关机或资源管理器崩溃后仍可�
 ## 系统要求
 
 - Windows 11 22H2 或更高版本
-- .NET 9 Desktop Runtime（首次运行安装器会自动下载安装）
+- .NET 10 Desktop Runtime（首次运行安装器会自动下载安装）
 
 ## 许可与致谢
 

@@ -54,11 +54,11 @@ $RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectPath = Join-Path $RepoRoot 'WinTab\WinTab.csproj'
 $SolutionPath = Join-Path $RepoRoot 'WinTab.sln'
 $TestProjectPath = Join-Path $RepoRoot 'WinTab.Tests\WinTab.Tests.csproj'
-$TestExePath = Join-Path $RepoRoot 'WinTab.Tests\bin\Release\net9.0-windows\WinTab.Tests.exe'
+$TestExePath = Join-Path $RepoRoot 'WinTab.Tests\bin\Release\net10.0-windows\WinTab.Tests.exe'
 $AssetsDir = Join-Path $RepoRoot 'Assets'
 $AppIconPath = Join-Path $RepoRoot 'WinTab\Icon.ico'
 $AppLogoPath = Join-Path $RepoRoot 'WinTab\wintab-logo.png'
-$PublishRoot = Join-Path $RepoRoot 'publish\net9.0-windows'
+$PublishRoot = Join-Path $RepoRoot 'publish\net10.0-windows'
 $DistDir = Join-Path $RepoRoot 'dist'
 $InstallerScript = Join-Path $RepoRoot 'installers\installer.iss'
 
@@ -243,7 +243,7 @@ if (-not $SkipPublish) {
             /restore `
             /t:Publish `
             /p:Configuration=Release `
-            /p:TargetFramework=net9.0-windows `
+            /p:TargetFramework=net10.0-windows `
             /p:RuntimeIdentifier="win-$a" `
             /p:SelfContained=false `
             /p:PublishDir="$out" `
@@ -289,7 +289,7 @@ foreach ($a in $Arch) {
     Write-Host "    - $a installer"
     & $iscc `
         "/DMyAppVersion=$Version" `
-        "/DPublishRoot=..\publish\net9.0-windows" `
+        "/DPublishRoot=..\publish\net10.0-windows" `
         "/DOutputDir=..\dist" `
         "/DArch=$a" `
         $InstallerScript | Out-Null
@@ -300,7 +300,7 @@ if ($Combined) {
     Write-Host "    - combined installer"
     & $iscc `
         "/DMyAppVersion=$Version" `
-        "/DPublishRoot=..\publish\net9.0-windows" `
+        "/DPublishRoot=..\publish\net10.0-windows" `
         "/DOutputDir=..\dist" `
         $InstallerScript | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "ISCC failed for combined installer (exit $LASTEXITCODE)" }

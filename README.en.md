@@ -8,7 +8,7 @@ File Explorer tab utility for Windows 11
 
 [简体中文](README.md) | English
 
-![Platform](https://img.shields.io/badge/platform-Windows%2011-555555) ![.NET](https://img.shields.io/badge/.NET-9.0-555555) ![License](https://img.shields.io/badge/license-MIT-555555)
+![Platform](https://img.shields.io/badge/platform-Windows%2011-555555) ![.NET](https://img.shields.io/badge/.NET-10.0-555555) ![License](https://img.shields.io/badge/license-MIT-555555)
 
 </div>
 
@@ -60,7 +60,7 @@ In-app updates check the installer's SHA-256 hash and do not run an installer th
 ## Requirements
 
 - Windows 11 22H2 or newer
-- .NET 9 Desktop Runtime (the installer downloads it on first run if missing)
+- .NET 10 Desktop Runtime (the installer downloads it on first run if missing)
 
 ## License & Acknowledgements
 

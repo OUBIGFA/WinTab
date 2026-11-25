@@ -15,7 +15,7 @@
 #define MyAppURL "https://github.com/OUBIGFA/WinTab"
 
 #ifndef PublishRoot
-  #define PublishRoot "..\publish\net9.0-windows"
+  #define PublishRoot "..\publish\net10.0-windows"
 #endif
 
 #ifndef OutputDir
@@ -86,28 +86,28 @@ english.StartWithWindows=Start with Windows
 chinesesimplified.StartWithWindows=开机启动
 english.WindowsIntegration=Windows Integration
 chinesesimplified.WindowsIntegration=Windows 集成
-english.RuntimeNoInternet=No internet connection, WinTab requires .NET 9 Desktop Runtime
-chinesesimplified.RuntimeNoInternet=无法连接网络，WinTab 需要 .NET 9 桌面运行时
-english.RuntimeDownloadFailed=Could not download .NET 9 Desktop Runtime: %1
-chinesesimplified.RuntimeDownloadFailed=无法下载 .NET 9 桌面运行时：%1
-english.RuntimeDownloading=Downloading .NET 9 Desktop Runtime (%1)
-chinesesimplified.RuntimeDownloading=正在下载 .NET 9 桌面运行时（%1）
+english.RuntimeNoInternet=No internet connection, WinTab requires .NET 10 Desktop Runtime
+chinesesimplified.RuntimeNoInternet=无法连接网络，WinTab 需要 .NET 10 桌面运行时
+english.RuntimeDownloadFailed=Could not download .NET 10 Desktop Runtime: %1
+chinesesimplified.RuntimeDownloadFailed=无法下载 .NET 10 桌面运行时：%1
+english.RuntimeDownloading=Downloading .NET 10 Desktop Runtime (%1)
+chinesesimplified.RuntimeDownloading=正在下载 .NET 10 桌面运行时（%1）
 english.RuntimeDownloadWait=Please wait while setup downloads the required files
 chinesesimplified.RuntimeDownloadWait=请等待安装程序下载所需文件
-english.RuntimeInstalling=Installing .NET 9 Desktop Runtime
-chinesesimplified.RuntimeInstalling=正在安装 .NET 9 桌面运行时
+english.RuntimeInstalling=Installing .NET 10 Desktop Runtime
+chinesesimplified.RuntimeInstalling=正在安装 .NET 10 桌面运行时
 english.RuntimeInstallWait=This may take a few minutes
 chinesesimplified.RuntimeInstallWait=这可能需要几分钟
-english.RuntimeNotDetected=Setup finished but .NET 9 Desktop Runtime was not detected
-chinesesimplified.RuntimeNotDetected=安装已结束，但未检测到 .NET 9 桌面运行时
-english.RuntimeInstallFailed=Could not install .NET 9 Desktop Runtime
-chinesesimplified.RuntimeInstallFailed=无法安装 .NET 9 桌面运行时
-english.RuntimeLaunchFailed=Could not start the .NET 9 Desktop Runtime installer
-chinesesimplified.RuntimeLaunchFailed=无法启动 .NET 9 桌面运行时安装程序
-english.RuntimeInstallError=Error installing .NET 9 Desktop Runtime: %1
-chinesesimplified.RuntimeInstallError=安装 .NET 9 桌面运行时出错：%1
-english.RuntimeRequired=WinTab requires .NET 9 Desktop Runtime, setup will download it if needed
-chinesesimplified.RuntimeRequired=WinTab 需要 .NET 9 桌面运行时，安装程序将在缺少时下载
+english.RuntimeNotDetected=Setup finished but .NET 10 Desktop Runtime was not detected
+chinesesimplified.RuntimeNotDetected=安装已结束，但未检测到 .NET 10 桌面运行时
+english.RuntimeInstallFailed=Could not install .NET 10 Desktop Runtime
+chinesesimplified.RuntimeInstallFailed=无法安装 .NET 10 桌面运行时
+english.RuntimeLaunchFailed=Could not start the .NET 10 Desktop Runtime installer
+chinesesimplified.RuntimeLaunchFailed=无法启动 .NET 10 桌面运行时安装程序
+english.RuntimeInstallError=Error installing .NET 10 Desktop Runtime: %1
+chinesesimplified.RuntimeInstallError=安装 .NET 10 桌面运行时出错：%1
+english.RuntimeRequired=WinTab requires .NET 10 Desktop Runtime, setup will download it if needed
+chinesesimplified.RuntimeRequired=WinTab 需要 .NET 10 桌面运行时，安装程序将在缺少时下载
 english.WrongArchitecture=This installer is for %1 Windows, download the installer matching your device
 chinesesimplified.WrongArchitecture=此安装器适用于 %1 Windows，请下载与设备架构匹配的安装器
 
@@ -146,8 +146,8 @@ Filename: "{app}\{#MyAppRelativePath}"; Parameters: "{code:GetAppLaunchParameter
 
 [Code]
 var
-  DotNet9Detected: Boolean;
-  DotNet9RestartRequired: Boolean;
+  DotNet10Detected: Boolean;
+  DotNet10RestartRequired: Boolean;
   DownloadPage: TDownloadWizardPage;
 
 #include "Runtime.iss"
@@ -196,7 +196,7 @@ begin
                        mbInformation, MB_OK, MB_OK);
 end;
 
-function DownloadAndInstallDotNet9: Boolean;
+function DownloadAndInstallDotNet10: Boolean;
 var
   DotNetInstallerPath: String;
   ResultCode: Integer;
@@ -206,7 +206,7 @@ begin
   Result := False;
   ArchString := GetArchitectureString;
   DownloadPage.Clear;
-  DownloadPage.Add(GetDotNet9Url(''), GetDotNet9Filename(), GetDotNet9Hash);
+  DownloadPage.Add(GetDotNet10Url(''), GetDotNet10Filename(), GetDotNet10Hash);
 
   try
     DownloadPage.SetText(FmtMessage(CustomMessage('RuntimeDownloading'), [ArchString]),
@@ -215,7 +215,7 @@ begin
 
     try
       DownloadPage.Download;
-      DotNetInstallerPath := ExpandConstant('{tmp}\') + GetDotNet9Filename();
+      DotNetInstallerPath := ExpandConstant('{tmp}\') + GetDotNet10Filename();
 
       if FileExists(DotNetInstallerPath) then
         Result := True
@@ -241,15 +241,15 @@ begin
         begin
           if IsSuccessfulRuntimeExitCode(ResultCode) then
           begin
-            DotNet9RestartRequired := ResultCode = 3010;
-            Log('Successfully installed .NET 9 Desktop Runtime');
+            DotNet10RestartRequired := ResultCode = 3010;
+            Log('Successfully installed .NET 10 Desktop Runtime');
             DownloadPage.SetProgress(100, 100);
             Result := True;
 
-            DotNet9Detected := IsDotNet9Installed;
-            if not DotNet9Detected then
+            DotNet10Detected := IsDotNet10Installed;
+            if not DotNet10Detected then
             begin
-              Log('Installation completed but .NET 9 Desktop Runtime is still not detected');
+              Log('Installation completed but .NET 10 Desktop Runtime is still not detected');
               SuppressibleMsgBox(CustomMessage('RuntimeNotDetected'),
                                 mbInformation, MB_OK, MB_OK);
               Result := False;
@@ -257,7 +257,7 @@ begin
           end
           else
           begin
-            Log(Format('Failed to install .NET 9 Desktop Runtime. Exit code: %d', [ResultCode]));
+            Log(Format('Failed to install .NET 10 Desktop Runtime. Exit code: %d', [ResultCode]));
             SuppressibleMsgBox(CustomMessage('RuntimeInstallFailed'),
                               mbInformation, MB_OK, MB_OK);
             Result := False;
@@ -265,7 +265,7 @@ begin
         end
         else
         begin
-          Log('Failed to execute .NET 9 Desktop Runtime installer');
+          Log('Failed to execute .NET 10 Desktop Runtime installer');
           SuppressibleMsgBox(CustomMessage('RuntimeLaunchFailed'),
                             mbInformation, MB_OK, MB_OK);
           Result := False;
@@ -289,13 +289,13 @@ var
 begin
   Result := True;
 
-  if (CurPageID = wpReady) and (not DotNet9Detected) then
+  if (CurPageID = wpReady) and (not DotNet10Detected) then
   begin
     try
-      Result := DownloadAndInstallDotNet9;
+      Result := DownloadAndInstallDotNet10;
     except
       ErrorMessage := GetExceptionMessage;
-      Log('Unexpected error in .NET 9 installation process: ' + ErrorMessage);
+      Log('Unexpected error in .NET 10 installation process: ' + ErrorMessage);
       Result := False;
     end;
   end;
@@ -303,16 +303,16 @@ end;
 
 function NeedRestart: Boolean;
 begin
-  Result := DotNet9RestartRequired;
+  Result := DotNet10RestartRequired;
 end;
 
 procedure InitializeWizard;
 begin
-  DotNet9Detected := IsDotNet9Installed;
+  DotNet10Detected := IsDotNet10Installed;
   DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing),
     SetupMessage(msgPreparingDesc), @OnDownloadProgress);
 
-  if not DotNet9Detected and not WizardSilent then
+  if not DotNet10Detected and not WizardSilent then
   begin
     MsgBox(CustomMessage('RuntimeRequired'),
            mbInformation, MB_OK);
