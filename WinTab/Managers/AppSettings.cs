@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Windows;
 
@@ -37,4 +38,19 @@ internal sealed record AppSettings
     public string Theme { get; init; } = "Light";
     // Null until the user resizes the window; the initial size fits content up to the window height limit.
     public Size? FormSize { get; init; }
+
+    /// <summary>
+    /// Normalize at the storage boundary so hooks, WPF and the Go wire snapshot use the same choices.
+    /// Shortcut text stays intact: invalid user bindings are reported by the shortcut validator.
+    /// </summary>
+    internal AppSettings Normalize() => this with
+    {
+        Language = string.IsNullOrWhiteSpace(Language) ? DefaultLanguage
+            : Language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? "zh-CN" : "en-US",
+        Theme = string.Equals(Theme, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark"
+            : string.Equals(Theme, "System", StringComparison.OrdinalIgnoreCase) ? "System" : "Light",
+        DoubleClickEmptyAreaAction = DoubleClickEmptyAreaAction is "Back" ? "Back" : "Parent",
+        WheelSwitchSensitivity = Enum.TryParse<Hooks.WheelSwitchSensitivity>(WheelSwitchSensitivity, out var sensitivity) &&
+            Enum.IsDefined(sensitivity) ? sensitivity.ToString() : nameof(Hooks.WheelSwitchSensitivity.Medium)
+    };
 }

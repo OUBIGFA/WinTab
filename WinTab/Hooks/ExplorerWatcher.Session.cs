@@ -31,7 +31,7 @@ public partial class ExplorerWatcher
     private readonly ConcurrentDictionary<WindowIdentity, long> _sessionClosedAt = new();
     private readonly ConcurrentDictionary<nint, WindowIdentity> _sessionRestoreExclusions = new();
     private readonly ConcurrentDictionary<WindowIdentity, (InternetExplorer Window, WindowInfo Info)> _preloadedSessionCandidates = new();
-    private readonly ConcurrentDictionary<WindowIdentity, SessionRestoreAttempt> _restoringSessionWindows = new();
+    private readonly ConcurrentDictionary<WindowIdentity, ExplorerSessionRestoreAttempt> _restoringSessionWindows = new();
     private readonly ExplorerClosedTabHistory _closedTabs = new();
     /// <summary>Tabs WinTab itself closes; their OnQuit is not a user closing a tab.</summary>
     private readonly ConcurrentDictionary<WindowIdentity, byte> _internalTabCloses = new();
@@ -57,67 +57,6 @@ public partial class ExplorerWatcher
     private long _sessionCloseSequence;
 
     private sealed record SessionVisualSnapshot(nint[] NativeTabs, nint ActiveTab, SessionVisualTab[] Tabs, long At);
-
-    private sealed class SessionRestoreAttempt : IDisposable
-    {
-        private readonly CancellationTokenSource _cancellation;
-        private readonly object _gate = new();
-        private bool _sawForeground;
-        private bool _watchNavigation;
-        private bool _disposed;
-
-        public SessionRestoreAttempt(CancellationToken lifetime, bool inForeground, WindowIdentity initialTab)
-        {
-            _cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
-            Token = _cancellation.Token;
-            _sawForeground = inForeground;
-            InitialTab = initialTab;
-        }
-
-        public WindowIdentity InitialTab { get; }
-        public CancellationToken Token { get; }
-
-        public void ObserveForeground(bool isTarget)
-        {
-            lock (_gate)
-            {
-                if (_disposed) return;
-                if (isTarget)
-                    _sawForeground = true;
-                else if (_sawForeground && !_cancellation.IsCancellationRequested)
-                {
-                    ExplorerDebugLog.Write("Session restore cancelled: foreground left the launch window");
-                    _cancellation.Cancel();
-                }
-            }
-        }
-
-        public void ArmNavigation()
-        {
-            lock (_gate)
-                if (!_disposed) _watchNavigation = true;
-        }
-
-        public void InitialTabNavigated()
-        {
-            lock (_gate)
-                if (!_disposed && _watchNavigation && !_cancellation.IsCancellationRequested)
-                {
-                    ExplorerDebugLog.Write("Session restore cancelled: initial tab navigated");
-                    _cancellation.Cancel();
-                }
-        }
-
-        public void Dispose()
-        {
-            lock (_gate)
-            {
-                if (_disposed) return;
-                _disposed = true;
-                _cancellation.Dispose();
-            }
-        }
-    }
 
     private void ObserveSessionForeground(nint foreground)
     {
@@ -615,7 +554,7 @@ public partial class ExplorerWatcher
         var generation = _sessionGeneration;
         var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         string Elapsed() => $"{System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0}ms";
-        var attempt = new SessionRestoreAttempt(_sessionCancellation, ExplorerNavigationAccess.ForegroundFrame() == handle,
+        var attempt = new ExplorerSessionRestoreAttempt(_sessionCancellation, ExplorerNavigationAccess.ForegroundFrame() == handle,
             info.TabIdentity);
         _restoringSessionWindows[identity] = attempt;
         _sessionTracker.Forget(identity);

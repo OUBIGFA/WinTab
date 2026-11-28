@@ -31,6 +31,8 @@ internal static class SettingsStoreTests
         yield return ("settings keep empty-space navigation off for new and upgraded configurations", EmptyAreaDefaults);
         yield return ("settings persist both empty-space navigation modes independently", EmptyAreaPersists);
         yield return ("settings normalize an invalid empty-space action without changing other preferences", EmptyAreaInvalidAction);
+        yield return ("settings expose canonical choices to both native and compatibility interfaces", CanonicalChoices);
+        yield return ("settings normalize changes before publishing or persisting them", CanonicalChanges);
         yield return ("settings reads and changes do not wait for a blocked disk write", BlockedWriteDoesNotBlockSettings);
         yield return ("settings writes coalesce changes without concurrent file access", WritesLatestSnapshot);
         yield return ("settings save failure is reported without losing in-memory state", ReportsWriteFailure);
@@ -57,6 +59,52 @@ internal static class SettingsStoreTests
     }
 
     private static string NewPath() => Path.Combine(Path.GetTempPath(), "WinTab.Tests", Guid.NewGuid().ToString("N"), "settings.json");
+
+    private static Task CanonicalChoices()
+    {
+        var path = NewPath();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            foreach (var (theme, language, wheel, expectedTheme, expectedLanguage, expectedWheel) in new[]
+            {
+                ("dark", "zh-TW", "0", "Dark", "zh-CN", "Low"),
+                ("system", "en-GB", "High", "System", "en-US", "High"),
+                ("unknown", "fr-FR", "unknown", "Light", "en-US", "Medium"),
+                ("Light", "zh-CN", "Medium", "Light", "zh-CN", "Medium")
+            })
+            {
+                File.WriteAllText(path, JsonSerializer.Serialize(new AppSettings
+                {
+                    Theme = theme, Language = language, WheelSwitchSensitivity = wheel,
+                    WindowHook = false, ReuseTabs = false
+                }), new UTF8Encoding(false));
+                using var store = new SettingsStore(path);
+                var settings = store.Snapshot;
+                Check.Equal(expectedTheme, settings.Theme, "The wire snapshot must carry the effective theme");
+                Check.Equal(expectedLanguage, settings.Language, "The wire snapshot must carry the effective language");
+                Check.Equal(expectedWheel, settings.WheelSwitchSensitivity, "The wire snapshot must carry the effective wheel choice");
+                Check.That(!settings.WindowHook && !settings.ReuseTabs && !settings.RestoreTabs,
+                    "Normalizing choices must not enable features");
+            }
+        }
+        finally { RecycleDirectory(path); }
+        return Task.CompletedTask;
+    }
+
+    private static async Task CanonicalChanges()
+    {
+        AppSettings? saved = null;
+        using var store = new SettingsStore(NewPath(), settings => saved = settings);
+        store.Update(settings => settings with { Theme = "system", Language = "zh-TW", WheelSwitchSensitivity = "2" });
+        Check.Equal("System", store.Snapshot.Theme);
+        Check.Equal("zh-CN", store.Snapshot.Language);
+        Check.Equal("High", store.Snapshot.WheelSwitchSensitivity);
+        Check.That(await store.FlushAsync(), "Canonical choices must be persisted");
+        Check.Equal(store.Snapshot, saved, "The interface and disk writer must receive the same snapshot");
+        Check.That(!store.Update(settings => settings with { Theme = "SYSTEM" }),
+            "An equivalent choice must not schedule a redundant save");
+    }
 
     private static Task LanguageDefaults()
     {
@@ -336,7 +384,7 @@ internal static class SettingsStoreTests
         try
         {
             for (var index = 0; index < 1_000; index++)
-                store.Update(settings => settings with { Language = index.ToString() }, deferred: true);
+                store.Update(settings => settings with { FormSize = new System.Windows.Size(800 + index, 760) }, deferred: true);
             flushed = store.FlushAsync();
             Check.That(!flushed.IsCompleted, "An exit flush must wait for the active disk write and the latest snapshot.");
         }
@@ -346,7 +394,7 @@ internal static class SettingsStoreTests
         }
         Check.That(await flushed, "The final write should succeed.");
         Check.That(writes.Count <= 2, "Only the current write and the newest pending snapshot should reach disk.");
-        Check.Equal("999", writes[^1].Language);
+        Check.Equal(1799d, writes[^1].FormSize!.Value.Width);
         Check.Equal("Dark", writes[^1].Theme);
     }
 
@@ -409,7 +457,7 @@ internal static class SettingsStoreTests
         {
             using (var store = new SettingsStore(path))
             {
-                store.Update(settings => settings with { DoubleClickCloseTab = false, Language = "简体中文-日本語" });
+                store.Update(settings => settings with { DoubleClickCloseTab = false, RestoreGroupShortcut = "简体中文-日本語" });
                 Check.That(await store.FlushAsync(), "The initial save should succeed.");
                 store.Update(settings => settings with { DoubleClickCloseTab = true });
                 Check.That(await store.FlushAsync(), "The replacement should succeed.");
@@ -417,7 +465,7 @@ internal static class SettingsStoreTests
             File.WriteAllText(path, "{broken", Encoding.UTF8);
             using var recovered = new SettingsStore(path);
             Check.That(!recovered.Snapshot.DoubleClickCloseTab, "Corruption should recover the last valid backup.");
-            Check.Equal("简体中文-日本語", recovered.Snapshot.Language);
+            Check.Equal("简体中文-日本語", recovered.Snapshot.RestoreGroupShortcut);
             Check.That(recovered.LastError != null, "Recovery must disclose that the primary file was damaged.");
             Check.That(await recovered.FlushAsync(), "Recovered settings should be writable.");
             var backup = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path + ".bak", Encoding.UTF8))!;
@@ -452,7 +500,7 @@ internal static class SettingsStoreTests
                     "The repaired primary must retain all current preferences.");
 
             var repaired = File.ReadAllText(path, Encoding.UTF8);
-            store.Update(settings => settings with { Language = "English" }, deferred: true);
+            store.Update(settings => settings with { Theme = "Light" }, deferred: true);
             Check.That(await store.FlushAsync(), "Saving must continue after repairing the primary.");
             Check.Equal(repaired, File.ReadAllText(path + ".bak", Encoding.UTF8),
                 "A valid primary must resume normal backup rotation.");
@@ -536,8 +584,8 @@ internal static class SettingsStoreTests
     private static async Task UnreadablePrimaryIsPreserved(bool hasBackup)
     {
         var path = NewPath();
-        const string primary = """{"Theme":"Dark","Language":"original-primary"}""";
-        const string backup = """{"Theme":"Light","Language":"old-backup"}""";
+        const string primary = """{"Theme":"Dark","RestoreGroupShortcut":"original-primary"}""";
+        const string backup = """{"Theme":"Light","RestoreGroupShortcut":"old-backup"}""";
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -550,17 +598,17 @@ internal static class SettingsStoreTests
             {
                 Check.That(store.LastError is IOException, "A sharing violation must remain visible to the caller.");
                 Check.That(!await store.FlushAsync(), "Exit flush must not overwrite an unreadable primary, even after it is unlocked.");
-                store.Update(settings => settings with { Language = "in-memory-change" });
+                store.Update(settings => settings with { RestoreGroupShortcut = "in-memory-change" });
                 Check.That(!await store.FlushAsync(), "Changes to fallback settings must not replace unknown on-disk values.");
-                Check.Equal("in-memory-change", store.Snapshot.Language, "Read protection must not freeze in-memory settings.");
+                Check.Equal("in-memory-change", store.Snapshot.RestoreGroupShortcut, "Read protection must not freeze in-memory settings.");
                 Check.That(store.LastError is IOException, "Blocked saving must not clear the original read failure.");
             }
             Check.Equal(primary, File.ReadAllText(path, Encoding.UTF8), "The unreadable primary must remain byte-for-byte unchanged.");
             Check.Equal(hasBackup, File.Exists(path + ".bak"), "Saving fallback values must not create or remove a backup.");
             if (hasBackup) Check.Equal(backup, File.ReadAllText(path + ".bak", Encoding.UTF8), "The valid old backup must be preserved.");
             using var reopened = new SettingsStore(path);
-            Check.Equal("original-primary", reopened.Snapshot.Language, "A successful restart must load the original primary.");
-            reopened.Update(settings => settings with { Language = "saved-after-restart" });
+            Check.Equal("original-primary", reopened.Snapshot.RestoreGroupShortcut, "A successful restart must load the original primary.");
+            reopened.Update(settings => settings with { RestoreGroupShortcut = "saved-after-restart" });
             Check.That(await reopened.FlushAsync(), "Saving may resume after a successful fresh read.");
         }
         finally { RecycleDirectory(path); }
@@ -569,7 +617,7 @@ internal static class SettingsStoreTests
     private static async Task UnreadableBackupIsPreserved(bool damagedPrimary)
     {
         var path = NewPath();
-        const string backup = """{"Language":"only-valid-copy"}""";
+        const string backup = """{"RestoreGroupShortcut":"only-valid-copy"}""";
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -588,7 +636,7 @@ internal static class SettingsStoreTests
             if (damagedPrimary) Check.Equal("{damaged", File.ReadAllText(path, Encoding.UTF8), "The primary must be untouched while recovery is uncertain.");
             Check.Equal(backup, File.ReadAllText(path + ".bak", Encoding.UTF8), "The only valid copy must not be replaced.");
             using var reopened = new SettingsStore(path);
-            Check.Equal("only-valid-copy", reopened.Snapshot.Language, "Recovery must work once the backup can be read.");
+            Check.Equal("only-valid-copy", reopened.Snapshot.RestoreGroupShortcut, "Recovery must work once the backup can be read.");
             Check.That(await reopened.FlushAsync(), "Confirmed recovery values may repair the primary.");
         }
         finally { RecycleDirectory(path); }

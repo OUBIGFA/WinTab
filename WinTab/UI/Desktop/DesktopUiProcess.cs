@@ -85,10 +85,11 @@ internal sealed class DesktopUiProcess(Dispatcher dispatcher, Func<DesktopComman
     {
         var writer = WriteAsync(process, outbox);
         var diagnostics = ReadDiagnosticsAsync(process);
+        var incoming = new DesktopLineReader(process.StandardOutput);
         var pending = new List<Task>();
         try
         {
-            while (await ReadMessageAsync(process.StandardOutput).ConfigureAwait(false) is { } line)
+            while (await incoming.ReadLineAsync().ConfigureAwait(false) is { } line)
             {
                 pending.RemoveAll(task => task.IsCompleted);
                 // Normal settings finish immediately; a damaged child must not retain unbounded
@@ -100,7 +101,7 @@ internal sealed class DesktopUiProcess(Dispatcher dispatcher, Func<DesktopComman
                 {
                     using var document = JsonDocument.Parse(line);
                     if (document.RootElement.TryGetProperty("id", out var value)) value.TryGetInt64(out id);
-                    var command = DesktopCommand.Parse(line);
+                    var command = DesktopCommand.Parse(document.RootElement);
                     // Await dispatch, not command completion: mutations still begin in wire order
                     // on the one UI thread, while long operations reply independently by request id.
                     operation = await dispatcher.InvokeAsync(() => execute(command)).Task.ConfigureAwait(false);
@@ -163,22 +164,6 @@ internal sealed class DesktopUiProcess(Dispatcher dispatcher, Func<DesktopComman
         catch (ChannelClosedException) { /* A disconnected renderer no longer accepts its pending reply. */ }
     }
 
-    /// <summary>Bound a line before allocating it, even if a damaged child never emits a newline.</summary>
-    internal static async Task<string?> ReadMessageAsync(TextReader reader)
-    {
-        var buffer = new char[1];
-        var line = new StringBuilder();
-        // ReadLineAsync has no size limit; a small char buffer also handles partial UTF-8 reads safely.
-        while (true)
-        {
-            var count = await reader.ReadAsync(buffer, 0, 1).ConfigureAwait(false);
-            if (count == 0) return line.Length == 0 ? null : throw new IOException("Incomplete UI message");
-            if (buffer[0] == '\n') return line.ToString().TrimEnd('\r');
-            if (line.Length >= DesktopCommand.MaximumMessageLength) throw new IOException("UI message too large");
-            line.Append(buffer[0]);
-        }
-    }
-
     private static async Task WriteAsync(Process process, Channel<string> outbox)
     {
         try
@@ -199,12 +184,16 @@ internal sealed class DesktopUiProcess(Dispatcher dispatcher, Func<DesktopComman
     {
         try
         {
-            while (await process.StandardError.ReadLineAsync().ConfigureAwait(false) is { } line)
+            var diagnostics = new DesktopLineReader(process.StandardError, requireTerminator: false);
+            while (await diagnostics.ReadLineAsync().ConfigureAwait(false) is { } line)
                 ExplorerDebugLog.Write("Desktop UI: " + line);
         }
         catch (Exception error) when (error is IOException or ObjectDisposedException or InvalidOperationException)
         {
             ExplorerDebugLog.Write($"Desktop UI diagnostics closed: {error.Message}");
+            // Once diagnostics cannot be drained safely, retire the child rather than let it block
+            // forever writing stderr while the resident waits for another stdout message.
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
         }
     }
 

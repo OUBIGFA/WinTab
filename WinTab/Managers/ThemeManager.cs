@@ -13,6 +13,14 @@ public static class ThemeManager
     /// <summary>Raised on the UI thread after the palette changes.</summary>
     public static event Action? ThemeApplied;
 
+    /// <summary>The compatibility window's theme button advances the saved preference.</summary>
+    internal static string NextTheme(string theme) => theme switch
+    {
+        "Light" => "Dark",
+        "Dark" => "System",
+        _ => "Light"
+    };
+
     public static bool IsDarkTheme => SettingsManager.Theme switch
     {
         "Dark" => true,

@@ -147,8 +147,12 @@ internal static class UiStrings
 
     // Title bar buttons
     public static string LanguageToggleTooltip => IsChinese ? "Switch to English" : "切换到中文";
-    public static string ThemeToggleTooltip(bool isDarkTheme) =>
-        isDarkTheme ? Pick("切换为浅色", "Switch to light mode") : Pick("切换为深色", "Switch to dark mode");
+    public static string ThemeToggleTooltip(string theme) => ThemeManager.NextTheme(theme) switch
+    {
+        "Dark" => Pick("切换为深色", "Switch to dark mode"),
+        "System" => Pick("跟随系统主题", "Use system theme"),
+        _ => Pick("切换为浅色", "Switch to light mode")
+    };
 
     // Tray icon
     public static string TrayTooltip => Pick("WinTab - 资源管理器标签页工具", "WinTab - File Explorer Tab Utility");

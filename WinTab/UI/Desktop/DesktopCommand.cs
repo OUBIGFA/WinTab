@@ -28,7 +28,14 @@ internal sealed record DesktopCommand(long Id, string Method)
     internal static DesktopCommand Parse(string line)
     {
         if (line.Length > MaximumMessageLength) throw new FormatException("Message too large");
-        var request = JsonSerializer.Deserialize<DesktopRequest>(line, Json)
+        using var document = JsonDocument.Parse(line);
+        return Parse(document.RootElement);
+    }
+
+    /// <summary>The process reader already parsed the envelope to retain its reply id on validation failures.</summary>
+    internal static DesktopCommand Parse(JsonElement message)
+    {
+        var request = message.Deserialize<DesktopRequest>(Json)
             ?? throw new FormatException("Missing request");
         if (request.Id <= 0) throw new FormatException("Invalid request id");
         var command = new DesktopCommand(request.Id, request.Method);

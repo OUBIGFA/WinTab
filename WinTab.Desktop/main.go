@@ -25,8 +25,8 @@ type Desktop struct {
 	pipe  *bridge
 	mu    sync.Mutex
 	state State
-	win   *mygo.Window // read and written only on MyGo's main thread
-	ui    *uiModel     // read and written only on MyGo's main thread
+	win   *mygo.Window // pointer publication is protected by mu; native work runs on MyGo's main thread
+	ui    *uiModel     // pointer publication is protected by mu; model contents belong to MyGo's main thread
 	ready atomic.Bool
 }
 
@@ -179,8 +179,21 @@ func (d *Desktop) Reconnect() {
 	}()
 }
 
-func (d *Desktop) open(state State) {
+// initializeUI installs the model before a native window can begin drawing it.
+func (d *Desktop) initializeUI(state State) State {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.state.Revision > state.Revision {
+		state = d.state
+	}
+	// Publish the model under the same lock used by accept. A state arriving during
+	// window construction is picked up once the window is ready to receive updates.
 	d.ui = newUIModel(&state, d)
+	return state
+}
+
+func (d *Desktop) open(state State) {
+	state = d.initializeUI(state)
 	d.accept(state)
 
 	area := mygo.Screen.DisplayNearestPoint(mygo.Screen.CursorScreenPoint()).WorkArea
@@ -206,6 +219,7 @@ func (d *Desktop) open(state State) {
 	})
 	d.mu.Lock()
 	d.win = win
+	d.ui.applyState(d.state)
 	d.mu.Unlock()
 
 	if err := win.SetIcon(logoPNG); err != nil {

@@ -83,11 +83,15 @@ func TestBridgeDisconnectFailsPendingCalls(t *testing.T) {
 }
 
 func TestBridgeCancellationAndOversize(t *testing.T) {
-	b := newBridge(io.Discard)
+	var sent bytes.Buffer
+	b := newBridge(&sent)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := b.call(ctx, "state", nil, nil); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
+	}
+	if sent.Len() != 0 {
+		t.Fatal("a canceled request must not reach the host and mutate settings")
 	}
 	b.mu.Lock()
 	pending := len(b.pending)
@@ -175,5 +179,14 @@ func TestSettingsStateUpdateDoesNotWaitForNativeThemeWork(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("an unchanged theme caused a native dispatch instead of accepting the settings state")
+	}
+}
+
+func TestDesktopInitialModelKeepsStateReceivedBeforeWindowCreation(t *testing.T) {
+	// A pushed state may arrive after the startup reply but before the UI thread opens the window.
+	d := &Desktop{state: State{Revision: 2, Settings: Settings{Theme: "Light", WindowHook: true}}}
+	initial := d.initializeUI(State{Revision: 1, Settings: Settings{Theme: "Light"}})
+	if initial.Revision != 2 || d.ui.state.Revision != 2 || !d.ui.state.Settings.WindowHook {
+		t.Fatal("opening the window replaced a newer pushed state with the older startup reply")
 	}
 }

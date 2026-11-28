@@ -124,7 +124,7 @@ public partial class ExplorerWatcher
         var (window, info) = opened;
         var identity = info.Identity;
         var handle = identity.Handle;
-        using var attempt = new SessionRestoreAttempt(token, ExplorerNavigationAccess.ForegroundFrame() == handle, info.TabIdentity);
+        using var attempt = new ExplorerSessionRestoreAttempt(token, ExplorerNavigationAccess.ForegroundFrame() == handle, info.TabIdentity);
         // The window is not the last group, or even captured, until every tab has been added.
         _restoringSessionWindows[identity] = attempt;
         _sessionTracker.Forget(identity);
@@ -160,7 +160,7 @@ public partial class ExplorerWatcher
         }
         finally
         {
-            _restoringSessionWindows.TryRemove(new KeyValuePair<WindowIdentity, SessionRestoreAttempt>(identity, attempt));
+            _restoringSessionWindows.TryRemove(new KeyValuePair<WindowIdentity, ExplorerSessionRestoreAttempt>(identity, attempt));
             _selectionWork.Request();
         }
     }

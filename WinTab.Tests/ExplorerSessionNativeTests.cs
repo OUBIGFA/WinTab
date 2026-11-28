@@ -21,6 +21,7 @@ internal static class ExplorerSessionNativeTests
     {
         yield return ("session restore tolerates a late foreground callback after disposal", () => RetiredAttemptIgnoresCallbacks(false));
         yield return ("session restore tolerates a late navigation callback after disposal", () => RetiredAttemptIgnoresCallbacks(true));
+        yield return ("session restore cancels only after owning foreground or arming navigation", RestoreCancellation);
         yield return ("session initial tab identity retries an unpublished strip on a background worker", InitialTabIdentityRetriesEmptyRead);
         yield return ("session watcher does not restore or capture a hidden preload", HiddenPreloadIsNotUserWindow);
         yield return ("session watcher registers an existing hidden preload when restoration is enabled", EnablingRestorationTracksExistingPreload);
@@ -29,18 +30,39 @@ internal static class ExplorerSessionNativeTests
 
     private static Task RetiredAttemptIgnoresCallbacks(bool navigation)
     {
-        var type = typeof(ExplorerWatcher).GetNestedType("SessionRestoreAttempt", BindingFlags.NonPublic)!;
-        using var attempt = (IDisposable)Activator.CreateInstance(type,
-            [CancellationToken.None, true, default(WindowIdentity)])!;
-        type.GetMethod("ArmNavigation")!.Invoke(attempt, null);
-        var token = (CancellationToken)type.GetProperty("Token")!.GetValue(attempt)!;
+        using var attempt = new ExplorerSessionRestoreAttempt(CancellationToken.None, true, default);
+        attempt.ArmNavigation();
+        var token = attempt.Token;
         attempt.Dispose();
         // A concurrent dictionary enumerator can retain this attempt after its owner removes and disposes it.
         if (navigation)
-            type.GetMethod("InitialTabNavigated")!.Invoke(attempt, null);
+            attempt.InitialTabNavigated();
         else
-            type.GetMethod("ObserveForeground")!.Invoke(attempt, [false]);
+            attempt.ObserveForeground(false);
         Check.That(!token.IsCancellationRequested, "Retired callbacks must be inert rather than touch the disposed source.");
+        return Task.CompletedTask;
+    }
+
+    private static Task RestoreCancellation()
+    {
+        using var lifetime = new CancellationTokenSource();
+        using var foreground = new ExplorerSessionRestoreAttempt(lifetime.Token, false, default);
+        foreground.ObserveForeground(false);
+        Check.That(!foreground.Token.IsCancellationRequested, "A restore waiting to appear must tolerate another foreground window");
+        foreground.ObserveForeground(true);
+        foreground.ObserveForeground(false);
+        Check.That(foreground.Token.IsCancellationRequested, "Leaving the owned window must cancel its restore");
+
+        using var navigation = new ExplorerSessionRestoreAttempt(lifetime.Token, true, default);
+        navigation.InitialTabNavigated();
+        Check.That(!navigation.Token.IsCancellationRequested, "Initial setup navigation must remain allowed");
+        navigation.ArmNavigation();
+        navigation.InitialTabNavigated();
+        Check.That(navigation.Token.IsCancellationRequested, "Later user navigation must cancel the restore");
+
+        using var shutdown = new ExplorerSessionRestoreAttempt(lifetime.Token, false, default);
+        lifetime.Cancel();
+        Check.That(shutdown.Token.IsCancellationRequested, "The shell lifetime must still cancel each attempt");
         return Task.CompletedTask;
     }
 

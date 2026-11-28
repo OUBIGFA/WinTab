@@ -120,9 +120,8 @@ public partial class MainWindow : Window, WinTab.UI.Desktop.IApplicationUi
 
     private void ThemeToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        SettingsManager.Theme = ThemeManager.IsDarkTheme ? "Light" : "Dark";
+        SettingsManager.Theme = ThemeManager.NextTheme(SettingsManager.Theme);
         ThemeManager.ApplyTheme();
-        ApplyTheme();
     }
 
     private void SettingsManager_StaticPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -274,14 +273,14 @@ public partial class MainWindow : Window, WinTab.UI.Desktop.IApplicationUi
         ApplyUpdateFeedback();
 
         LanguageToggleButton.ToolTip = UiStrings.LanguageToggleTooltip;
-        ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(ThemeManager.IsDarkTheme);
+        ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(SettingsManager.Theme);
         _trayIcon.ApplyLanguage();
     }
 
     private void ApplyTheme()
     {
         ThemeToggleGlyph.Data = (System.Windows.Media.Geometry)FindResource(ThemeManager.IsDarkTheme ? "SunIcon" : "MoonIcon");
-        ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(ThemeManager.IsDarkTheme);
+        ThemeToggleButton.ToolTip = UiStrings.ThemeToggleTooltip(SettingsManager.Theme);
     }
 
     private void OpenLogsButton_Click(object sender, RoutedEventArgs e)

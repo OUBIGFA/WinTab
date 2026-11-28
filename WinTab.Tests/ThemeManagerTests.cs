@@ -39,6 +39,18 @@ internal static class ThemeManagerTests
     public static IEnumerable<(string Name, Func<Task> Body)> All()
     {
         yield return ("Theme palettes keep neutral gray hierarchy and readable contrast", ThemePalettesAreBalanced);
+        yield return ("Theme cycling makes system appearance reachable in the compatibility window", ThemeChoices);
+    }
+
+    private static Task ThemeChoices()
+    {
+        var theme = "Light";
+        foreach (var expected in new[] { "Dark", "System", "Light" })
+        {
+            theme = ThemeManager.NextTheme(theme);
+            Check.Equal(expected, theme, "The button must visit every saved preference before repeating");
+        }
+        return Task.CompletedTask;
     }
 
     private static async Task ThemePalettesAreBalanced()

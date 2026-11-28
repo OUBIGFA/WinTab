@@ -75,6 +75,10 @@ func (b *bridge) finish(err error) {
 }
 
 func (b *bridge) call(ctx context.Context, method string, params any, result any) error {
+	// Cancellation before delivery must not turn into a setting change at the host.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	b.mu.Lock()
 	if b.err != nil {
 		err := b.err
@@ -100,6 +104,11 @@ func (b *bridge) call(ctx context.Context, method string, params any, result any
 		return errors.New("request is too large")
 	}
 	b.writeMu.Lock()
+	// A preceding writer may have held the lock past this call's deadline.
+	if err := ctx.Err(); err != nil {
+		b.writeMu.Unlock()
+		return err
+	}
 	_, err = b.writer.Write(append(data, '\n'))
 	b.writeMu.Unlock()
 	if err != nil {

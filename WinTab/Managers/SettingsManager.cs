@@ -97,8 +97,7 @@ public static class SettingsManager
 
     public static FileListDoubleClickAction DoubleClickEmptyAreaAction
     {
-        get => Enum.TryParse<FileListDoubleClickAction>(Store.Snapshot.DoubleClickEmptyAreaAction, out var action) &&
-            Enum.IsDefined(action) ? action : FileListDoubleClickAction.Parent;
+        get => Enum.Parse<FileListDoubleClickAction>(Store.Snapshot.DoubleClickEmptyAreaAction);
         set
         {
             if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
@@ -120,9 +119,12 @@ public static class SettingsManager
 
     public static WheelSwitchSensitivity WheelSwitchSensitivity
     {
-        get => Enum.TryParse<WheelSwitchSensitivity>(Store.Snapshot.WheelSwitchSensitivity, out var value) &&
-               Enum.IsDefined(value) ? value : WheelSwitchSensitivity.Medium;
-        set => SetProperty(settings => settings with { WheelSwitchSensitivity = value.ToString() });
+        get => Enum.Parse<WheelSwitchSensitivity>(Store.Snapshot.WheelSwitchSensitivity);
+        set
+        {
+            if (!Enum.IsDefined(value)) throw new ArgumentOutOfRangeException(nameof(value));
+            SetProperty(settings => settings with { WheelSwitchSensitivity = value.ToString() });
+        }
     }
 
     public static bool AutoUpdate
@@ -139,14 +141,14 @@ public static class SettingsManager
 
     public static string Language
     {
-        get => NormalizeLanguage(Store.Snapshot.Language);
-        set => SetProperty(settings => settings with { Language = NormalizeLanguage(value) });
+        get => Store.Snapshot.Language;
+        set => SetProperty(settings => settings with { Language = value });
     }
 
     public static string Theme
     {
-        get => NormalizeTheme(Store.Snapshot.Theme);
-        set => SetProperty(settings => settings with { Theme = NormalizeTheme(value) });
+        get => Store.Snapshot.Theme;
+        set => SetProperty(settings => settings with { Theme = value });
     }
 
     public static Size? FormSize
@@ -182,12 +184,4 @@ public static class SettingsManager
         }
     }
 
-    private static string NormalizeLanguage(string? value) => string.IsNullOrWhiteSpace(value)
-        ? AppSettings.DefaultLanguage
-        : value.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? "zh-CN" : "en-US";
-
-    private static string NormalizeTheme(string? value) =>
-        string.Equals(value, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark"
-        : string.Equals(value, "System", StringComparison.OrdinalIgnoreCase) ? "System"
-        : "Light";
 }

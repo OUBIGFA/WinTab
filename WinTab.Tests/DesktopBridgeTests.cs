@@ -16,6 +16,8 @@ internal static class DesktopBridgeTests
         yield return ("desktop bridge preserves the Go desktop UI state contract", StateContract);
         yield return ("desktop bridge reads Unicode frames and detects clean disconnects", Framing);
         yield return ("desktop bridge rejects oversized and incomplete frames", InvalidFrames);
+        yield return ("desktop bridge batches reads without losing adjacent frames", BatchedReads);
+        yield return ("desktop bridge preserves fragmented frames and final diagnostics", FragmentedFrames);
         yield return ("desktop shortcut capture leaves the renderer's physical chord untouched", ShortcutScope);
     }
 
@@ -101,11 +103,12 @@ internal static class DesktopBridgeTests
     private static async Task Framing()
     {
         using var input = new StringReader("中文🙂\r\nsecond\n");
-        Check.Equal("中文🙂", await DesktopUiProcess.ReadMessageAsync(input));
-        Check.Equal("second", await DesktopUiProcess.ReadMessageAsync(input));
-        Check.That(await DesktopUiProcess.ReadMessageAsync(input) is null, "EOF between frames is a normal disconnect");
+        var frames = new DesktopLineReader(input);
+        Check.Equal("中文🙂", await frames.ReadLineAsync());
+        Check.Equal("second", await frames.ReadLineAsync());
+        Check.That(await frames.ReadLineAsync() is null, "EOF between frames is a normal disconnect");
         using var boundary = new StringReader(new string('x', DesktopCommand.MaximumMessageLength) + "\n");
-        Check.Equal(DesktopCommand.MaximumMessageLength, (await DesktopUiProcess.ReadMessageAsync(boundary))!.Length);
+        Check.Equal(DesktopCommand.MaximumMessageLength, (await new DesktopLineReader(boundary).ReadLineAsync())!.Length);
     }
 
     private static async Task InvalidFrames()
@@ -113,10 +116,59 @@ internal static class DesktopBridgeTests
         foreach (var text in new[] { "unterminated", new string('x', DesktopCommand.MaximumMessageLength + 1) + "\n" })
         {
             using var reader = new StringReader(text);
-            try { await DesktopUiProcess.ReadMessageAsync(reader); }
+            try { await new DesktopLineReader(reader).ReadLineAsync(); }
             catch (IOException) { continue; }
             throw new InvalidOperationException("Damaged pipe frame was accepted");
         }
+    }
+
+    private static async Task BatchedReads()
+    {
+        var content = new string('x', 32_768);
+        using var input = new CountingReader(content + "\nnext\n");
+        var frames = new DesktopLineReader(input);
+        Check.Equal(content, await frames.ReadLineAsync());
+        Check.Equal("next", await frames.ReadLineAsync());
+        Check.That(input.ReadCount < 32, "A 32 KiB frame must not perform one asynchronous read per character");
+    }
+
+    private sealed class CountingReader(string text) : StringReader(text)
+    {
+        public int ReadCount { get; private set; }
+        public override Task<int> ReadAsync(char[] buffer, int index, int count)
+        {
+            ReadCount++;
+            return base.ReadAsync(buffer, index, count);
+        }
+        public override ValueTask<int> ReadAsync(Memory<char> buffer, System.Threading.CancellationToken cancellationToken = default)
+        {
+            ReadCount++;
+            return base.ReadAsync(buffer, cancellationToken);
+        }
+    }
+
+    private static async Task FragmentedFrames()
+    {
+        using var input = new FragmentedReader("中文🙂\r\n\nlast\n");
+        var frames = new DesktopLineReader(input);
+        Check.Equal("中文🙂", await frames.ReadLineAsync());
+        Check.Equal(string.Empty, await frames.ReadLineAsync());
+        Check.Equal("last", await frames.ReadLineAsync());
+        Check.That(await frames.ReadLineAsync() == null, "Fragmented EOF must release the pipe");
+        using var diagnosticInput = new StringReader("final diagnostic");
+        var diagnostics = new DesktopLineReader(diagnosticInput, requireTerminator: false);
+        Check.Equal("final diagnostic", await diagnostics.ReadLineAsync());
+        Check.That(await diagnostics.ReadLineAsync() == null, "The final diagnostic must be emitted only once");
+        using var oversized = new StringReader(new string('x', DesktopCommand.MaximumMessageLength + 1));
+        try { await new DesktopLineReader(oversized, requireTerminator: false).ReadLineAsync(); }
+        catch (IOException) { return; }
+        throw new InvalidOperationException("Diagnostic output must obey the same memory bound as protocol frames");
+    }
+
+    private sealed class FragmentedReader(string text) : StringReader(text)
+    {
+        public override ValueTask<int> ReadAsync(Memory<char> buffer, System.Threading.CancellationToken cancellationToken = default) =>
+            base.ReadAsync(buffer[..Math.Min(buffer.Length, 3)], cancellationToken);
     }
 
     private static Task ShortcutScope()
